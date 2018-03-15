@@ -5,8 +5,7 @@ Python class wrapper for data fitting.
 Includes the following external methods:
 getFunctions returns the list of function names (dictionary keys)
 FitRegion performs the fitting
-Note that FitRegion will plot on top of the current data using MPlots routines
-if the current curve and the current plot instance are passed.
+Note that FitRegion no longer attempts to plot.
 
 """
 # January, 2009
@@ -45,21 +44,7 @@ import scipy.optimize
 import ctypes
 import numpy.random
 
-
 #from numba import autojit
-
-usingMPlot = False
-if usingMPlot:
-    import MPlot # we include plotting as part of the fitting
-
-def debug_trace():
-  '''Set a tracepoint in the Python debugger that works with Qt'''
-  if pyqt:
-      from PyQt4.QtCore import pyqtRemoveInputHook
-  from pdb import set_trace
-  if pyqt:
-      pyqtRemoveInputHook()
-  set_trace()
       
 class Fitting():
     # dictionary contains:
@@ -567,9 +552,9 @@ p[4]*numpy.exp(-(p[5] + x)/p[6]))**2.0
             it0 = t
         return(x[it0:it1], y[it0:it1])
         
-    def FitRegion(self, whichdata, thisaxis, tdat, ydat, t0 = None, t1 = None,
-                  fitFunc = 'exp1', fitFuncDer = None, fitPars = None, fixedPars = None,
-                  fitPlot = None, plotInstance = None, dataType= 'xy', method = None,
+    def FitRegion(self, whichdata, thisaxis, tdat, ydat, t0=None, t1=None,
+                  fitFunc='exp1', fitFuncDer=None, fitPars=None, fixedPars=None,
+                  fitPlot=None, plotInstance=None, dataType= 'xy', method=None,
                   bounds=None, weights=None, constraints=()):
         """
         **Arguments**
@@ -584,8 +569,8 @@ p[4]*numpy.exp(-(p[5] + x)/p[6]))**2.0
         fitFuncDer    (optional) default=None
         fitPars       (optional) Initial fit parameters. Use the values defined in self.fitfuncmap if unspecified.
         fixedPars     (optional) Fixed parameters to pass to the function. Default=None
-        fitPlot       (optional) default=None
-        plotInstance  (optional) default=None
+        fitPlot       (optional) default=None (Not implemented)
+        plotInstance  (optional) default=None  pyqtgraph axis instance (not implemented)
         dataType      (optional) Options are ['xy', 'blocks']. Default='xy'
         method        (optional) Options are ['curve_fit', 'fmin', 'simplex', 'Nelder-Mead', 'bfgs', 
                                               'TNC', 'SLSQP', 'COBYLA', 'L-BFGS-B']. Default='leastsq'
@@ -599,11 +584,11 @@ p[4]*numpy.exp(-(p[5] + x)/p[6]))**2.0
         e.g., the first argument should be 1, but this axis is ignored if datatype is 'xy'
         """
         self.fitSum2Err = 0.0
-        if t0 == t1:
-            if plotInstance is not None and usingMPlot:
-                (x, y) = plotInstance.getCoordinates()
-                t0 = x[0]
-                t1 = x[1]
+        # if t0 == t1:
+        #     if plotInstance is not None
+        #         (x, y) = plotInstance.get_xlim()
+        #         t0 = x[0]
+        #         t1 = x[1]
         if t1 is None:
             t1 = numpy.max(tdat)
         if t0 is None:
@@ -692,9 +677,9 @@ p[4]*numpy.exp(-(p[5] + x)/p[6]))**2.0
                 yfit = func[0](plsq, xfit, C=fixedPars)
                 yy = func[0](plsq, tx, C=fixedPars) # calculate function
                 self.fitSum2Err = numpy.sum((dy - yy)**2)
-                if usingMPlot and FitPlot != None and plotInstance != None:
-                    self.FitPlot(xFit = xfit, yFit = yfit, fitFunc = fund[0],
-                            fitPars = plsq, plot = fitPlot, plotInstance = plotInstance)
+                # if plotInstance is not None:
+                #     self.FitPlot(xFit=xfit, yFit=yfit, fitFunc=fund[0],
+                #             fitPars=plsq, plotInstance=plotInstance)
                 xp.append(plsq) # parameter list
                 xf.append(xfit) # x plot point list
                 yf.append(yfit) # y fit point list
@@ -702,8 +687,8 @@ p[4]*numpy.exp(-(p[5] + x)/p[6]))**2.0
 #        print len(xp)
         return(xp, xf, yf, yn) # includes names with yn and range of tx
 
-    def FitPlot(self, xFit = None, yFit = None, fitFunc = 'exp1',
-                fitPars = None, fixedPars = None, fitPlot=None, plotInstance = None, 
+    def FitPlot(self, xFit=None, yFit=None, fitFunc='exp1',
+                fitPars=None, fixedPars=None, plotInstance=None, 
                 color=None):
         """ Plot the fit data onto the fitPlot with the specified "plot Instance".
              if there is no xFit, or some parameters are missing, we just return.
@@ -711,6 +696,7 @@ p[4]*numpy.exp(-(p[5] + x)/p[6]))**2.0
              what we have. The plot is superimposed on the specified "fitPlot" and
              the color is specified by the function color in the fitPars list.
              """
+        return # not implemented
         if xFit is None or fitPars is None:
             return
         func = self.fitfuncmap[fitFunc]
@@ -725,9 +711,8 @@ p[4]*numpy.exp(-(p[5] + x)/p[6]))**2.0
         if fitPlot is None:
             return(yFit)
         for k in range(0, len(fitPars)):
-            print dir(plotInstance)
             if plotInstance is None:
-                fitPlot.plot(xFit[k], yFit[k], pen=fcolor)
+                plotInstancet.plot(xFit[k], yFit[k], color=fcolor)
             else:
                 plotInstance.PlotLine(fitPlot, xFit[k], yFit[k], color = fcolor)
         return(yFit)
