@@ -1,8 +1,10 @@
 #!/usr/bin/env python
 
 # Use Semantic Versioning, http://semver.org/
-version_info = (0, 1, 0, '')
-__version__ = '%d.%d.%d%s' % version_info
+version_info = (0, 2, 0, 'a')
+__version__ = "%d.%d.%d%s" % version_info
+
+print "apparent version: ", __version__
 
 import Fitting
 import Utility
@@ -10,5 +12,5 @@ import Utility
 import acq4read
 import RmTauAnalysis
 import SpikeAnalysis
-
+import dataSummary
 
