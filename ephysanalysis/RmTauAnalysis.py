@@ -2,16 +2,20 @@
 Analyze Rm, tau - pulled out of IVCurve 2/29/2016 pbm.
 Allows routine to be used to responses to hyperpolarizing pulses independent of acq4's data models.
 Create instance, then  call setup to define the "Clamps" structure and analysis parameters. 
+
 Clamps must have the following variables defined:
 
-commandLevels (current injection levels, list)
-time_base (np.array of times corresponding to traces)
-data_mode ()
-tstart (time for start of looking at spikes; ms)
-tend
-trace
-sample_interval (time between samples, sec)
-values (command waveforms; why it is called this in acq4 is a mystery)
+    commandLevels (current injection levels, list)
+    time_base (np.array of times corresponding to traces)
+    data_mode ()
+    tstart (time for start of looking at spikes; ms)
+    tend
+    trace
+    sample_interval (time between samples, sec)
+    values (command waveforms; why it is called this in acq4 is a mystery)
+
+The "Clamps" object can be provided by acq4's PatchEphys module, or by
+an instance of acq4read.
 
 RmTauAnalysis requires that the SpikeAnalysis be run first.
 
@@ -29,8 +33,8 @@ import functools
 import numpy as np
 import scipy
 import pyqtgraph as pg
-from .Fitting import Fitting  # pbm's fitting stuff...
-from .Utility import Utility
+import Fitting  # provided local copy
+import Utility
 import pprint
 import time
 
