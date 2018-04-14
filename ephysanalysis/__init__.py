@@ -11,6 +11,9 @@ import Utility
 
 import acq4read
 import MatdatacRead
+import DatacReader
+import DataPlan
+import getcomputer
 import RmTauAnalysis
 import SpikeAnalysis
 import dataSummary
