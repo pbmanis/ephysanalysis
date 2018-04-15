@@ -8,7 +8,7 @@ the names of the keys and the columns.
 """
 import os
 import pandas as pd
-import ezodf as odf
+#import ezodf as odf
 from collections import OrderedDict
 
 

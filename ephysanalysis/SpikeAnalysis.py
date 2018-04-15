@@ -31,8 +31,8 @@ import functools
 import numpy as np
 import scipy
 #from .Utility import *  # pbm's utilities...
-import Utility
-import Fitting
+import pylibrary.Utility as Utility
+import pylibrary.Fitting as Fitting
 #from .Fitting import Fitting  # pbm's fitting stuff...
 import pprint
 import time
@@ -48,7 +48,8 @@ class SpikeAnalysis():
         self.verbose = False
         self.FIGrowth = 1  # use function FIGrowth1 (can use simpler version FIGrowth 2 also)
 
-    def setup(self, clamps=None, threshold=None, verbose=False):
+    def setup(self, clamps=None, threshold=None, refractory=0.7, peakwidth=1.0,
+                    verify=False, interpolate=False, verbose=False):
         """
         configure the inputs to the SpikeAnalysis class
         
@@ -69,6 +70,10 @@ class SpikeAnalysis():
             raise ValueError("Spike Analysis requires defined clamps and threshold")
         self.Clamps = clamps
         self.threshold = threshold
+        self.refractory = refractory
+        self.interpolate = interpolate # use interpolation on spike thresholds...
+        self.peakwidth = peakwidth
+        self.verify = verify
         self.verbose = verbose
 
     def analyzeSpikes(self):
@@ -113,14 +118,17 @@ class SpikeAnalysis():
         self.spikeIndices = [[] for i in range(ntr)]
         #print 'clamp start/end: ', self.Clamps.tstart, self.Clamps.tend
         lastspikecount = 0
-        U = Utility()
+        U = Utility
         for i in range(ntr):
-            (spikes, spkx) = U.findspikes(self.Clamps.time_base, self.Clamps.traces[i],
+            spikes = U.findspikes(self.Clamps.time_base, np.array(self.Clamps.traces[i]),
                                               self.threshold, t0=self.Clamps.tstart,
                                               t1=self.Clamps.tend,
                                               dt=self.Clamps.sample_interval,
                                               mode='peak',  # best to use peak for detection
-                                              interpolate=False,
+                                              interpolate=self.interpolate,
+                                              refract=self.refractory,
+                                              peakwidth=self.peakwidth,
+                                              verify=self.verify,
                                               debug=False)
             # print ntr, i, self.Clamps.values[i], len(spikes)
             if len(spikes) == 0:
@@ -199,7 +207,7 @@ class SpikeAnalysis():
         self.spikeShape = OrderedDict()
         rmp = np.zeros(ntr)
         iHold = np.zeros(ntr)
-        U = Utility()
+        U = Utility
         for i in range(ntr):
             if len(self.spikes[i]) == 0:
                 continue

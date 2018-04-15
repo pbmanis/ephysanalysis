@@ -19,6 +19,7 @@ import os
 import platform
 import unittest
 import struct
+import string
 import re
 from collections import OrderedDict
 import numpy as np
@@ -260,10 +261,13 @@ class ReadDatac:
         cp = struct.unpack('99c', c_comment)
         self.comment = ''
         for c in cp:
-            if c in ['\n', '\x00']:
+            if c == 0x00 or c == 0:
                 continue
-            self.comment += c
-
+            cs = str(c)
+            if cs in string.printable:
+                self.comment += c
+ 
+        self.comment.replace('_', '\_')
         self.fid.seek(self.fileheaderlen, 0)
         c_mode = self.fid.read(1)
         self.mode = struct.unpack('b', c_mode)[0]
@@ -306,6 +310,7 @@ class ReadDatac:
         print('%sFile %s   Mode:         %5d       ftime: %6d   Channels:%6d  Data format: %d bytes' %
              (spc, self.filename, self.mode, self.ftime, self.nr_channel, self.datawidth))
         print('%s  First Record: %5d     Num Records: %6d' % (spc, self.record, self.records_in_file))
+        print('{0:s}  Comment: {1:s}'.format(spc, self.comment))
         self.err = 0
         return self.err
 
@@ -381,7 +386,7 @@ class ReadDatac:
                 if acqflag is False:  # sequence started, 
                     acqflag = True   # and keep processing/updating
                 else:
-                    self.expInfo[k] = {'R': firstrec, 'Rend': record-1, 'time': time_stamp, 'Protocol': current_protocol}
+                    self.expInfo[k] = {'R': firstrec, 'Rend': record-1, 'time': time_stamp, 'Protocol': current_protocol.strip()}
                     current_protocol = next_protocol # update the loaded protocol
                     firstrec = record
                     #acqflag = False  # reset the flag
@@ -393,12 +398,14 @@ class ReadDatac:
         """
         spc = ' ' * indent
         k = self.expInfo.keys()
-        k.sort()
+        if len(k) <= 2:
+            return
         print('\n{:s}  Block  Protocol   Recs   Time'.format(spc))
         for i in k:
             print('{:s}  {:3d}  {:9s} {:3d}-{:3d} {:8s} '.format(spc, i, self.expInfo[i]['Protocol'], 
                 self.expInfo[i]['R'], self.expInfo[i]['Rend'],
                 self.expInfo[i]['time']))
+
         
     def readrecords(self, record_list):
         """
@@ -548,7 +555,7 @@ class ReadDatac:
                         self.data[i,1,:] = data_in[2::self.nr_channel+1]
                         self.rate[i] = self.oldtime(data_in[0::self.nr_channel+1])
         
-        print('')
+        #print('')
         
         if self.mode not in [0, 1, 2, 3, 9]:
                 raise ValueError("Cannot process data with file mode = %d " % self.mode)
@@ -605,15 +612,18 @@ class ReadDatac:
         return(rate)
 
 
-    def plotcurrentrecs(self, fn, title=None):
-        f = MP.figure(fn)
-        if title is not None:
-            f.suptitle(title)
-        ch = 0
+    def plotcurrentrecs(self, fn, title=None, fig=None, sp=None):
         sp = {}
-        sp[0] = MP.subplot(211)
-        sp[1] = MP.subplot(212)
+        if fig is None:
+            fig = MP.figure(fn)
+            sp[0] = MP.subplot(211)
+            sp[1] = MP.subplot(212)
+        if title is not None:
+            fig.suptitle(title)
+        ch = 0
+
         if self.data is None:
+            print('no data...')
             return
         for i in range(self.data.shape[0]):
             if self.rate[i] == 0.:
@@ -624,13 +634,14 @@ class ReadDatac:
             sp[1].plot(tb, self.data[i,ch+1,:], 'r-')
         #MP.show()
 
+
 class GetClamps():
     
     def __init__(self, datac, path=''):
         self.datac = datac
         self.path = path
 
-    def getClampData(self, block, verbose=False):
+    def getClampData(self, block, verbose=False, tstart_tdur = [0.01, 0.100]):
         """
         Translates fields as best as we can from the original DATAC structure
         create a Clamp structure for use in SpikeAnalysis and RMTauAnalysis.
@@ -690,13 +701,13 @@ class GetClamps():
 
         data_mode = self.datac.dmode
 
-        self.sample_interval = self.datac.rate
+        self.sample_interval = self.datac.rate[0]*1e-6
         self.traces = np.array(self.datac.data)
         self.datac.data.shape
         points = self.datac.nr_points
         nchannels = self.datac.nr_channel
         recs = self.datac.record
-        dt = nchannels / self.datac.rate[0]  # make assumption that rate is constant in a block
+        dt = 1e-3*nchannels / self.datac.rate[0]  # make assumption that rate is constant in a block
         self.time_base = 1e-3*np.arange(0., self.datac.nr_points/self.datac.rate[0], 1./self.datac.rate[0]) # in s
 
         if self.datac.dmode == 'CC':  # use first channel
@@ -708,24 +719,21 @@ class GetClamps():
             cmdch = 0
 #            refgain = -1./(1.*self.datac.gain[0, mainch+1])
 
-        if True:
-            print (self.datac.gain, mainch)
-            # MP.figure()
-            # for i in range(self.traces.shape[0]):
-            #     MP.plot(self.time_base, self.traces[i,0]/(10.*self.datac.gain[0,0]))
-            # MP.show()
-            # exit(1)
         cmds = self.traces[:,cmdch,:]
-        self.tstart = 0.01  # should be pulled from protocol stimlus information
-        self.tdur = 0.500
+        self.tstart = tstart_tdur[0]  # should be pulled from protocol stimlus information
+        self.tdur = tstart_tdur[1]
         self.tend = self.tstart + self.tdur
         t0 = int(self.tstart/dt)
         t1 = int(self.tend/dt)
         self.cmd_wave = np.squeeze(self.traces[:, cmdch, :])
         if cmds.shape[0] > 1:
-            self.values = np.nanmean(self.cmd_wave[:, t0:t1]*1e-12, axis=1)  # express values in amps
+            self.values = np.nanmean(self.cmd_wave[:, t0:t1], axis=1)  # express values in amps
         else:
             self.values = np.zeros_like(self.traces.shape[1:2])
+        # print('to, t1: ', dt, t0, t1, self.cmd_wave.shape)
+        # print('cmdwave: ', self.cmd_wave)
+        # print('values: ', self.values)
+        # exit(1)
         self.commandLevels = self.values        
         
         info = [{'units': 'A', 'values': self.values, 'name': 'Command'},
@@ -799,13 +807,14 @@ class untitledTests(unittest.TestCase):
 
 def printNotes(filename, indent=0):
     dfile = ReadDatac()
+    
     #dfile.read_datac_header('/Volumes/ManisLab_Data3/VCN1/SOM/6DEC88B.SOM')
     dfile.read_datac_header(filename, indent)
     if dfile.err == 2:
-        return 1
+        return None
     dfile.read_note_file()
     dfile.print_datac_note(indent)
-    return 0
+    return dfile
     
 def plotonefile(filename, datamode='CC'):
     dfile = ReadDatac(datamode =datamode)
@@ -852,8 +861,25 @@ def listAllFiles():
                 n += 1
     print('\nFiles read: {:d}, Empty file accessed: {:d}'.format(n, nempty))
 
+def example_dir_scan():
+    fns = glob.glob('/Users/pbmanis/Documents/data/HWF0001B/VCN/*.HWF')
+    for fn in fns:
+        df = printNotes(fn, indent=5)
+        if df is None:
+            continue
+        for protn in df.expInfo.keys():
+            if df.expInfo[protn]['Protocol'] == 'iv2.stm':
+                #print('found prot')
+                df.readrecords(range(df.expInfo[protn]['R'], df.expInfo[protn]['Rend']))
+                df.plotcurrentrecs(fn)
+                break  
+    MP.show()
+
+
+
 if __name__ == '__main__':
 
+    example_dir_scan()
     #plotonefile(os.path.join('/Users/pbmanis/Documents/data/HWF0001B/VCN', '11SEP96H.HWF'), datamode='CC')
     #plotonefile(os.path.join('/Users/pbmanis/Documents/data/HWF0001B/VCN', '26AUG96B.HWF'), datamode='CC')
-    plotonefile(os.path.join('/Users/pbmanis/Documents/data/datac', '07FEB96H.JSR'), datamode='VC')
+    #plotonefile(os.path.join('/Users/pbmanis/Documents/data/datac', '07FEB96H.JSR'), datamode='VC')
