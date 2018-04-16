@@ -33,8 +33,7 @@ import functools
 import numpy as np
 import scipy
 import pyqtgraph as pg
-import Fitting  # provided local copy
-import Utility
+import pylibrary.Fitting as Fitting
 import pprint
 import time
 
@@ -141,7 +140,7 @@ class RmTauAnalysis():
         if self.rmp == []:
             self.rmp_analysis(region=self.baseline)
 
-        Fits = Fitting()  # get a fitting instance
+        Fits = Fitting.Fitting() # get a fitting instance
         initpars = [self.rmp*1e-3, 0.010, 0.01]  # rmp is in units of mV
         icmdneg = np.where(self.Clamps.commandLevels < -20e-12)
         maxcmd = np.min(self.Clamps.commandLevels)
@@ -181,7 +180,7 @@ class RmTauAnalysis():
                                      self.Clamps.traces[k], pen=pg.mkPen('w'))
             (fparx, xf, yf, namesx) = Fits.FitRegion([k], whichaxis,
                                                self.Clamps.time_base,
-                                               self.Clamps.traces,
+                                               np.array(self.Clamps.traces),
                                                dataType='2d',
                                                t0=rgnpk[0], t1=rgnpk[1],
                                                fitFunc=Func,

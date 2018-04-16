@@ -3,15 +3,23 @@ from __future__ import print_function
 # encoding: utf-8
 """
 readdatac.py
-original C code by Daniel Bertrand and Paul Manis (1985-1999).
-Matlab version by Patrick Kanold (1996).
 
-Matlab: 4/30/99 P. Manis. Modified to handle modes 0 and 1 also, as well as get the timing information.
-now we should be able to read legacy files, and files with just one channel in modes 2 and 3
-Python: Converted to 5/13/2014 PBManis.
+A module to read DATAC files. These are binary files written by
+a C progam used between (1985-1999).
+Original C code by Daniel Bertrand and Paul Manis .
+Matlab reader version by Patrick Kanold (1996).
+
+Matlab: 4/30/99 P. Manis. Modified to handle modes 0 and 1 (early file structures),
+ as well as get the timing information.
+Shuld read legacy files, and files with just one channel in modes 2 and 3
+
+Python version: Converted 5/13/2014 PBManis.
 Tested on old data
 Created by Paul Manis on 2014-05-14.
 Copyright (c) 2014 Paul B. Manis, Ph.D.. All rights reserved.
+Updated and bugs fixed, 4-2018. Added "GetClamps" to provide the
+necessary structure and information used by acq4 data analysis programs.
+
 """
 
 import sys
@@ -20,12 +28,12 @@ import platform
 import unittest
 import struct
 import string
+import binascii
 import re
 from collections import OrderedDict
 import numpy as np
 import glob
-import matplotlib.pylab as MP
-import getcomputer
+import matplotlib.pylab as mpl
 from acq4.util.metaarray import MetaArray
 
 """
@@ -116,25 +124,17 @@ MATRIX.H:
         #endif
 
 """
-datapath = {'Lytle': '/Volumes/ManisLab_Data3/Rothman_Jason/DATA/',
-            'Tamalpais': '/Users/pbmanis/Documents/data/Rothman_Jason/DATA',
-            'Tamalpais2': '/Users/pbmanis/Documents/data',}
 
-bdir, sysname = getcomputer.getcomputer()
-print (sysname)
-if sysname is None:
-    print ("Don't know path for system {:s}".format(computername))
-    exit()
-else:
-    print("Found system: {:s}".format(sysname))
     
 class ReadDatac:
     def __init__(self, datamode='CC'):
-        # initialize a DATAC file object, used to read data and notefiles
-        # dfile - the variables that are in dfile structure, as created by
-        # the various versions of DATAC, are defined here
+        """
+        Initialize a DATAC file object, used to read data and notefiles
+        dfile - the variables that are in dfile structure, as created by
+        the various versions of DATAC, are defined here
+        """
         
-        nrl = 16  # 
+        nrl = 1  # 
         self.num_records = nrl
         RL = np.zeros((nrl,1))  # a list of records
         self.fullfile = ''  # full filename with path
@@ -199,7 +199,6 @@ class ReadDatac:
         p, ext = os.path.splitext(filename)
         path, fname = os.path.split(filename)
         if ext in  ['.mat']: # if its a matlab file, use different routine to parse through here
-            #[dfile, data, err] = read_acq_mat(filename, RL)
            self.err = 3
            return self.err
 
@@ -207,7 +206,7 @@ class ReadDatac:
 
         self.fid = open(filename,'rb')  # open for readonly, as binary file
         if self.fid is None:
-            print('datac2mat: Unable to open file: %s ',filename)
+            print('Unable to open file: %s ',filename)
             self.err == 1
             return self.err
 
@@ -235,9 +234,6 @@ class ReadDatac:
         data=[]
         err=1
         endian='ieee-le' # data from little endian (i.e. PC's) => integers flipped, floats in ieee
-#        dfile = init_dfile # create the current version of the dfile structure.
-        #if self.num_records > 0:
-        #    print('Opening %s' % filename)
 
         err = self.openfile(filename)
         if err > 0:
@@ -248,21 +244,21 @@ class ReadDatac:
         flen = self.fid.tell()
         if flen < 129:  # must have at least header and one record
             self.fid.close()
-            # print('datac2mat: Empty file: %s ',filename)
             self.err = 2
             return self.err
+        
         #read file header
         self.fid.seek(0)
-        
         c_np = self.fid.read(2)
         self.nr_points = struct.unpack('H', c_np)[0]
         c_nothing = self.fid.read(27)
         c_comment = self.fid.read(99)
         cp = struct.unpack('99c', c_comment)
         self.comment = ''
+
         for c in cp:
-            if c == 0x00 or c == 0:
-                continue
+            if binascii.b2a_hex(c) == '00':  # terminator
+                break
             cs = str(c)
             if cs in string.printable:
                 self.comment += c
@@ -303,8 +299,10 @@ class ReadDatac:
         self.print_datac_file_header()
         
     def print_datac_file_header(self, indent=4):
+        """
+        print basic information from the open file.
+        """
         
-        # print some info on the file that was just opened.
         print('\nFile Header:')
         spc = ' '*indent
         print('%sFile %s   Mode:         %5d       ftime: %6d   Channels:%6d  Data format: %d bytes' %
@@ -322,13 +320,12 @@ class ReadDatac:
         """
         nf, ext = os.path.splitext(self.fullfile)
         self.notefile = nf + '.NOT'
-        print (self.notefile)
         
         self.expInfo = OrderedDict()
         with open(self.notefile) as f:
             content = f.readlines()
         f.close()
-        k = 0
+        block = 0  # block counter
         next_protocol = None
         current_protocol = None
         acqflag = False
@@ -376,8 +373,6 @@ class ReadDatac:
                     
             if not acqflag:
                 firstrec = record
-                    # if k >= 1:
-                   #      self.expInfo[k-1]['Rend'] = record-1  # set last record
             seq = c.find('>seq')  # check for an seq command from a protocol that is loaded
             acl = c.find('>acl')  # file close command
             if seq != -1 or acl != -1:
@@ -386,11 +381,10 @@ class ReadDatac:
                 if acqflag is False:  # sequence started, 
                     acqflag = True   # and keep processing/updating
                 else:
-                    self.expInfo[k] = {'R': firstrec, 'Rend': record-1, 'time': time_stamp, 'Protocol': current_protocol.strip()}
+                    self.expInfo[block] = {'R': firstrec, 'Rend': record-1, 'time': time_stamp, 'Protocol': current_protocol.strip()}
                     current_protocol = next_protocol # update the loaded protocol
                     firstrec = record
-                    #acqflag = False  # reset the flag
-                    k += 1
+                    block += 1
         
     def print_datac_note(self, indent):
         """
@@ -435,7 +429,6 @@ class ReadDatac:
         maxrecord_list = np.max(record_list)
         if maxrecord_list > self.records_in_file:
             print('Last record (%d) greater than length of file (%d recs in file)' % (maxrecord_list,self.records_in_file))
-            #fid.close(fid)
             self.err = 3
             return self.err
         block_head = 0; # flag for block header reading ONLY.
@@ -473,7 +466,6 @@ class ReadDatac:
             if self.mode >= 2:  # compute offset to data start
                 offset = self.fileheaderlen
                 offset += (rec-1) * ((self.nr_points * self.datawidth * self.nr_channel) + self.recordheaderlen)
-               # print (self.mode, self.nr_points, self.datawidth, self.nr_channel, self.recordheaderlen, offset)
 
             if self.mode == 3:
                 self.fid.seek(offset, 0)      # go to start of the data
@@ -481,29 +473,21 @@ class ReadDatac:
                 self.c_mode = struct.unpack('B', c_mode)[0]
                 c_ftime = self.fid.read(1)
                 self.ftime = struct.unpack('B', c_ftime)[0]
-                # print('record_list: ', record_list)
                 c_rec = self.fid.read(2)
                 self.record[i] = struct.unpack('h', c_rec)[0]
-                # print '%3d,' % self.record[i],
                 c_chan = self.fid.read(2)
                 self.channels[i] = struct.unpack('H', c_chan)[0]  # fread(fid,1,'int16')
-                # print 'i, record, channels: ', i, self.record[i], self.channels[i],
                 c_rate = self.fid.read(4)
                 self.rate[i] = struct.unpack('1f', c_rate)[0] / self.channels[i] # fread(fid,1,'float32')
-                # print ' rate: ', self.rate[i],
                 c_gain = self.fid.read(8*4)
                 self.gain[i,:] = struct.unpack('8f', c_gain)  # fread(fid,8,'float32')
-                # print ' gain: ', self.gain[i,:]
                 c_lpf = self.fid.read(8*4)
                 self.low_pass[i,:] = struct.unpack('8f', c_lpf)  #fread(fid,8,'float32')
-                # print '   lpf: ', self.low_pass[i,:]
                 c_slow = self.fid.read(2)
                 self.slow[i] = struct.unpack('H', c_slow)[0]  # fread(fid,1,'int16')
-                # print '  slow: ', self.slow[i],
                 c_ztime = self.fid.read(4)
                 self.ztime[i] = struct.unpack('I', c_ztime)[0]  # fread(fid,1,'long')
-                # print 'ztime: ', self.ztime[i]
-                # now read data
+                # now read the data
                 offset = self.fileheaderlen+(rec-1)*self.datawidth*self.nr_points*self.nr_channel+rec*self.recordheaderlen         
                 self.fid.seek(offset, 0) #skip earlier records
                 if block_head == 0: # we don't actually read the data...
@@ -531,7 +515,6 @@ class ReadDatac:
                 self.c_mode = struct.unpack('b', c_mode)[0]
                 c_time = self.fid.read(1)  # reads the mode byte, but we don't need it.
                 self.ftime = struct.unpack('b', c_time)[0]
-                # print 'self.mode (< 2): ', self.mode
                 self.gain = np.ones((self.num_records,8)) # set the gains all to 1
                 offset = self.fileheaderlen+(rec-1)*self.ndbytes+rec*self.nheader   # position it correctly...
                 self.fid.seek(offset, 0)  # skip earlier records
@@ -555,16 +538,14 @@ class ReadDatac:
                         self.data[i,1,:] = data_in[2::self.nr_channel+1]
                         self.rate[i] = self.oldtime(data_in[0::self.nr_channel+1])
         
-        #print('')
-        
         if self.mode not in [0, 1, 2, 3, 9]:
                 raise ValueError("Cannot process data with file mode = %d " % self.mode)
         if self.num_records == 0:  # we sometimes override these with the ctl structure...
             self.refvgain = self.gain(1,1)
             self.refigain = self.gain(1,2)
             self.refwgain = self.gain(1,3)
-        #self.fid.close()
-        # now post-process and scale data:
+        
+        # Offset and scale data:
 
         if self.dmode == 'CC':  # 
             mainch = 0
@@ -581,8 +562,7 @@ class ReadDatac:
         for i in range(self.data.shape[0]):
             self.data[i,mainch,:] = (self.data[i,mainch,:]-dacoffset)*maingain
             self.data[i,cmdch,:]  = (self.data[i,cmdch,:]-dacoffset)*cmdgain
-        
-        
+
         self.err = 0
         return self.err
 
@@ -615,9 +595,9 @@ class ReadDatac:
     def plotcurrentrecs(self, fn, title=None, fig=None, sp=None):
         sp = {}
         if fig is None:
-            fig = MP.figure(fn)
-            sp[0] = MP.subplot(211)
-            sp[1] = MP.subplot(212)
+            fig = mpl.figure(fn)
+            sp[0] = mpl.subplot(211)
+            sp[1] = mpl.subplot(212)
         if title is not None:
             fig.suptitle(title)
         ch = 0
@@ -632,7 +612,6 @@ class ReadDatac:
  
             sp[0].plot(tb, self.data[i,ch,:], 'k-') # -2047)*0.1339
             sp[1].plot(tb, self.data[i,ch+1,:], 'r-')
-        #MP.show()
 
 
 class GetClamps():
@@ -693,34 +672,28 @@ class GetClamps():
 
         )
         """
-        protocol = ''
-        
-#        (ddir, fname) = os.path.split(self.path)
         if self.datac.data is None:
-            return
+            raise ValueError('No data has been read from the file %s' % self.datac.fullfile)
+        protocol = ''
 
-        data_mode = self.datac.dmode
-
-        self.sample_interval = self.datac.rate[0]*1e-6
+        self.sample_interval = self.datac.rate[0]*1e-6  # express in seconds
         self.traces = np.array(self.datac.data)
         self.datac.data.shape
         points = self.datac.nr_points
         nchannels = self.datac.nr_channel
         recs = self.datac.record
         dt = 1e-3*nchannels / self.datac.rate[0]  # make assumption that rate is constant in a block
-        self.time_base = 1e-3*np.arange(0., self.datac.nr_points/self.datac.rate[0], 1./self.datac.rate[0]) # in s
+        self.time_base = 1e-3*np.arange(0., self.datac.nr_points/self.datac.rate[0], 1./self.datac.rate[0]) # in seconds
 
         if self.datac.dmode == 'CC':  # use first channel
             mainch = 0
             cmdch = 1
-#            refgain = 1./(10.*self.datac.gain[0, mainch+1])
-        else:
+        else:  # assumption is swapped - for this data, that means voltage clamp mode.
             mainch = 1
             cmdch = 0
-#            refgain = -1./(1.*self.datac.gain[0, mainch+1])
 
         cmds = self.traces[:,cmdch,:]
-        self.tstart = tstart_tdur[0]  # should be pulled from protocol stimlus information
+        self.tstart = tstart_tdur[0]  # could be pulled from protocol/stimulus information
         self.tdur = tstart_tdur[1]
         self.tend = self.tstart + self.tdur
         t0 = int(self.tstart/dt)
@@ -730,10 +703,6 @@ class GetClamps():
             self.values = np.nanmean(self.cmd_wave[:, t0:t1], axis=1)  # express values in amps
         else:
             self.values = np.zeros_like(self.traces.shape[1:2])
-        # print('to, t1: ', dt, t0, t1, self.cmd_wave.shape)
-        # print('cmdwave: ', self.cmd_wave)
-        # print('values: ', self.values)
-        # exit(1)
         self.commandLevels = self.values        
         
         info = [{'units': 'A', 'values': self.values, 'name': 'Command'},
@@ -801,24 +770,30 @@ class GetClamps():
         self.spikecount = np.zeros(len(recs))
         self.rgnrmp = [0, 0.005]
 
-class untitledTests(unittest.TestCase):
-    def setUp(self):
-        pass
+
+# simple routines to access notes, plot files, etc.
 
 def printNotes(filename, indent=0):
-    dfile = ReadDatac()
+    """
+    Print out the note file associated with this data file
+    """
     
-    #dfile.read_datac_header('/Volumes/ManisLab_Data3/VCN1/SOM/6DEC88B.SOM')
+    dfile = ReadDatac()
     dfile.read_datac_header(filename, indent)
     if dfile.err == 2:
         return None
     dfile.read_note_file()
     dfile.print_datac_note(indent)
     return dfile
-    
+
+
 def plotonefile(filename, datamode='CC'):
+    """
+    Plot the traces from 2 channels from this data file
+    should specify data mode ('CC' or 'VC')
+    """
+    
     dfile = ReadDatac(datamode =datamode)
-    #dfile.readheader('/Volumes/ManisLab_Data3/VCN1/SOM/6DEC88B.SOM')
     dfile.read_datac_header(filename)
     dfile.read_note_file()
     dfile.print_datac_note(3)
@@ -834,21 +809,25 @@ def plotonefile(filename, datamode='CC'):
                 txt = dfile.expInfo[i]['Protocol'] + ' ' '[R:%d-%d] ' % (dfile.expInfo[i]['R'],dfile.expInfo[i]['Rend'])
                 txt += dfile.expInfo[i]['time']
             #    dfile.plotcurrentrecs(i, title=txt)
-            #MP.show()
-            MP.figure()
+            #mpl.show()
+            mpl.figure()
             for j in range(cl.traces.shape[0]):
-                MP.plot(cl.time_base, cl.traces[j])
-            MP.show()
+                mpl.plot(cl.time_base, cl.traces[j])
+            mpl.show()
             if i > 3:
                 exit(1)
     dfile.close()
-    MP.show()
+    mpl.show()
 
-def listAllFiles():
+
+def listAllFiles(datapath):
+    """
+    List all of the files in the datapath
+    and their notefiles
+    """
     n = 0
     nempty = 0
     for d in os.listdir(datapath):
-        #f = glob.glob(os.listdir(os.path.join(datapath, d) + '.JSR'))
         p = os.path.join(datapath, d)
         if not os.path.isdir(p):
             continue
@@ -856,30 +835,31 @@ def listAllFiles():
         for fx in os.listdir(p): 
             (f, e) = os.path.splitext(fx)
             ff = os.path.join(p, fx)
-            if os.path.isfile(ff) and e == '.JSR':
-                nempty += printNotes(ff, indent=3)
-                n += 1
+            nempty += printNotes(ff, indent=3)
+            n += 1
     print('\nFiles read: {:d}, Empty file accessed: {:d}'.format(n, nempty))
 
-def example_dir_scan():
-    fns = glob.glob('/Users/pbmanis/Documents/data/HWF0001B/VCN/*.HWF')
+
+def example_dir_scan(searchstr, protocol='iv2.stm'):
+    """
+    Scan a directory and plot the traces from the first protocol
+    that matches the search string
+    """
+    fns = glob.glob(searchstr)
     for fn in fns:
         df = printNotes(fn, indent=5)
         if df is None:
             continue
         for protn in df.expInfo.keys():
-            if df.expInfo[protn]['Protocol'] == 'iv2.stm':
-                #print('found prot')
+            if df.expInfo[protn]['Protocol'] == protocol:
                 df.readrecords(range(df.expInfo[protn]['R'], df.expInfo[protn]['Rend']))
                 df.plotcurrentrecs(fn)
                 break  
-    MP.show()
-
+    mpl.show()
 
 
 if __name__ == '__main__':
-
-    example_dir_scan()
+    example_dir_scan(searchstr='/Users/pbmanis/Documents/data/HWF0001B/VCN/*.HWF')
     #plotonefile(os.path.join('/Users/pbmanis/Documents/data/HWF0001B/VCN', '11SEP96H.HWF'), datamode='CC')
     #plotonefile(os.path.join('/Users/pbmanis/Documents/data/HWF0001B/VCN', '26AUG96B.HWF'), datamode='CC')
     #plotonefile(os.path.join('/Users/pbmanis/Documents/data/datac', '07FEB96H.JSR'), datamode='VC')
