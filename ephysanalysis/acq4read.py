@@ -215,9 +215,11 @@ class Acq4Read():
         except:
             return 0.
 
-    def getData(self, pos=1):
+    def getData(self, pos=1, check=False):
         """
         Get the data for the current protocol
+        if check is True, we just check that the requested file exists and return
+        True if it does and false if it does not
         """ 
         # non threaded
         dirs = self.subDirs(self.protocol)
@@ -234,13 +236,11 @@ class Acq4Read():
         self.sample_rate = []
         trx = []
         cmd = []
-        
         sequence_values = None
         self.sequence =  index['.']['sequenceParams']
         # building command voltages or currents - get amplitudes to clamp
 
         reps = ('protocol', 'repetitions')
-
         foundclamp = False
         sequence_values = None
         for clamp in self.clamps:
@@ -256,8 +256,13 @@ class Acq4Read():
         for i, d in enumerate(dirs):
             fn = os.path.join(d, self.dataname)
             if not os.path.isfile(fn):
-                print(' file not found: ', fn)
-                continue
+                print(' acq4read.getData: File not found: ', fn)
+                if check:
+                    return False
+                else:
+                    continue
+            if check:
+                return True
             tr = metaarray.MetaArray(file=fn)
             info = tr[0].infoCopy()
             self.parseClampInfo(info)
@@ -314,6 +319,8 @@ class Acq4Read():
             self.repetitions = seqparams[protoreps][0] + 1
         else:
             protoreps = 1
+        return True
+
 
     def getClampCommand(self, data, generateEmpty=True):    
         """Returns the command data from a clamp MetaArray.
