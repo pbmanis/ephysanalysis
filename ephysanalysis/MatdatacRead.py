@@ -185,7 +185,7 @@ class GetClamps(DatacBrowser):
         self.datac = datac
 
 
-    def getClampData(self, chmap, item):
+    def getClampData(self, chmap=None, item=None):
         """
         create a Clamp structure for use in SpikeAnalysis and RMTauAnalysis from acq4.
         Fills in the fields that are returned by PatchEPhys getClamps:
@@ -236,7 +236,10 @@ class GetClamps(DatacBrowser):
 
         )
         """
-        protocol = item.text()
+        if item is not None:
+            protocol = item.text()
+        else:
+            protocol = 'unknown'
         
         rate, recs = self.datac.currentBlock.data()
         self.dfile = self.datac.currentBlock.dfile
@@ -322,6 +325,7 @@ class GetClamps(DatacBrowser):
         self.traces = MetaArray(self.traces, info=info)
         self.spikecount = np.zeros(len(recs))
         self.rgnrmp = [0, 0.005]
+        print('getclamps got it all')
 
 
 class DirTreeWidget(QtGui.QTreeWidget):
