@@ -5,6 +5,11 @@ read either a python or excel ('xlsx') file, and return a dict with the "datapla
 Note that some specific requirements are present in the current version regarding
 the names of the keys and the columns.
 
+A dataplan must have:
+datasets (dict)
+basepath : the base path to the data files
+outputpath : the path to where the output files of an analysis would be stored.
+
 """
 import os
 import pandas as pd
@@ -23,8 +28,10 @@ class DataPlan():
         if ext == '.py':
             execfile(fn + ext, data)
             self.datasource = datadictname
-            self.datasets = data['datasets']
+            self.datasets = data['datasets']  # convenience
             self.datadir = data['basepath']
+            self.outputpath = data['outputpath']
+            self.data = data  # just save the dict for anything else
         elif ext == '.xlsx':
             self.datasets, self.datadir = self.read_sheet(fn + ext, sheet=sheet)
     
