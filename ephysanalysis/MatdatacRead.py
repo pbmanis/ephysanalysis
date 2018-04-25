@@ -12,12 +12,14 @@ from scipy.io import matlab
 import numpy as np
 
 import matplotlib.pyplot as mpl
-from acq4.util.metaarray import MetaArray
-from acq4.util import DataManager
-import acq4.analysis.tools.Utility as Utility  # pbm's utilities...
-import acq4.analysis.tools.Fitting as Fitting  # pbm's fitting stuff...
-from acq4.analysis.dataModels import PatchEPhys
-DM = DataManager
+from pyqtgraph import metaarray
+# from acq4.util import DataManager
+# import acq4.analysis.tools.Utility as Utility  # pbm's utilities...
+# import acq4.analysis.tools.Fitting as Fitting  # pbm's fitting stuff...
+import Utility
+import Fitting
+# from acq4.analysis.dataModels import PatchEPhys
+# DM = DataManager
 import pylibrary.PlotHelpers as PH
 try:
     from PyQt4 import QtCore, QtGui
@@ -322,7 +324,7 @@ class GetClamps(DatacBrowser):
             print np.min(self.traces[0,:])
             print 'bridge corrected!!!!!'
 
-        self.traces = MetaArray(self.traces, info=info)
+        self.traces = metaarray.MetaArray(self.traces, info=info)
         self.spikecount = np.zeros(len(recs))
         self.rgnrmp = [0, 0.005]
         print('getclamps got it all')
@@ -656,15 +658,16 @@ class IVAnalyzer(DatacBrowser):
                         self.blockList.setCurrentItem(self.blockList.item(i))
                         self.show()
             else:  # acq4 files
-                self.dataModel = PatchEPhys
-                for i in range(len(infiles[fn])):
-                    if infiles[fn][i][0] is None:  # fiel to skip
-                        continue
-                    fnfull = os.path.join(path, fn, infiles[fn][i][0])
-                    dh = DM.getDirHandle(fnfull, create=False)
-                    self.analysis_summary={}
-                    self.loadFileRequested(dh)
-                    
+                pass
+                # self.dataModel = PatchEPhys
+                # for i in range(len(infiles[fn])):
+                #     if infiles[fn][i][0] is None:  # fiel to skip
+                #         continue
+                #     fnfull = os.path.join(path, fn, infiles[fn][i][0])
+                #     dh = DM.getDirHandle(fnfull, create=False)
+                #     self.analysis_summary={}
+                #     self.loadFileRequested(dh)
+                #
 
     def blockSelected(self, item):
         DatacBrowser.blockSelected(self, item)
