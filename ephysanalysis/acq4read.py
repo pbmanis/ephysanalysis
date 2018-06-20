@@ -68,7 +68,7 @@ class Acq4Read():
         Parameters
         ----------
         pathtoprotocol str (default: None)
-            Path to the protocol directoryto set for this instance of the reader
+            Path to the protocol directory to set for this instance of the reader
         """
         self.protocol = pathtoprotocol
     

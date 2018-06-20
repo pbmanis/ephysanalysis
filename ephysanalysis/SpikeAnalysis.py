@@ -30,10 +30,10 @@ import itertools
 import functools
 import numpy as np
 import scipy
-#from .Utility import *  # pbm's utilities...
-import pylibrary.Utility as Utility
-import pylibrary.Fitting as Fitting
-#from .Fitting import Fitting  # pbm's fitting stuff...
+import Utility # pbm's utilities...
+# import pylibrary.Utility as Utility
+# import pylibrary.Fitting as Fitting
+import Fitting # pbm's fitting stuff...
 import pprint
 import time
 
@@ -49,7 +49,7 @@ class SpikeAnalysis():
         self.FIGrowth = 1  # use function FIGrowth1 (can use simpler version FIGrowth 2 also)
 
     def setup(self, clamps=None, threshold=None, refractory=0.7, peakwidth=1.0,
-                    verify=False, interpolate=False, verbose=False):
+                    verify=False, interpolate=False, verbose=False, mode='peak'):
         """
         configure the inputs to the SpikeAnalysis class
         
@@ -75,6 +75,7 @@ class SpikeAnalysis():
         self.peakwidth = peakwidth
         self.verify = verify
         self.verbose = verbose
+        self.mode = mode
 
     def analyzeSpikes(self):
         """
@@ -118,13 +119,13 @@ class SpikeAnalysis():
         self.spikeIndices = [[] for i in range(ntr)]
         #print 'clamp start/end: ', self.Clamps.tstart, self.Clamps.tend
         lastspikecount = 0
-        U = Utility
+        U = Utility.Utility()
         for i in range(ntr):
             spikes = U.findspikes(self.Clamps.time_base, np.array(self.Clamps.traces[i]),
                                               self.threshold, t0=self.Clamps.tstart,
                                               t1=self.Clamps.tend,
                                               dt=self.Clamps.sample_interval,
-                                              mode='peak',  # best to use peak for detection
+                                              mode=self.mode,  # mode to use for finding spikes
                                               interpolate=self.interpolate,
                                               refract=self.refractory,
                                               peakwidth=self.peakwidth,
@@ -135,7 +136,7 @@ class SpikeAnalysis():
                 #print 'no spikes found'
                 continue
             self.spikes[i] = spikes
-            #print 'found %d spikes in trace %d' % (len(spikes), i)
+           # print 'found %d spikes in trace %d' % (len(spikes), i)
             self.spikeIndices[i] = [np.argmin(np.fabs(self.Clamps.time_base-t)) for t in spikes]
             self.spikecount[i] = len(spikes)
             self.fsl[i] = (spikes[0] - self.Clamps.tstart)*1e3
@@ -207,10 +208,11 @@ class SpikeAnalysis():
         self.spikeShape = OrderedDict()
         rmp = np.zeros(ntr)
         iHold = np.zeros(ntr)
-        U = Utility
+        U = Utility.Utility()
         for i in range(ntr):
             if len(self.spikes[i]) == 0:
                 continue
+#            print('spikes: ', self.spikes[i])
             trspikes = OrderedDict()
             if printSpikeInfo:
                 print np.array(self.Clamps.values)
@@ -258,19 +260,30 @@ class SpikeAnalysis():
                     thisspike['peaktotrough'] = thisspike['trough_T'] - thisspike['peak_T']
                 k = self.spikeIndices[i][j]-1
                 if j > 0:
-                    kbegin = self.spikeIndices[i][j-1] # trspikes[j-1]['AP_endIndex']  # self.spikeIndices[i][j-1]  # index to previ spike start
+                    kbegin = self.spikeIndices[i][j-1] # index to previous spike start
+                 #   print('kbegin, k, j, (262): ', kbegin, k, j)
+                 #   print(self.spikeIndices[i])
                 else:
-                    kbegin = k - int(0.002/dt)  # for first spike - 4 msec prior only
-                    if kbegin*dt <= self.Clamps.tstart:
-                        kbegin = kbegin + int(0.0002/dt)  # 1 msec 
+                    kbegin = k - int(0.002/dt)  # for first spike - 2 msec prior only
+                    # if kbegin*dt <= self.Clamps.tstart:
+                    #     print(' spike begins before start time: ', kbegin*dt, self.Clamps.tstart)
+                    #     continue # kbegin = kbegin + int(0.001/dt)  # 1 msec
                 # revise k to start at max of rising phase
-                try:
-                    km = np.argmax(dv[kbegin:k]) + kbegin
-                except:
-                    continue
-                if (km - kbegin < 1):
+               # print('dv, kbegin, k, j: ', kbegin, k, j)
+                if k < kbegin:
+                    k = kbegin+1
+                km = np.argmax(dv[kbegin:k]) + kbegin
+                if ((km - kbegin) < 1):
                     km = kbegin + int((k - kbegin)/2.) + 1
                 kthresh = np.argmin(np.fabs(dv[kbegin:km] - begin_dV)) + kbegin  # point where slope is closest to begin
+               # print('begin:, peak: ', km, kbegin, kthresh, thisspike['peakIndex'], dv[kbegin:km], begin_dV)
+# #                import matplotlib.pyplot as mpl
+#                 mpl.plot(self.Clamps.time_base, self.Clamps.traces[i])
+#                 cl = ['r', 'g', 'b']
+#                 sz = [5, 3, 3]
+#                 for xi, xk in enumerate([kbegin, km, kthresh]):
+#                     mpl.plot(self.Clamps.time_base[xk], self.Clamps.traces[i][xk], 'o', color=cl[xi], markersize=sz[xi])
+#                 mpl.show()
                 thisspike['AP_beginIndex'] = kthresh
                 thisspike['AP_Latency'] = self.Clamps.time_base[kthresh]
                 thisspike['AP_beginV'] = self.Clamps.traces[i][thisspike['AP_beginIndex']]
@@ -287,6 +300,7 @@ class SpikeAnalysis():
                         thisspike['hw_v'] = halfv
                 trspikes[j] = thisspike
             self.spikeShape[i] = trspikes
+          #  print('i: ', i, trspikes)
         if printSpikeInfo:
             pp = pprint.PrettyPrinter(indent=4)
             for m in sorted(self.spikeShape.keys()):
@@ -315,13 +329,18 @@ class SpikeAnalysis():
             value will be the closest estimate given the step sizes used to
             collect the data)
         """
-        nsp = []
-        icmd = []
+        # nsp = []
+        icmd = []  # list of command currents that resulted in spikes.
+        # print('spike shape: ', self.spikeShape)
+        # print('***')
+        # print('sk keys:', self.spikeShape.keys())
         for m in sorted(self.spikeShape.keys()):
             n = len(self.spikeShape[m].keys()) # number of spikes in the trace
-            if n > 0:
-                nsp.append(len(self.spikeShape[m].keys()))
-                icmd.append(self.spikeShape[m][0]['current'])
+            for n in self.spikeShape[m].keys():
+                # if n > 0:
+                # nsp.append(len(self.spikeShape[m].keys()))
+              #  print (m, n, self.spikeShape[m], self.spikeShape[m].keys(), len(icmd))
+                icmd.append(self.spikeShape[m][n]['current'])
         try:
             iamin = np.argmin(icmd)
         except:
@@ -379,6 +398,7 @@ class SpikeAnalysis():
             self.analysis_summary['AP2_Latency'] = np.inf
             self.analysis_summary['AP2_HalfWidth'] = np.inf
         
+        # print(self.spikeShape[j150].keys())
         rate = len(self.spikeShape[j150])/self.spikeShape[j150][0]['pulseDuration']  # spikes per second, normalized for pulse duration
         # first AHP depth
         # print 'j150: ', j150
