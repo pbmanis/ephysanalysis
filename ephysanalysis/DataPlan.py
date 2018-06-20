@@ -1,4 +1,4 @@
-
+from __future__ import print_function
 """
 DataPlan Class
 read either a python or excel ('xlsx') file, and return a dict with the "dataplan"
@@ -10,11 +10,14 @@ datasets (dict)
 basepath : the base path to the data files
 outputpath : the path to where the output files of an analysis would be stored.
 
+In the excel file, there should be one sheet "Directories" with a directory column
+and antoher sheet "Dataplan" with at least Date, Slice, Cell, Protocols and 
 """
 import os
 import pandas as pd
 #import ezodf as odf
 from collections import OrderedDict
+import re
 
 
 class DataPlan():
@@ -33,7 +36,7 @@ class DataPlan():
             self.outputpath = data['outputpath']
             self.data = data  # just save the dict for anything else
         elif ext == '.xlsx':
-            self.datasets, self.datadir = self.read_sheet(fn + ext, sheet=sheet)
+            self.datasets = self.read_xlsx_datasummary(fn + ext, sheet=sheet)
     
     def setkeys(self, keylist):
         """
@@ -83,13 +86,42 @@ class DataPlan():
         wks.set_column(0, 0, 12)
         writer.save()
         self.read_sheet(self.outfile, sheet)
-    
+
+
     def read_sheet(self, filename, sheet=0):
         d = pd.read_excel(filename, sheet_name=sheet).transpose()
         ds = d.to_dict()
         for s in ds.keys():
             ds[s]['prots'] = eval(ds[s]['prots'])
             ds[s]['exclist'] = eval(ds[s]['exclist'])
+        return(ds)
+        
+
+    def read_xlsx_datasummary(self, filename, sheet=0):
+        re_plist = re.compile(r'([\w\(\)]+)+')
+        re_sst = re.compile(r'Protocols: \[([\w\(\), ])*')
+        d = pd.read_excel(filename, sheet_name=sheet).transpose()
+        ds = d.to_dict()
+#        print(ds.keys())
+        for s in ds.keys():
+            ds[s]['exclist'] = ('{0:s}.{1:s}.{2:s}'.format(str(ds[s]['Date'])[:-1], str(ds[s]['Slice']), str(ds[s]['Cell'])))
+          #  print(ds[s]['exclist'], end='')
+            try:
+                ds[s]['prots'] = eval(ds[s]['Protocols']).strip()
+                ds[s]['IV'] = eval(ds[s]['IV']).strip()
+                ds[s]['Map'] = eval(ds[s]['Map']).strip()
+            except:
+#                print ('ds protocols: ', ds[s]['Protocols'])
+                matchstring = re_sst.match(str(ds[s]['Protocols']))
+                if matchstring:
+                    res = re.findall(re_plist, matchstring.group(0))
+                ds[s]['prots'] = res[1:]
+                ds[s]['IV'] = str(ds[s]['IV']).strip()
+                ds[s]['Map'] = str(ds[s]['Map']).strip()
+                #print('protos:')
+            #print('  Protocols: ', ds[s]['prots'])
+           # ds[s]['exclist'] = eval(ds[s]['exclist'])
+#            print('ds: ', s, ds[s]['IV'])
         return(ds)
         
     # def read_ods(self, ods_filename):
@@ -149,6 +181,6 @@ if __name__ == '__main__':
     # D.make_xls(D.datasets)
     #
     D  = DataPlan('test.xlsx')
-    print D.datasets
+    print( D.datasets)
     
 
