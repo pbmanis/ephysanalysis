@@ -14,6 +14,7 @@ In the excel file, there should be one sheet "Directories" with a directory colu
 and antoher sheet "Dataplan" with at least Date, Slice, Cell, Protocols and 
 """
 import os
+import numpy as np
 import pandas as pd
 #import ezodf as odf
 from collections import OrderedDict
@@ -87,7 +88,6 @@ class DataPlan():
         writer.save()
         self.read_sheet(self.outfile, sheet)
 
-
     def read_sheet(self, filename, sheet=0):
         d = pd.read_excel(filename, sheet_name=sheet).transpose()
         ds = d.to_dict()
@@ -95,13 +95,12 @@ class DataPlan():
             ds[s]['prots'] = eval(ds[s]['prots'])
             ds[s]['exclist'] = eval(ds[s]['exclist'])
         return(ds)
-        
 
     def read_xlsx_datasummary(self, filename, sheet=0):
         re_plist = re.compile(r'([\w\(\)]+)+')
         re_sst = re.compile(r'Protocols: \[([\w\(\), ])*')
-        d = pd.read_excel(filename, sheet_name=sheet).transpose()
-        ds = d.to_dict()
+        self.excel_as_df = pd.read_excel(filename, sheet_name=sheet)
+        ds = self.excel_as_df.transpose().to_dict()
 #        print(ds.keys())
         for s in ds.keys():
             ds[s]['exclist'] = ('{0:s}.{1:s}.{2:s}'.format(str(ds[s]['Date'])[:-1], str(ds[s]['Slice']), str(ds[s]['Cell'])))
@@ -123,6 +122,27 @@ class DataPlan():
            # ds[s]['exclist'] = eval(ds[s]['exclist'])
 #            print('ds: ', s, ds[s]['IV'])
         return(ds)
+
+    def add_result_columns(self, colnames):
+        dflength = len(self.excel_as_df['CellID'])
+        for colname in colnames:
+            if not self.excel_as_df.columns.isin([colname]).any():
+                self.excel_as_df[colname] = pd.Series(np.zeros(dflength), index=self.excel_as_df.index)
+
+    def post_result(self, dataname, dataid, colname, value):
+        # print(dir(self.excel_as_df['CellID']))
+        # print(self.excel_as_df['CellID'].values)
+        if dataid not in self.excel_as_df[dataname].values:
+            raise ValueError('%s number %d is not found in current frame/excel sheet' % (dataname, dataid))
+        if not self.excel_as_df.columns.isin([colname]).any():
+            self.add_result_columns([colname])
+        index = self.excel_as_df[self.excel_as_df[dataname] == dataid].index[0]
+        self.excel_as_df.at[index, colname] = value
+        
+    def update_xlsx(self, filename, sheet):
+        #print(self.excel_as_df.head())
+        # check to see if the df already has Rin, RMP and Taum
+        self.excel_as_df.to_excel(filename, sheet_name=sheet, index=False)
         
     # def read_ods(self, ods_filename):
     #     """
@@ -180,7 +200,10 @@ if __name__ == '__main__':
     # D  = DataPlan(os.path.join('ephysanalysis', 'test_data', 'CS_CHL1_minis.py'))
     # D.make_xls(D.datasets)
     #
-    D  = DataPlan('test.xlsx')
-    print( D.datasets)
+    D  = DataPlan('dataplan1.xlsx')
+    D.post_result('CellID', 9, 'Rin', 52.3)
+    #print( D.datasets)
+    D.update_xlsx('dataplan2.xlsx', 'Dataplan')
+    
     
 

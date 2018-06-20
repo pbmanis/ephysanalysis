@@ -91,8 +91,6 @@ class DataSummary():
         self.i2p_re = re.compile('^2pImage_(\d{3,3}).ma')
         self.video_re = re.compile('^[Vv]ideo_(\d{3,3}).ma')
 
-
-        
         # look for names that match the acq4 "day" template:
         # example: 2013.03.28_000
         self.daytype = re.compile("(\d{4,4}).(\d{2,2}).(\d{2,2})_(\d{3,3})")
