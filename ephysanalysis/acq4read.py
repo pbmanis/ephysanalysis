@@ -1,8 +1,9 @@
+from __future__ import print_function
 #!/usr/bin/python
 
 """
-Class to read acq4 data blocks in simple manner. Does not requre
-acq4 link; bypasses DataManager and PatchEPhys
+Class to read acq4 data blocks in simple manner, as a standalone program.
+Does not require acq4 link; bypasses DataManager and PatchEPhys
 
 Requires pyqtgraph to read the .ma files and the .index file
 
@@ -97,7 +98,7 @@ class Acq4Read():
             return dh.info()['sequenceParams']
         except KeyError:
             if len(dh.info()) == 0:
-                print '****************** Error: Missing .index file? (fails to detect protocol sequence)'
+                print( '****************** Error: Missing .index file? (fails to detect protocol sequence)')
                 raise Exception("Directory '%s' does not appear to be a protocol sequence." % dh.name())
 
     def getIndex(self, currdir=''):
@@ -122,16 +123,16 @@ class Acq4Read():
         Generate a nice printout of the index, about as far down as we can go
         """
         for k in index['.'].keys():
-            print '  ', k, ':  ', index['.'][k]
+            print( '  ', k, ':  ', index['.'][k])
             if isinstance(index['.'][k], dict):
                 for k2 in index['.'][k].keys():
-                    print '    ', k, ' ', k2, '::  ', index['.'][k][k2]
+                    print ('    ', k, ' ', k2, '::  ', index['.'][k][k2])
                     if isinstance(index['.'][k][k2], dict):
                         for k3 in index['.'][k][k2]:
-                            print '    ', k, ' ', k2, ' ', k3, ':::  ', index['.'][k][k2][k3]
+                            print ('    ', k, ' ', k2, ' ', k3, ':::  ', index['.'][k][k2][k3])
                             if isinstance(index['.'][k][k2][k3], dict):
                                 for k4 in index['.'][k][k2][k3]:
-                                    print '    [', k, '][', k2, '][', k3, '][', k4, '] ::::  ', index['.'][k][k2][k3][k4]
+                                    print( '    [', k, '][', k2, '][', k3, '][', k4, '] ::::  ', index['.'][k][k2][k3][k4])
 
     def getClampDevices(self, currdir=''):
         """
@@ -321,7 +322,6 @@ class Acq4Read():
             protoreps = 1
         return True
 
-
     def getClampCommand(self, data, generateEmpty=True):    
         """Returns the command data from a clamp MetaArray.
         If there was no command specified, the function will 
@@ -342,8 +342,69 @@ class Acq4Read():
                 else:
                     units = 'A'
                 return MetaArray(np.zeros(tVals.shape), info=[{'name': 'Time', 'values': tVals, 'units': 's'}, {'units': units}])
-        return None 
+        return None
 
+    def getBlueLaserTimes(self):
+        """
+        Get laser pulse times  - handling multiple possible configurations (ugly)
+        """
+        supindex = self._readIndex(self.protocol)
+        #print(supindex['.']['devices']['PockelCell']['channels']['Switch'].keys())
+        #exit(1)
+        try:
+            stimuli = supindex['.']['devices']['Laser-Blue-raw']['channels']['pCell']
+            # print('GOT PCELL')
+        except:
+            try: 
+                stimuli = supindex['.']['devices']['PockelCell']['channels']['Switch']
+                # print('GOT POCKEL CELL/Switch')
+            except:
+                print(supindex['.']['devices']['PockelCell']['channels'].keys())
+                raise
+        # print('skeys: ', stimuli.keys())
+        stimuli = stimuli['waveGeneratorWidget']['stimuli']
+        # print ('skeys2: ', stimuli.keys())
+        if 'Pulse' in stimuli.keys():
+            times = {}
+            times['start'] = [stimuli['Pulse']['start']['value']]
+            times['duration'] = stimuli['Pulse']['length']['value']
+            times['amplitude'] = stimuli['Pulse']['amplitude']['value']
+            times['type'] = stimuli['Pulse']['type']
+            return times
+        elif 'Pulse3' in stimuli.keys():
+            times = {}
+            times['start'] = [stimuli['Pulse3']['start']['value']]
+            times['duration'] = stimuli['Pulse3']['length']['value']
+            times['amplitude'] = stimuli['Pulse3']['amplitude']['value']
+            times['type'] = stimuli['Pulse3']['type']
+            return times
+        elif 'PulseTrain' in stimuli.keys():
+#            print('PTR: ', stimuli['PulseTrain'])
+            times = {}
+            times['start'] = []
+            tstart = [stimuli['PulseTrain']['start']['value']]
+            times['duration'] = stimuli['PulseTrain']['length']['value']
+            times['amplitude'] = stimuli['PulseTrain']['amplitude']['value']
+            times['npulses'] = stimuli['PulseTrain']['pulse_number']['value']
+            times['period'] = stimuli['PulseTrain']['period']['value']
+            times['type'] = stimuli['PulseTrain']['type']
+#            print('times: ', times)
+            for n in range(times['npulses']):
+                times['start'].append(tstart[0] + n*times['period'])
+            return times
+        else:
+            raise ValueError('need to find keys for stimulus (might be empty): ' % stimuli)
+
+    def getBlueLaserShutter(self):
+        supindex = self._readIndex(self.protocol)
+        stimuli = supindex['.']['devices']['Laser-Blue-raw']['channels']['Shutter']['waveGeneratorWidget']['stimuli']
+        times = []
+        shutter = {}
+        shutter['start'] = stimuli['Pulse']['start']['value']
+        shutter['duration'] = stimuli['Pulse']['length']['value']
+        shutter['type'] = stimuli['Pulse']['type']
+        return shutter
+        
     def getScannerPositions(self, dataname='Laser-Blue-raw.ma'):
         dirs = self.subDirs(self.protocol)
         self.scannerpositions = np.zeros((len(dirs), 2))
