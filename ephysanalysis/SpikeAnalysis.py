@@ -30,10 +30,10 @@ import itertools
 import functools
 import numpy as np
 import scipy
-import Utility # pbm's utilities...
+from . import Utility # pbm's utilities...
 # import pylibrary.Utility as Utility
 # import pylibrary.Fitting as Fitting
-import Fitting # pbm's fitting stuff...
+from . import Fitting # pbm's fitting stuff...
 import pprint
 import time
 
@@ -215,8 +215,8 @@ class SpikeAnalysis():
 #            print('spikes: ', self.spikes[i])
             trspikes = OrderedDict()
             if printSpikeInfo:
-                print np.array(self.Clamps.values)
-                print len(self.Clamps.traces)
+                print((np.array(self.Clamps.values)))
+                print((len(self.Clamps.traces)))
             (rmp[i], r2) = U.measure('mean', self.Clamps.time_base, self.Clamps.traces[i],
                                            0.0, self.Clamps.tstart)            
             (iHold[i], r2) = U.measure('mean', self.Clamps.time_base, self.Clamps.cmd_wave[i],
@@ -304,7 +304,7 @@ class SpikeAnalysis():
         if printSpikeInfo:
             pp = pprint.PrettyPrinter(indent=4)
             for m in sorted(self.spikeShape.keys()):
-                print '----\nTrace: %d  has %d APs' % (m, len(self.spikeShape[m].keys()))
+                print(('----\nTrace: %d  has %d APs' % (m, len(list(self.spikeShape[m].keys())))))
                 for n in sorted(self.spikeShape[m].keys()):
                     pp.pprint(self.spikeShape[m][n])
         self.iHold = np.mean(iHold)
@@ -335,8 +335,8 @@ class SpikeAnalysis():
         # print('***')
         # print('sk keys:', self.spikeShape.keys())
         for m in sorted(self.spikeShape.keys()):
-            n = len(self.spikeShape[m].keys()) # number of spikes in the trace
-            for n in self.spikeShape[m].keys():
+            n = len(list(self.spikeShape[m].keys())) # number of spikes in the trace
+            for n in list(self.spikeShape[m].keys()):
                 # if n > 0:
                 # nsp.append(len(self.spikeShape[m].keys()))
               #  print (m, n, self.spikeShape[m], self.spikeShape[m].keys(), len(icmd))
@@ -374,16 +374,16 @@ class SpikeAnalysis():
         (jthr, j150) = self.getIVCurrentThresholds()  # get the indices for the traces we need to pull data from
         jthr = int(jthr)
         j150 = int(j150)
-        if j150 not in self.spikeShape.keys():
+        if j150 not in list(self.spikeShape.keys()):
             return
         if jthr == j150 and self.verbose:
             #print '\n%s:' % self.filename
-            print 'Threshold current T and 1.5T the same: using next up value for j150'
-            print 'jthr, j150, len(spikeShape): ', jthr, j150, len(self.spikeShape)
-            print '1 ', self.spikeShape[jthr][0]['current']*1e12
-            print '2 ', self.spikeShape[j150+1][0]['current']*1e12
-            print ' >> Threshold current: %8.3f   1.5T current: %8.3f, next up: %8.3f' % (self.spikeShape[jthr][0]['current']*1e12,
-                        self.spikeShape[j150][0]['current']*1e12, self.spikeShape[j150+1][0]['current']*1e12)
+            print('Threshold current T and 1.5T the same: using next up value for j150')
+            print('jthr, j150, len(spikeShape): ', jthr, j150, len(self.spikeShape))
+            print('1 ', self.spikeShape[jthr][0]['current']*1e12)
+            print('2 ', self.spikeShape[j150+1][0]['current']*1e12)
+            print(' >> Threshold current: %8.3f   1.5T current: %8.3f, next up: %8.3f' % (self.spikeShape[jthr][0]['current']*1e12,
+                        self.spikeShape[j150][0]['current']*1e12, self.spikeShape[j150+1][0]['current']*1e12))
             j150 = jthr + 1
         if len(self.spikeShape[j150]) >= 1 and self.spikeShape[j150][0]['halfwidth'] is not None:
             self.analysis_summary['AP1_Latency'] = (self.spikeShape[j150][0]['AP_Latency'] - self.spikeShape[j150][0]['tstart'])*1e3
@@ -391,7 +391,7 @@ class SpikeAnalysis():
         else:
             self.analysis_summary['AP1_Latency'] = np.inf
             self.analysis_summary['AP1_HalfWidth'] = np.inf
-        if len(self.spikeShape[j150]) >= 2 and 1 in self.spikeShape[j150].keys() and self.spikeShape[j150][1]['halfwidth'] is not None:
+        if len(self.spikeShape[j150]) >= 2 and 1 in list(self.spikeShape[j150].keys()) and self.spikeShape[j150][1]['halfwidth'] is not None:
             self.analysis_summary['AP2_Latency'] = (self.spikeShape[j150][1]['AP_Latency'] - self.spikeShape[j150][1]['tstart'])*1e3
             self.analysis_summary['AP2_HalfWidth'] = self.spikeShape[j150][1]['halfwidth']*1e3
         else:
@@ -445,7 +445,7 @@ class SpikeAnalysis():
         if fixNonMonotonic and ymax > yd[-1]:  # clip at max firing rate
             imaxs = [i for i, y in enumerate(yd) if y == ymax]  # handle duplicate firing rates
             imax = max(imaxs)  # find highest index
-            dypos = range(0, imax+1)
+            dypos = list(range(0, imax+1))
             x = x[dypos]
             yd = yd[dypos]
             ymax = np.max(yd)

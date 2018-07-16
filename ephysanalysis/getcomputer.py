@@ -1,12 +1,12 @@
-import commands
+import subprocess
 import os
 
 def getcomputer():
     if os.name == 'nt':
     	computer_name = os.environ['COMPUTERNAME']
     else:
-    	computer_name = commands.getoutput('scutil --get ComputerName')
-    print computer_name
+    	computer_name = subprocess.getoutput('scutil --get ComputerName')
+    print(computer_name)
     if computer_name == 'Lytle':
         basedir = '/Volumes/Pegasus/ManisLab_Data3/abr_data'
     elif computer_name == 'Tamalpais':
@@ -23,4 +23,4 @@ def getcomputer():
 
 if __name__ == '__main__':
  	b,c = getcomputer()
- 	print b, c
+ 	print(b, c)

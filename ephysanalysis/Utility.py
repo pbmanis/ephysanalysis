@@ -43,7 +43,8 @@ import numpy.ma as ma
 #import np.linalg.lstsq
 import scipy.fftpack as spFFT
 import scipy.signal
-from sets import Set
+#from sets import Set
+
 
 from random import sample
 
@@ -65,7 +66,7 @@ class Utility():
         npts = len(data)
     # we should window the data here
         if npts == 0:
-            print "? no data in pSpectrum"
+            print ("? no data in pSpectrum")
             return
     # pad to the nearest higher power of 2
         (a,b) = np.frexp(npts)
@@ -73,7 +74,7 @@ class Utility():
             b = b = 1
         npad = 2**b -npts
         if debugFlag:
-            print "npts: %d   npad: %d   npad+npts: %d" % (npts, npad, npad+npts)
+            print(("npts: %d   npad: %d   npad+npts: %d" % (npts, npad, npad+npts)))
         padw =  np.append(data, np.zeros(npad))
         npts = len(padw)
         sigfft = spFFT.fft(padw)
@@ -141,14 +142,14 @@ class Utility():
         try:
                 kernel = abs(int(kernel))
                 order = abs(int(order))
-        except ValueError, msg:
+        except:
             raise ValueError("kernel and order have to be of type int (floats will be converted).")
         if kernel % 2 != 1 or kernel < 1:
             raise TypeError("kernel size must be a positive odd number, was: %d" % kernel)
         if kernel < order + 2:
             raise TypeError("kernel is to small for the polynomals\nshould be > order + 2")
         # a second order polynomal has 3 coefficients
-        order_range = range(order+1)
+        order_range = list(range(order+1))
         half_window = (kernel -1) // 2
         b = np.mat([[k**i for i in order_range] for k in range(-half_window, half_window+1)])
         # since we don't want the derivative, else choose [1] or [2], respectively
@@ -156,8 +157,8 @@ class Utility():
         window_size = len(m)
         half_window = (window_size-1) // 2
         # precompute the offset values for better performance
-        offsets = range(-half_window, half_window+1)
-        offset_data = zip(offsets, m)
+        offsets = list(range(-half_window, half_window+1))
+        offset_data = list(zip(offsets, m))
         smooth_data = list()
         # temporary data, with padded zeros (since we want the same length after smoothing)
         #data = np.concatenate((np.zeros(half_window), data, np.zeros(half_window)))
@@ -175,7 +176,7 @@ class Utility():
     # filter signal with elliptical filter
     def SignalFilter(self, signal, LPF, HPF, samplefreq):
         if debugFlag:
-            print "sfreq: %f LPF: %f HPF: %f" % (samplefreq, LPF, HPF)
+            print(("sfreq: %f LPF: %f HPF: %f" % (samplefreq, LPF, HPF)))
         flpf = float(LPF)
         fhpf = float(HPF)
         sf = float(samplefreq)
@@ -183,8 +184,8 @@ class Utility():
         wp = [fhpf/sf2, flpf/sf2]
         ws = [0.5*fhpf/sf2, 2*flpf/sf2]
         if debugFlag:
-            print "signalfilter: samplef: %f  wp: %f, %f  ws: %f, %f lpf: %f  hpf: %f" % (
-               sf, wp[0], wp[1], ws[0], ws[1], flpf, fhpf)
+            print(("signalfilter: samplef: %f  wp: %f, %f  ws: %f, %f lpf: %f  hpf: %f" % (
+               sf, wp[0], wp[1], ws[0], ws[1], flpf, fhpf)))
         filter_b,filter_a=spSignal.iirdesign(wp, ws,
                 gpass=1.0,
                 gstop=60.0,
@@ -194,7 +195,7 @@ class Utility():
         w = spSignal.lfilter(filter_b, filter_a, signal) # filter the incoming signal
         signal = signal + msig
         if debugFlag:
-            print "sig: %f-%f w: %f-%f" % (np.amin(signal), np.amax(signal), np.amin(w), np.amax(w))
+            print(("sig: %f-%f w: %f-%f" % (np.amin(signal), np.amax(signal), np.amin(w), np.amax(w))))
         return(w)
 
     # filter with Butterworth low pass, using time-causal lfilter 
@@ -234,7 +235,7 @@ class Utility():
             reduce: Flag that controls whether the resulting data is subsampled or not
         """
         if debugFlag:
-            print "sfreq: %f LPF: %f HPF: %f" % (samplefreq, LPF)
+            print(("sfreq: %f LPF: %f HPF: %f" % (samplefreq, LPF)))
         flpf = float(LPF)
         sf = float(samplefreq)
         wn = [flpf/(sf/2.0)]
@@ -243,8 +244,8 @@ class Utility():
             if LPF <= samplefreq/2.0:
                 reduction = int(samplefreq/LPF)
         if debugFlag is True:
-            print "signalfilter: samplef: %f  wn: %f,  lpf: %f, NPoles: %d " % (
-               sf, wn, flpf, NPole)
+            print(("signalfilter: samplef: %f  wn: %f,  lpf: %f, NPoles: %d " % (
+               sf, wn, flpf, NPole)))
         filter_b,filter_a = spSignal.bessel(
                 NPole,
                 wn,
@@ -294,7 +295,7 @@ class Utility():
                     w[i,j,:] = w1
             return(w)
         if signal.ndim > 3:
-            print "Error: signal dimesions of > 3 are not supported (no filtering applied)"
+            print ("Error: signal dimesions of > 3 are not supported (no filtering applied)")
             return signal
 
 
@@ -316,7 +317,7 @@ class Utility():
                 continue
             if (c is ',' or c is '}') and colonFound and not inpunct and not inquote: # separator is ','
                 r = eval('{%s}' % sp)
-                u[r.keys()[0]] = r[r.keys()[0]]
+                u[list(r.keys())[0]] = r[list(r.keys())[0]]
                 colonFound = False
                 sp = ''
                 continue
@@ -360,7 +361,7 @@ class Utility():
 
     def unique(self, seq, keepstr=True):
       t = type(seq)
-      if t in (str, unicode):
+      if t in (str, str):
         t = (list, ''.join)[bool(keepstr)]
       seen = []
       return t(c for c in seq if not (c in seen or seen.append(c)))
@@ -382,15 +383,15 @@ class Utility():
         from scipy.ndimage import minimum_filter
         from scipy.ndimage import maximum_filter
         data = np.asarray(data)
-        print 'data size: ', data.shape
+        print(('data size: ', data.shape))
         if sign <= 0: # look for minima
             maxfits = minimum_filter(data, size=span, mode="wrap")
         else:
             maxfits = maximum_filter(data, size=span, mode="wrap")
-        print 'maxfits shape: ', maxfits.shape
+        print(('maxfits shape: ', maxfits.shape))
         maxima_mask = np.where(data == maxfits)
         good_indices = np.arange(len(data))[maxima_mask]
-        print 'len good index: ', len(good_indices)
+        print(('len good index: ', len(good_indices)))
         good_fits = data[maxima_mask]
         order = good_fits.argsort()
         return good_indices[order], good_fits[order]
@@ -511,7 +512,7 @@ class Utility():
         #st = clean_spiketimes(st, mindT=refract)
         if verify:
             import matplotlib.pyplot as mpl
-            print('nspikes detected: ', len(st))
+            print(('nspikes detected: ', len(st)))
             mpl.figure()
             mpl.plot(x, v, 'k-', linewidth=0.5)
             mpl.plot(st, thresh*np.ones_like(st), 'ro')
@@ -755,7 +756,7 @@ class Utility():
             win = ma.flatnotmasked_contiguous(ym)
             st = int(len(win)/20) # look over small ranges
             for k in win: # move through the slope measurementwindow
-                tb = range(k-st, k+st) # get tb array
+                tb = list(range(k-st, k+st)) # get tb array
                 newa = np.array(self.dat[i][j, thisaxis, tb])
                 ppars = np.polyfit(x[tb], ym[tb], 1) # do a linear fit - smooths the slope measures
                 slope = np.append(slope, ppars[0]) # keep track of max slope
@@ -765,7 +766,7 @@ class Utility():
 
     def mask(self, x, xm, x0, x1):
         if np.ndim(xm) != 1:
-            print "utility.mask(): array to used to derive mask must be 1D"
+            print ("utility.mask(): array to used to derive mask must be 1D")
             return(np.array([]))
         xmask = ma.masked_outside(xm, x0, x1)
         tmask = ma.getmask(xmask)
@@ -777,13 +778,13 @@ class Utility():
                 xnew= ma.array(x[i,:], mask=tmask)
                 xcmp = ma.compressed(xnew)
                 if i == 0:
-                    print ma.shape(xcmp)[0]
-                    print np.shape(x)[0]
+                    print(( ma.shape(xcmp)[0]))
+                    print((np.shape(x)[0]))
                     xout = np.zeros((np.shape(x)[0], ma.shape(xcmp)[0]))
                 xout[i,:] = xcmp
             return(xout)
         else:
-            print "Utility.Mask: dimensions of input arrays are not acceptable"
+            print ("Utility.Mask: dimensions of input arrays are not acceptable")
             return(np.array([]))
 
     def clipdata(self, y, xm, x0, x1):
@@ -900,14 +901,15 @@ class Utility():
                     matched = []
                     for pattern in shellglobs:
                         filterf = lambda s: fnmatch.fnmatchcase(s, pattern)
-                        matched.extend(filter(filterf, files))
+                        matched.extend(list(filter(filterf, files)))
                     fileList.extend(['%s%s%s' % (dir, os.sep, f) for f in matched])
                 else:
                     fileList.extend(['%s%s%s' % (dir, os.sep, f) for f in files])
-            if not relative: fileList = map(os.path.abspath, fileList)
+            if not relative: fileList = list(map(os.path.abspath, fileList))
             if namefs:
-                for ff in namefs: fileList = filter(ff, fileList)
-        except Exception, e: raise ScriptError(str(e))
+                for ff in namefs: fileList = list(filter(ff, fileList))
+        except:
+            raise ScriptError(str(e))
         return(fileList)
 
 
@@ -1059,12 +1061,12 @@ if __name__ == "__main__":
     else:
         (options, args) = parser.parse_args()
     
-    print options
+    print (options)
     if options.dictionary:
         d="{'CN_Dur': 100.0, 'PP_LP': 16000.0, 'ST_Dur': 50.0, 'Trials': 24.0, 'PP_HP': 8000.0, 'CN_Mode': 0, 'ITI_Var': 5.0, 'PP_GapFlag': False, 'PS_Dur': 50.0, 'ST_Level': 80.0, 'PP_Mode': 2, 'WavePlot': True, 'PP_Dur': 50.0, 'Analysis_LPF': 500.0, 'CN_Level': 70.0, 'NHabTrials': 2.0, 'PP_Notch_F2': 14000.0, 'PP_Notch_F1': 12000.0, 'StimEnable': True, 'PP_OffLevel': 0.0, 'Analysis_HPF': 75.0, 'CN_Var': 10.0, 'Analysis_Start': -100.0, 'ITI': 20.0, 'PP_Level': 90.0, 'Analysis_End': 100.0, 'PP_Freq': 4000.0, 'PP_MultiFreq': 'linspace(2.0,32.0,4.0)'} "
         di = U.long_Eval(d)
-        print 'The dictionary is: ',
-        print di
+        print(('The dictionary is: ',))
+        print (di)
 
     if options.cb: # test clements bekkers
         # first generate some events
@@ -1088,9 +1090,9 @@ if __name__ == "__main__":
         dt = 0.1
         t = np.arange(0, 100, dt)
         v = np.zeros_like(t)-60.0
-        p = range(20, 900, 50)
-        p1 = range(19,899,50)
-        p2 = range(21,901,50)
+        p = list(range(20, 900, 50))
+        p1 = list(range(19,899,50))
+        p2 = list(range(21,901,50))
         v[p] = 20.0
         v[p1] = 15.0
         v[p2] = -20.0
@@ -1114,16 +1116,16 @@ if __name__ == "__main__":
         for j in range(0,1):
             d = np.zeros((5,1,len(v)))
             for k in range(0, 5):
-                p = range(20*k, 500, 50 + int(50.0*(k/2.0)))
+                p = list(range(20*k, 500, 50 + int(50.0*(k/2.0))))
                 vn = v.copy()
                 vn[p] = 20.0
                 d[k, 0, :] = np.array(vn) # load up the "spike" array
             y.append(d)
-        tpts = range(0, len(t)) # np.arange(0, len(t)).astype(int).tolist()
+        tpts = list(range(0, len(t))) # np.arange(0, len(t)).astype(int).tolist()
         #def findspikes(x, v, thresh, t0=None, t1= None, dt=1.0, mode=None, interpolate=False):
         for k in range(0, len(y)):
             sp = getSpikes(t, y[k], 0, tpts, tdel=0, thresh=0, selection = None, interpolate = True)
-            print 'r: %d' % k, 'sp: ', sp
+            print(('r: %d' % k, 'sp: ', sp))
     
     # test the sine fitting routine
     if options.sinefit:
@@ -1136,7 +1138,7 @@ if __name__ == "__main__":
         for phi in np.arange(-2.0*np.pi, 2.0*np.pi, np.pi/8.0):
             y = A * np.sin(2.*np.pi*t*F+phi) + normal(0.0, 0.5, len(t))
             (a, p) = U.sinefit(t, y, F)
-            print "A: %f a: %f  phi: %f p: %f" % (A, a, phi, p)
+            print(("A: %f a: %f  phi: %f p: %f" % (A, a, phi, p)))
 
 
     

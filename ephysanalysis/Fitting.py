@@ -595,7 +595,7 @@ p[4]*numpy.exp(-(p[5] + x)/p[6]))**2.0
             t0 = numpy.min(tdat)
         func = self.fitfuncmap[fitFunc]
         if func is None:
-            print "FitRegion: unknown function %s" % (fitFunc)
+            print ("FitRegion: unknown function %s" % (fitFunc))
             return
         xp = []
         xf = []
@@ -643,8 +643,8 @@ p[4]*numpy.exp(-(p[5] + x)/p[6]))**2.0
                                                 args=(tx, dy, fixedPars),
                                                 full_output = 1, maxfev = func[2])
                         if ier > 4:
-                            print "optimize.leastsq error flag is: %d" % (ier)
-                            print mesg
+                            print( "optimize.leastsq error flag is: %d" % (ier))
+                            print( mesg)
                 elif method == 'curve_fit':
                     plsq, cov = scipy.optimize.curve_fit(func[0], tx, dy, p0=fpars)
                     ier = 0
@@ -671,7 +671,7 @@ p[4]*numpy.exp(-(p[5] + x)/p[6]))**2.0
                 #                 approx_grad = True) # , disp=0, iprint=-1)
                     
                 else:
-                    print 'method %s not recognized, please check Fitting.py' % (method)
+                    print ('method %s not recognized, please check Fitting.py' % (method))
                     return    
                 xfit = numpy.arange(t0, t1, (t1-t0)/100.0)
                 yfit = func[0](plsq, xfit, C=fixedPars)
@@ -804,8 +804,8 @@ p[4]*numpy.exp(-(p[5] + x)/p[6]))**2.0
             try:
                 f[k]= d[pos+1]
             except:
-                print "error in chebftd: k = %d (len f = %d)  pos = %d, len(d) = %d\n" % (k, len(f), pos, len(d))
-                print "you should probably make sure this doesn't happen"
+                print ("error in chebftd: k = %d (len f = %d)  pos = %d, len(d) = %d\n" % (k, len(f), pos, len(d)))
+                print ("you should probably make sure this doesn't happen")
         fac = 2.0/n
         c=numpy.zeros(n)
         for j in range(0, n):
@@ -946,13 +946,13 @@ if __name__ == "__main__":
     for func in Fits.fitfuncmap:
         if func != 'exp1':
             continue
-        print "\nFunction: %s\nTarget: " % (func),
+        print ("\nFunction: %s\nTarget: " % (func),)
         f = Fits.fitfuncmap[func]
         for k in range(0,len(f[1])):
-            print "%f " % (f[1][k]),
-        print "\nStarting:     ",
+            print ("%f " % (f[1][k]),)
+        print ("\nStarting:     ",)
         for k in range(0,len(f[5])):
-            print "%f " % (f[5][k]),
+            print ("%f " % (f[5][k]),)
 
 #        nstep = 500.0
 #        if func == 'sin':

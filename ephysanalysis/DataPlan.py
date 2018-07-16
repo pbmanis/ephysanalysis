@@ -30,7 +30,8 @@ class DataPlan():
         if ext == '':
             ext = '.py'
         if ext == '.py':
-            execfile(fn + ext, data)
+            exec(open(fn+ext).read(), data)
+            #execfile(fn + ext, data)  old python 2.7 version
             self.datasource = datadictname
             self.datasets = data['datasets']  # convenience
             self.datadir = data['basepath']

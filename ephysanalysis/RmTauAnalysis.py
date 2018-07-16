@@ -169,8 +169,8 @@ class RmTauAnalysis():
         fpar = []
         names = []
         okdata = []
-        if len(self.taum_fitted.keys()) > 0:
-            [self.taum_fitted[k].clear() for k in self.taum_fitted.keys()]
+        if len(list(self.taum_fitted.keys())) > 0:
+            [self.taum_fitted[k].clear() for k in list(self.taum_fitted.keys())]
         self.taum_fitted = {}
 
         for j, k in enumerate(whichdata):
@@ -208,8 +208,8 @@ class RmTauAnalysis():
             for i in range(0, len(names[j])):
                 outstr += '%s = %f, ' % (names[j][i], fpar[j][i])
             if printWindow:
-                print("FIT(%d, %.1f pA): %s " %
-                      (whichdata[j], itaucmd[j] * 1e12, outstr))
+                print(("FIT(%d, %.1f pA): %s " %
+                      (whichdata[j], itaucmd[j] * 1e12, outstr)))
         if len(taus) > 0:
             self.taum_taum = np.nanmean(taus)
             self.analysis_summary['taum'] = self.taum_taum
@@ -255,7 +255,7 @@ class RmTauAnalysis():
         threshold = self.Spikes
         ntr = len(self.Clamps.traces)
         if not self.Spikes.spikes_counted:
-            print "ivss_analysis: spikes not counted yet? - let's go analyze them..."
+            print("ivss_analysis: spikes not counted yet? - let's go analyze them...")
             self.analyzeSpikes()
 
         self.ivss_v = data1.mean(axis=1)  # all traces
@@ -356,8 +356,8 @@ class RmTauAnalysis():
         whichdata = [int(amin)]
         itaucmd = [self.Clamps.commandLevels[amin]]
         fd = self.Clamps.traces['Time': rgn[0]:rgn[1]][whichdata][0]
-        if len(self.tauh_fitted.keys()) > 0:
-            [self.tauh_fitted[k].clear() for k in self.tauh_fitted.keys()]
+        if len(list(self.tauh_fitted.keys())) > 0:
+            [self.tauh_fitted[k].clear() for k in list(self.tauh_fitted.keys())]
         whichaxis = 0
         (fpar, xf, yf, names) = Fits.FitRegion(whichdata, whichaxis,
                                                self.Clamps.traces.xvals('Time'),
@@ -376,8 +376,8 @@ class RmTauAnalysis():
             for i in range(0, len(names[j])):
                 outstr += '%s = %f, ' % (names[j][i], fpar[j][i])
             if printWindow:
-                print("Ih FIT(%d, %.1f pA): %s " %
-                      (whichdata[j], itaucmd[j] * 1e12, outstr))
+                print(("Ih FIT(%d, %.1f pA): %s " %
+                      (whichdata[j], itaucmd[j] * 1e12, outstr)))
         self.tauh_xf = xf
         self.tauh_yf = yf
         self.tauh_meantau = np.mean(taus)

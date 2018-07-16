@@ -4,19 +4,19 @@
 version_info = (0, 2, 0, 'a')
 __version__ = "%d.%d.%d%s" % version_info
 
-print "apparent version: ", __version__
+#print ("apparent version: ", __version__)
 
-import Fitting
-import Utility
+import ephysanalysis.Fitting as Fitting
+import ephysanalysis.Utility as Utility
 
-import acq4read
-import MatdatacRead
-import DatacReader
-import DataPlan
-import getcomputer
-import RmTauAnalysis
-import SpikeAnalysis
-import dataSummary
-import IVSummary
+import ephysanalysis.acq4read
+import ephysanalysis.MatdatacRead
+import ephysanalysis.DatacReader
+import ephysanalysis.DataPlan
+import ephysanalysis.getcomputer
+import ephysanalysis.RmTauAnalysis
+import ephysanalysis.SpikeAnalysis
+import ephysanalysis.dataSummary
+import ephysanalysis.IVSummary
 
 
