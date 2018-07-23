@@ -2,7 +2,7 @@
 from collections import OrderedDict
 import os, re, pprint
 import sys
-import user
+#import user
 
 import itertools
 import pickle
@@ -16,8 +16,8 @@ from pyqtgraph import metaarray
 # from acq4.util import DataManager
 # import acq4.analysis.tools.Utility as Utility  # pbm's utilities...
 # import acq4.analysis.tools.Fitting as Fitting  # pbm's fitting stuff...
-import Utility
-import Fitting
+import ephysanalysis.Utility
+import ephysanalysis.Fitting
 # from acq4.analysis.dataModels import PatchEPhys
 # DM = DataManager
 import pylibrary.PlotHelpers as PH
@@ -31,8 +31,8 @@ except:
 
 
 
-import SpikeAnalysis
-import RmTauAnalysis
+import ephysanalysis.SpikeAnalysis
+import ephysanalysis.RmTauAnalysis
 
 class DatacBrowser(QtGui.QSplitter):
     def __init__(self, path):
@@ -87,10 +87,10 @@ class DatacBrowser(QtGui.QSplitter):
                 try:
                     selfile = os.path.join(self.path, selfile.selectedItems()[0].text(0))
                 except:
-                    print 'no file selected'
+                    print ('no file selected')
                     return 
             if not os.path.isfile(selfile) or not selfile.endswith('.mat'):
-                print 'File not found: %s' % selfile
+                print ('File not found: %s' % selfile)
                 return
             self.clear()
             sel = selfile
@@ -170,7 +170,7 @@ class DatacBrowser(QtGui.QSplitter):
                     p3 = self.plt3.plot(np.arange(len(x[chmap[0]]))*dt, cmd*1e-12, pen=pen)
                     self.plotItems.extend([p1, p2, p3])
 
-        print np.max(len(x[chmap[0]]))*dt
+        print( np.max(len(x[chmap[0]]))*dt)
 
         self.plt1.setXRange(0, np.max(len(x[chmap[0]]))*dt)
         self.plt2.setXRange(0, np.max(len(x[chmap[1]]))*dt)
@@ -314,15 +314,15 @@ class GetClamps(DatacBrowser):
                         10000.0, 'type': 'ai', 'startTime': 0.}}, 'startTime': 0.}]
         self.traces = np.squeeze(self.traces[:,1,:])
         if fname == '06nov09d.mat':
-            print self.traces.shape
-            print np.max(self.traces[0,:])
-            print np.min(self.traces[0,:])
-            print np.min(datac_traces[0, 0, :])
+            print( self.traces.shape)
+            print (np.max(self.traces[0,:]))
+            print (np.min(self.traces[0,:]))
+            print (np.min(datac_traces[0, 0, :]))
             for i in range(self.traces.shape[0]):
-                print i
+                print (i)
                 self.traces[i,:] = self.traces[i,:]-50e6*1e-12*datac_traces[i, 0, :]  # IR drop
-            print np.min(self.traces[0,:])
-            print 'bridge corrected!!!!!'
+            print (np.min(self.traces[0,:]))
+            print ('bridge corrected!!!!!')
 
         self.traces = metaarray.MetaArray(self.traces, info=info)
         self.spikecount = np.zeros(len(recs))
@@ -471,7 +471,7 @@ class Block(object):
         for rec in self.recs:
             typ = rec['type'][0]
             if rec['MatName'][0] not in self.datac.data.keys():
-                print 'missing data block: ', rec['MatName'][0]
+                print ('missing data block: ', rec['MatName'][0])
                 continue
             data = flatten(self.datac.data[rec['MatName'][0]])
             if typ == 'DATA':
@@ -744,7 +744,7 @@ class IVAnalyzer(DatacBrowser):
         if bridge is not None:
             self.bridgeCorrection = bridge
             #for i in range(self.Clamps.traces.shape[0]):
-            print '******** Doing bridge correction: ', self.bridgeCorrection
+            print( '******** Doing bridge correction: ', self.bridgeCorrection)
             self.Clamps.traces = self.Clamps.traces - (self.bridgeCorrection * self.Clamps.cmd_wave)
         else:
             br = 20e6 # self.ctrl.IVCurve_bridge.value()*1e6
@@ -846,12 +846,12 @@ class IVAnalyzer(DatacBrowser):
         #     self.analysis_summary['AdaptRatio'], self.analysis_summary['AP1_HalfWidth'])
         FIKeys = self.SA.FIKeys # ['Ibreak', 'Irate', 'IPower']# ['Ibreak', 'Rate0', 'Ibreak1', 'Irate1', 'Irate2', 'Irate3']
         for i, k in enumerate(FIKeys):
-            print '%-15s\t' % k,
-        print
+            print ('%-15s\t' % k,)
+        print()
         for i, k in enumerate(FIKeys):
-            print '%12.6f\t' % (self.analysis_summary[k]),
-        print '\n'
-        print '-'*80
+            print ('%12.6f\t' % (self.analysis_summary[k]),)
+        print ('\n')
+        print ('-'*80)
         ltxt = ''
         # summary table header is written anew for each cell
         htxt = ''
@@ -880,7 +880,7 @@ class IVAnalyzer(DatacBrowser):
             outf.close()
 
         if printnow:
-            print ltxt
+            print (ltxt)
         #print pprint.pformat(self.analysis_summary)
         return
 
@@ -1157,7 +1157,7 @@ class IVAnalyzer(DatacBrowser):
         #self.regions['lrwin1']['region'].getRegion()
         r1 = rgnss[1]
         if rgnss[1] == rgnss[0]:
-            print 'Steady-state regions have no width; using 100 msec. window for ss '
+            print ('Steady-state regions have no width; using 100 msec. window for ss ')
             r1 = rgnss[0] + 0.1
 #        self.ctrl.IVCurve_ssTStart.setValue(rgnss[0] * 1.0e3)
 #        self.ctrl.IVCurve_ssTStop.setValue(r1 * 1.0e3)
@@ -1170,7 +1170,7 @@ class IVAnalyzer(DatacBrowser):
         threshold = self.threshold # ctrl.IVCurve_SpikeThreshold.value() * 1e-3
         ntr = len(self.Clamps.traces)
         if not self.spikes_counted:
-            print 'updatess: spikes not counted yet? '
+            print ('updatess: spikes not counted yet? ')
             self.analyzeSpikes()
 
         self.ivss = data1.mean(axis=1)  # all traces
@@ -1249,7 +1249,7 @@ class IVAnalyzer(DatacBrowser):
         self.analysis_summary['tau'] = self.RmTau.taum_taum*1.e3
         tautext = 'Mean Tau: %8.1f'
         if printWindow:
-            print tautext % (self.RmTau.taum_taum * 1e3)
+            print (tautext % (self.RmTau.taum_taum * 1e3))
         self.show_taum_plot()
 
     def show_taum_plot(self):
@@ -1297,7 +1297,7 @@ class IVAnalyzer(DatacBrowser):
             threshold = self.threshold # self.ctrl.IVCurve_SpikeThreshold.value() * 1e-3
             ntr = len(self.Clamps.traces)
             if not self.spikes_counted:
-                print 'update_pkAnalysis: spikes not counted'
+                print ('update_pkAnalysis: spikes not counted')
                 self.analyzeSpikes()
             spikecount = np.zeros(ntr)
 
@@ -1494,7 +1494,7 @@ class EPSCAnalyzer(DatacBrowser):
             base = np.median(rec[0][:100])
             epsc[i] = d1.min() - base
             stim[i] = d2.mean()
-        print 'r1, r2', r1, r2
+        print ('r1, r2', r1, r2)
             
         self.ioData.setData(stim, epsc)
         
@@ -1502,7 +1502,7 @@ class EPSCAnalyzer(DatacBrowser):
         self.histData.setData(bins, vals, stepMode=True)
         
         rgn = self.lr3.getRegion()
-        print 'rgn0, 1: ', rgn
+        print ('rgn0, 1: ', rgn)
         mask = (stim > rgn[0]) & (stim < rgn[1])
         epscrgn = epsc[mask]
         #print "start:  %g   end:  %g   mean: %g   stdev: %g" % (rgn[0], rgn[1], epscrgn.mean(), epscrgn.std())
@@ -1570,11 +1570,11 @@ if __name__ == '__main__':
         print('Block %d not found' % blocksel)
         exit(1)
 
-    print dblk.type
-    print 'sr: ', dblk.data()[0]
-    print len(dblk.data())
-    print len(dblk.data()[1])  # 21 records
-    print len(dblk.data()[1][0]) # 3 traces
+    print( dblk.type)
+    print ('sr: ', dblk.data()[0])
+    print (len(dblk.data()))
+    print (len(dblk.data()[1]) ) # 21 records
+    print (len(dblk.data()[1][0])) # 3 traces
 #    print     lf.items[1].data()[1][0][0]  # voltage
 #    print     lf.items[1].dfile  # dict of all dfile arguments
 #    print     lf.items[1].stims # sfile and stimulus arrays (at low rate), including method code
