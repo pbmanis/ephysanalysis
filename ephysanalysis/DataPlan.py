@@ -124,11 +124,16 @@ class DataPlan():
 #            print('ds: ', s, ds[s]['IV'])
         return(ds)
 
-    def add_result_columns(self, colnames):
+    def add_result_columns(self, colnames, datatype='float'):
         dflength = len(self.excel_as_df['CellID'])
         for colname in colnames:
             if not self.excel_as_df.columns.isin([colname]).any():
-                self.excel_as_df[colname] = pd.Series(np.zeros(dflength), index=self.excel_as_df.index)
+                if datatype == 'float':
+                    self.excel_as_df[colname] = pd.Series(np.zeros(dflength), index=self.excel_as_df.index)
+                elif datatype == 'str':
+                    self.excel_as_df[colname] = pd.Series(['' for x in range(dflength)], index=self.excel_as_df.index)
+                else:
+                    raise ValueError('add result column needs datatype of "float" or "str", got: %s' % str(datatypepyt))
 
     def post_result(self, dataname, dataid, colname, value):
         # print(dir(self.excel_as_df['CellID']))
@@ -136,7 +141,13 @@ class DataPlan():
         if dataid not in self.excel_as_df[dataname].values:
             raise ValueError('%s number %d is not found in current frame/excel sheet' % (dataname, dataid))
         if not self.excel_as_df.columns.isin([colname]).any():
-            self.add_result_columns([colname])
+            if isinstance(value, str):
+                dtype = 'str'
+            elif isinstance(value, float):
+                dtype = 'float'
+            else:
+                raise ValueError('Do not yet know how to post a value of type %s ' % str(type(value)))
+            self.add_result_columns([colname], datatype=dtype)
         index = self.excel_as_df[self.excel_as_df[dataname] == dataid].index[0]
         self.excel_as_df.at[index, colname] = value
         
