@@ -15,7 +15,7 @@ import ephysanalysis as EP
 import matplotlib.pyplot as mpl
 import matplotlib.colors
 import matplotlib
-import colormaps.parula
+#import colormaps.parula
 import pylibrary.PlotHelpers as PH
 from matplotlib import rc
 rc('font',**{'family':'sans-serif','sans-serif':['Arial']})
