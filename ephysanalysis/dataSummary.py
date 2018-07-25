@@ -23,6 +23,9 @@ output (o) : define output file (tab delimited file for import to other programs
 Mar 2018: Version 2
 Uses acq4read and is independent of acq4 itself.
 
+July 2018: 
+Major surgery - to output Pandas (pickled) files as well. 
+
 Future:
     Provide API/class interface (see all the "set" functions)
 
@@ -30,13 +33,17 @@ Future:
 import sys
 import os
 import re
+import argparse
 import os.path
 import gc
 import argparse
 import datetime
+import dateutil.parser as DUP
 import numpy as np
 import textwrap
 from collections import OrderedDict
+import pandas as pd
+import pandas.compat # for StringIO
 
 from ephysanalysis import acq4read
 from pyqtgraph.metaarray import MetaArray
@@ -44,38 +51,138 @@ from pyqtgraph.metaarray import MetaArray
 
 
 class DataSummary():
-    def __init__(self, basedir=None, daylistfile=None, dayspec=None):
+    """
+    Note that this init is just setup - you have to call getSummary on the object to do anything
+    
+    Parameters
+    ----------
+    basedir : str (required)
+        base directory to be summarized
+    
+    outputMode : str (default: 'terminal')
+        How to write the output. Current options are 'terminal', which writes to the terminal, and
+        'pandas', which will create a pandas dataframe and pickle it to a file
+    
+    daylistfile : str (default: None)
+        A filename that stores a list of days that sould be processed
+    
+    after : str (default: Jan 1, 1970)
+        A starting date for the summary - files before this date will not be processed
+        A string in a format that can be parsed by dateutil.parser.parse
+        The following will work:
+        without string quotes:
+        2018.01.01
+        2018.1.1
+        2018/7/6
+        2018-7-6
+        With quotes:
+        'Jan 1 2017'
+        'Jan 1, 2017'
+        etc..
+    
+    before : str (default 2266)
+        An ending date for the summary. Files after this date will not be processed. 
+        The format is the same as for the starting date
+    
+    dryrun : bool (default False)
+        Causes the output ti be limited and protocols are not fully investigated
+    
+    depth : str (default: 'all')
+        Causes output with dry-run to go to the depth specified
+        options are day, slice, cell, prototol
+    
+    Note that if neither before or after are specified, 
+    """
+    def __init__(self, basedir, outputMode='terminal', daylistfile=None,
+                 after=None, before=None, dryrun=False, depth='all', inspect=True):
+
+
+        self.setups()  # build some regex and wrappers
+        # gather input parameters
+        self.basedir = basedir
+        self.outputMode = outputMode  # terminal, tabfile, pandas
+        self.outFilename = ''
+        self.daylistfile = daylistfile
+        self.dryrun = dryrun
+        self.after = after
+        self.before = before
+        self.depth = depth
+ 
+        self.daylist = None
+        self.index = 0
+        # flags - for debugging and verbosity
         self.monitor = False
         self.reportIncompleteProtocols = True  # do include incomplete protocol runs in print
-        self.InvestigateProtocols = True  # set True to check out the protocols in detail
+        self.InvestigateProtocols = inspect  # set True to check out the protocols in detail
+        if self.dryrun:
+            self.monitor = True
+            self.reportIncompleteProtocols = False # do include incomplete protocol runs in print
+            self.InvestigateProtocols = False  # set True to check out the protocols in detail
         
+        # initialized dictionary that holds all the stuff
         self.analysis_summary = {}
-        self.AR = acq4read.Acq4Read()  # instance of the reader
-#        self.dataModel = PatchEPhys
-        self.basedir = basedir
-        self.dayspec = dayspec
 
         # column definitions - may need to adjust if change data that is pasted into the output
-        self.coldefs = 'Date\tDescription\tNotes\tGenotype\tAge\tSex\tWeight\tTemp\tElapsed T\tSlice\tSlice Notes\t'
-        self.coldefs += 'Cell\t Cell Notes\t\tProtocols\tImages\t'
+        self.coldefs = 'Date\tDescription\tNotes\tSpecies\tGenotype\tAge\tSex\tWeight\tTemp\tImportant\tElapsedT\tCellType\tSlice\tSliceNotes\t'
+        self.coldefs += 'Cell\tCellNotes\tProtocols\tCompleteProtocols\tImages\n'
+        self.panda_string = self.coldefs
+        
+        self.AR = acq4read.Acq4Read()  # instance of the reader
 
-        self.outputMode = 'terminal' # 'tabfile'
         outputDir = os.path.join(os.path.expanduser("~"), 'Desktop/acq4_scripts')
         if self.outputMode == 'tabfile':
-            self.outFilename = basedir.replace('/', '_') + '.tab'
+            self.outFilename = self.basedir.replace('/', '_') + '.tab'
             self.outFilename = self.outFilename.replace('\\', '_')
             if self.outFilename[0] == '_':
                 self.outFilename = self.outFilename[1:]
             self.outFilename = os.path.join(outputDir, self.outFilename)
-            print('Writing to: {:<s}'.format(self.outFilename))
+            print('Tabfile output: Writing to {:<s}'.format(self.outFilename))
             h = open(self.outFilename, 'w')  # write new file
-            h.write(basedir+'\n')
+            h.write(self.basedir+'\n')
             h.write(self.coldefs + '\n')
             h.close()
+        elif self.outputMode == 'pandas':  # save output as a pandas data structure, pickled
+            self.outFilename = self.basedir.replace('/', '_') + '.pkl'
+            self.outFilename = self.outFilename.replace('\\', '_')
+            if self.outFilename[0] == '_':
+                self.outFilename = self.outFilename[1:]
+            self.outFilename = os.path.join(outputDir, self.outFilename)
+            print('Pandas output: will write to {:<s}'.format(self.outFilename))
         else:
-            print ('Base Directory: ', basedir)
-            print (self.coldefs)
+            pass  # just print if terminal
             
+        # figure out the before/after limits
+        # read the before and after day strings, parse them and set the min and maxdays
+        if self.after is None:
+            mindayx = (1970, 1, 1)  # all dates after this - unix start date convention
+        else:
+            try:
+                dt = DUP.parse(self.after)
+                mindayx = (dt.year, dt.month, dt.day)
+            except:
+                raise ValueError('Date for AFTER cannot be parsed : {0:s}'.format(self.after))
+        if self.before is None:
+            maxdayx = (2266, 1, 1)  # far enough into the future for you? Maybe when the Enterprise started it's journey?
+        else:
+            try:
+                dt = DUP.parse(self.before)
+                maxdayx = (dt.year, dt.month, dt.day)
+            except:
+                raise ValueError('Date for BEFORE cannot be parsed : {0:s}'.format(self.before))
+        
+        if self.daylistfile is None:  # get from command line
+            self.minday = mindayx[0]*1e4+mindayx[1]*1e2+mindayx[2]
+            #maxdayx = datetime.datetime.now().timetuple()[0:3]  # get today
+            self.maxday = maxdayx[0]*1e4+maxdayx[1]*1e2+maxdayx[2]
+        else:
+            self.daylist = []
+            with open(self.daylistfile, 'r') as f:
+                for line in f:
+                    if line[0] != '#':
+                        self.daylist.append(line[0:10])
+            f.close()  # silly - it dhould be closed.
+        
+    def setups(self):
         self.tw = {}  # for notes
         self.tw['day'] = textwrap.TextWrapper(initial_indent="", subsequent_indent=" "*2)  # used to say "initial_indent ="Description: ""
         self.tw['slice'] = textwrap.TextWrapper(initial_indent="", subsequent_indent=" "*2)
@@ -91,31 +198,9 @@ class DataSummary():
         self.i2p_re = re.compile('^2pImage_(\d{3,3}).ma')
         self.video_re = re.compile('^[Vv]ideo_(\d{3,3}).ma')
 
-        # look for names that match the acq4 "day" template:
-        # example: 2013.03.28_000
         self.daytype = re.compile("(\d{4,4}).(\d{2,2}).(\d{2,2})_(\d{3,3})")
 #        daytype = re.compile("(2011).(06).(08)_(\d{3,3})")  # specify a day
-        #2011.10.17_000
-        # operate in two modes:
-        # second, between two dates
-        self.daylist = None
-        self.daylistfile = daylistfile
-        if daylistfile is None:
-
-            mindayx = (1970, 1, 1)
-            #mindayx = (2018, 1, 26)
-            self.minday = mindayx[0]*1e4+mindayx[1]*1e2+mindayx[2]
-            #maxdayx = datetime.datetime.now().timetuple()[0:3]  # get today
-            maxdayx = (2019, 1, 26)
-            self.maxday = maxdayx[0]*1e4+maxdayx[1]*1e2+maxdayx[2]
-        else:
-            self.daylist = []
-            with open(self.daylistfile, 'r') as f:
-                for line in f:
-                    if line[0] != '#':
-                        self.daylist.append(line[0:10])
-            f.close()
-
+        
     def setMonitor(self):
         pass
     
@@ -163,7 +248,21 @@ class DataSummary():
         output (o) : define output file (tab delimited file for import to other programs)
         """
         pass
-        
+    
+    def wrapstring(self, datastring, data, argument, wrapper, default='?'):
+        """
+        Wrap up text in a generic way, returning the modified string
+        """
+        if data is not None and argument in data.keys() and len(data[argument]) > 0:
+            lstr = wrapper.wrap(data[argument])
+            for i in lstr:
+                nstr = i.replace('\t', '    ')  # clean out tabs so printed formatting is not confused
+                datastring += nstr
+            datastring = datastring.lstrip()
+            return datastring + '\t'
+        else:
+            return datastring + default + '\t'
+
     def getSummary(self):
         """
         getSummary is the entry point for scanning through all the data files in a given directory,
@@ -194,27 +293,16 @@ class DataSummary():
             print ('Days reported: ', days)
         for day in days:
             if self.monitor:
-                print ('processing day: %s' % day)
-            self.daystring = '%s \t' % (day)
+                print ('Processing day: %s' % day)
+            self.daystring = '%s\t' % (day.strip())
             self.AR.setProtocol(os.path.join(self.basedir, day))
             self.day = self.AR.getIndex()
-            if self.day is not None and 'description' in self.day.keys() and len(self.day['description']) > 0:
-                l = self.twd['day'].wrap(self.day['description'])
-                for i in l:
-                    i = i.replace('\t', '    ')  # clean out tabs so printed formatting is not confused
-                    self.daystring += i
+            self.daystring = self.wrapstring(self.daystring, self.day, 'description', self.twd['day'])
+            self.daystring = self.wrapstring(self.daystring, self.day, 'notes', self.tw['day'])
+            if self.dryrun and self.depth=='days':
+                self.outputString(self.daystring + self.day_summarystring)                
             else:
-                self.daystring += ' [no description]'
-            self.daystring += '\t'
-            if self.day is not None and 'notes' in self.day.keys() and len(self.day['notes']) > 0:
-                l = self.tw['day'].wrap(self.day['notes'])
-                for i in l:
-                    i = i.replace('\t', '    ')  # clean out tabs so printed formatting is not confused
-                    self.daystring += i
-            else:
-                self.daystring += ' [no notes]'
-            self.daystring += '\t'
-            self.doSlices(os.path.join(self.basedir, day))
+                self.doSlices(os.path.join(self.basedir, day))
             os.closerange(8, 65535)  # close all files in each iteration
             gc.collect()
 
@@ -237,15 +325,11 @@ class DataSummary():
         for slice in slices:
             self.slicestring = '%s\t' % (slice)
             self.slice = self.AR.getIndex(os.path.join(day, slice))
-            if self.slice is not None and 'notes' in self.slice.keys() and len(self.slice['notes']) > 0:
-                l = self.tw['slice'].wrap(self.slice['notes'])
-                for i in l:
-                    i = i.replace('\t', '    ')  # clean out tabs so printed formatting is not confused
-                    self.slicestring += i
+            self.slicestring = self.wrapstring(self.slicestring, self.slice, 'notes', self.tw['slice'])
+            if self.dryrun and self.depth=='slices':
+                self.outputString(self.daystring + self.day_summarystring + self.slicestring)
             else:
-                self.slicestring += ' No slice notes'
-            self.slicestring += '\t'
-            self.doCells(os.path.join(day, slice))
+                self.doCells(os.path.join(day, slice))
             gc.collect()
 
     def doCells(self, slice):
@@ -269,18 +353,12 @@ class DataSummary():
                 self.cell = self.AR.getIndex(os.path.join(slice, cell))  # possible that .index file is missing, so we cannot read
             except:
                 self.cell = None
-
-            if self.cell is not None and 'notes' in self.cell.keys() and len(self.cell['notes']) > 0:
-                l = self.tw['cell'].wrap(self.cell['notes'])
-                for i in l:
-                    i = i.replace('\t', '    ')  # clean out tabs so printed formatting is not confused
-                    self.cellstring += i
+            self.cellstring = self.wrapstring(self.cellstring, self.cell, 'notes', self.tw['cell'])
+            self.day_summary(name=os.path.join(slice, cell))
+            if self.dryrun and self.depth=='cells':
+                self.outputString(self.daystring + self.day_summarystring + self.slicestring + self.cellstring)
             else:
-                self.cellstring += ' No cell notes'
-            self.cellstring += '\t'
-            self.cell_summary(name=os.path.join(slice, cell))
-            self.cellstring += '\t'
-            self.doProtocols(os.path.join(slice, cell))
+                self.doProtocols(os.path.join(slice, cell))
             gc.collect()
 
     def doProtocols(self, cell):
@@ -308,14 +386,16 @@ class DataSummary():
                 nonprotocols.append(thisfile)
 
         self.protocolstring = ''
+        self.allprotocols = ''
+        self.completeprotocols = ''
         if self.InvestigateProtocols is True:
-            self.summarystring = 'NaN \t'*6
+            self.day_summarystring = 'NaN\t'*6
 
             for np, protocol in enumerate(protocols):
-
+                self.allprotocols += protocol+', '
                 protocolpath = os.path.join(cell, protocol)
                 if np == 0:
-                    self.cell_summary(name=protocolpath)
+                    self.day_summary(name=protocolpath)
                 dirs = self.AR.subDirs(protocolpath)
                 protocolok = True  # assume that protocol is ok
                 modes = []
@@ -355,6 +435,7 @@ class DataSummary():
                         self.holding = self.AR.parseClampHoldingLevel(clampInfo)
                         self.amp_settings = self.AR.parseClampWCCompSettings(clampInfo)
                         ncomplete = ncomplete + 1
+                        self.completeprotocols += protocol+', '
                 
                 gc.collect()  # and force garbage collection of freed objects inside the loop
                 if modes == []:
@@ -372,6 +453,7 @@ class DataSummary():
             anyprotocols = True
             prots = {}
             for protocol in protocols:
+                self.allprotocols += protocol+', '
                 m = endmatch.search(protocol)
                 if m is not None:
                     p = protocol[:-4]
@@ -389,10 +471,10 @@ class DataSummary():
             else:
                 self.protocolstring = '<No protocols found>'
         self.protocolstring += '\t'
+        self.allprotocols += '\t'
+        self.completeprotocols += '\t'
 
         for thisfile in nonprotocols:
-#            if os.path.isdir(os.path.join(cell, thisfile)):  # skip protocols
-#                continue
             x = self.img_re.match(thisfile)  # look for image files
             if x is not None:
                 images.append(thisfile)
@@ -407,30 +489,53 @@ class DataSummary():
                 videos.append(thisfile)
         self.imagestring = ''
         if len(images) > 0:
-            self.imagestring += 'Images: %d ' % len(images)
+            self.imagestring += 'Images: %3d' % len(images)
         if len(stacks2p) > 0:
-            self.imagestring += '2pStacks: %d ' % len(stacks2p)
+            self.imagestring += ', 2pStacks: %3d' % len(stacks2p)
         if len(images2p) > 0:
-            self.imagestring += '2pImages: %d ' % len(images2p)
+            self.imagestring += ', 2pImages: %3d' % len(images2p)
         if len(videos) > 0:
-            self.imagestring += 'Videos: %d' % len(videos)
+            self.imagestring += ', Videos: %3d' % len(videos)
         if len(images) + len(stacks2p) + len(images2p) + len(videos) == 0:
             self.imagestring = 'No Images or Videos'
         
         if anyprotocols:
-            ostring =  self.daystring + self.summarystring + self.slicestring + self.cellstring + self.protocolstring + self.imagestring + '\t'
+            ostring = self.daystring + self.day_summarystring + self.slicestring + self.cellstring + self.protocolstring + self.completeprotocols + self.imagestring
         else:
-            ostring = self.daystring + self.summarystring + self.slicestring + self.cellstring + '<No complete protocols> \t' + self.imagestring + '\t'
+            ostring = self.daystring + self.day_summarystring + self.slicestring + self.cellstring + self.protocolstring + self.completeprotocols + self.imagestring
         self.outputString(ostring)
 
     def outputString(self, ostring):
-        if self.outputMode == 'terminal':
-            print (ostring)
-        else:
+        if self.outputMode in [None, 'terminal']:
+            print('{0:s}'.format(ostring))
+        elif self.outputMode == 'text':
             h = open(self.outFilename, 'a')  # append mode
             h.write(ostring + '\n')
             h.close()
-        
+        elif self.outputMode == 'pandas':
+            #print('\n******* building pd string', 'ostring: \n', ostring)
+            self.panda_string += ('{0:d}\t').format(self.index) + ostring+'\n'  # -1 needed to remove last tab... 
+            # this just is useful to check that the data are in the right tabbed fields
+            # print('\n', self.panda_string)
+            # tstr = ( ostring+'\n').split('\t')
+            # for i, c in enumerate(self.coldefs.split('\t')):
+            #     #print (c)
+            #     print(c, ' : ', tstr[i])
+            #
+            # exit(1)
+            self.index += 1
+        else:
+            pass
+    
+    def write_string(self):
+        """
+        Write an output string using pandas dataframe
+        """
+        if self.outputMode == 'pandas':
+            df = pd.read_csv(pandas.compat.StringIO(self.panda_string), delimiter='\t')
+            df.to_pickle(self.outFilename)
+            # print('Wrote pandas dataframe to pickled file: {0:s}'.format(self.outFilename))
+
     def get_file_information(self, dh=None):
         """
         get_file_information reads the sequence information from the
@@ -449,16 +554,16 @@ class DataSummary():
         leftseq.insert(0, 'All')
         rightseq.insert(0, 'All')
 
-    def cell_summary(self, name=None):
+    def day_summary(self, name=None):
         """
-        cell_summary generates a dictionary of information about the cell
+        day_summary generates a dictionary of information about the cell
         for the selected directory handle (usually a protocol; could be a file)
         builds a formatted string with some of the information.
-        :param dh: the directory handle for the data, as passed to loadFileRequested
+        
         :return nothing:
         """
         self.analysis_summary = {}  # always clear the summary.
-        self.summarystring = ''
+        self.day_summarystring = ''
         # other info into a dictionary
         self.analysis_summary['Day'] = self.day
         self.analysis_summary['Slice'] = self.slice
@@ -466,28 +571,44 @@ class DataSummary():
         self.analysis_summary['ACSF'] = self.day['solution']
         self.analysis_summary['Internal'] = self.day['internal']
         self.analysis_summary['Temp'] = self.day['temperature']
+        self.analysis_summary['Important'] = 'N'
+        if 'important' in self.day.keys():
+#            print('important: ', self.day['important'])
+            if self.day['important']:
+                self.analysis_summary['Important'] = 'Y'
+                self.day['important'] = 'N'
+        else:
+            self.day['important'] = 'N'
         if self.cell is not None and 'type' in self.cell.keys():
             self.analysis_summary['CellType'] = self.cell[u'type']
         else:
             self.analysis_summary['CellType'] = 'N/A'
+
         today = self.analysis_summary['Day']
         if today is not None:
-            #print today.keys()
-            if 'species' in today.keys():
-                self.analysis_summary['Species'] = today['species']
+
+            if 'description' in today.keys():
+                self.analysis_summary['Description'] = today['description']
+            if 'weight' in today.keys():
+                self.analysis_summary['Weight'] = today['weight']
+            if 'strain' in today.keys():
+                self.analysis_summary['Strain'] = today['strain']
+            if 'notes' in today.keys():
+                self.analysis_summary['Notes'] = today['notes']
             if 'age' in today.keys():
                 self.analysis_summary['Age'] = today['age']
             if 'sex' in today.keys():
                 self.analysis_summary['Sex'] = today['sex']
-            if 'weight' in today.keys():
-                self.analysis_summary['Weight'] = today['weight']
+            if 'animal identifier' in today.keys():
+                self.analysis_summary['AnimalIdentifier'] = today['animal identifier']
+            if 'genotype' in today.keys():
+                self.analysis_summary['Genotype'] = today['genotype']
             if 'temperature' in today.keys():
-                self.analysis_summary['Temperature'] = today['temperature']
-            if 'description' in today.keys():
-                self.analysis_summary['Description'] = today['description']
-            if 'notes' in today.keys():
-                self.analysis_summary['Notes'] = today['notes']
-        
+                self.analysis_summary['Temp'] = today['temperature']
+            if 'species' in today.keys():
+                self.analysis_summary['Species'] = today['species']
+
+
         if self.analysis_summary['Cell'] is not None:
             ct = self.analysis_summary['Cell']['__timestamp__']
         else:
@@ -500,16 +621,21 @@ class DataSummary():
         (date, sliceid, cell, proto, p3) = self.file_cell_protocol(name)
         self.analysis_summary['CellID'] = os.path.join(date, sliceid, cell)  # use this as the "ID" for the cell later on
         data_template = (
-            OrderedDict([('Species', '{:>s}'), ('Age', '{:>5s}'), ('Sex', '{:>1s}'), ('Weight', '{:>5s}'),
-                         ('Temperature', '{:>5s}'), ('ElapsedTime', '{:>8.2f}')]))
- 
+            OrderedDict([('Species', '{:>s}'), ('Genotype', '{:>12s}'), ('Age', '{:>5s}'), ('Sex', '{:>1s}'), ('Weight', '{:>5s}'),
+                         ('Temp', '{:>5s}'), ('Important', '{:>1s}'), ('ElapsedTime', '{:>8.2f}'), ('CellType', '{:>12s}')])
+                        )
         ltxt = ''
+        utxt = ''  # to make a little table comparing the template and data retrieved
         for a in data_template.keys():
             if a in self.analysis_summary.keys():
                 ltxt += ((data_template[a] + '\t').format(self.analysis_summary[a]))
+                utxt += '{0:s} = {1:s}\n'.format(a, str(self.analysis_summary[a]))
             else:
-                ltxt += (('NaN \t'))
-        self.summarystring = ltxt
+                ltxt += (('NaN\t'))
+                utxt += '{0:s} = {1:s}\n'.format(a, 'missing in keys')
+        self.day_summarystring = ltxt
+        
+       # print('cell summary: \n', utxt)
 
     def file_cell_protocol(self, filename):
         """
@@ -525,8 +651,85 @@ class DataSummary():
 
 
 if __name__ == "__main__":
-    if len(sys.argv) == 2:
-        ds = DataSummary(basedir=sys.argv[1])
-    if len(sys.argv) == 3:
-        ds = DataSummary(basedir=sys.argv[1], daylistfile=sys.argv[2])
-    ds.getSummary()
+    
+    parser = argparse.ArgumentParser(description='Generate Data Summaries from acq4 datasets')
+    parser.add_argument('basedir', type=str,
+                        help='Base Directory')
+    parser.add_argument('-o', '--output', type=str, default='terminal', dest='output',
+                        choices=['terminal', 'pandas', 'excel', 'tabfile'],
+                        help='Specify output dataplan key for one entry to process')
+    parser.add_argument('--daylist', type=str, default=None, dest='daylist',
+                        help='Specify daylistfile')
+    parser.add_argument('-a', '--after', type=str, default=None, dest='after',
+                        help='only analyze dates on or after a date')
+    parser.add_argument('-b', '--before', type=str, default=None, dest='before',
+                        help='only analyze dates on or before a date')
+    parser.add_argument('--dry-run', action='store_true', dest='dryrun',
+                        help='Do a dry run, reporting only directories')
+    parser.add_argument('--no-inspect', action='store_false', dest='noinspect',
+                        help='Do not inspect protocols, only report directories')
+    parser.add_argument('-d', '--depth', type=str, default='all', dest='depth',
+                        choices = ['days', 'slices', 'cells', 'protocols', 'all'],
+                        help='Specify depth for --dry-run')
+    parser.add_argument('-r', '--read', action='store_true', dest='read',
+                        help='just read the protocol')
+    args = parser.parse_args()
+    ds = DataSummary(basedir=args.basedir, daylistfile=args.daylist, outputMode=args.output,
+            after=args.after, before=args.before, dryrun=args.dryrun, depth=args.depth, inspect=args.noinspect)
+    if not args.read:
+        ds.getSummary()
+        if args.output in ['pandas']:
+            ds.write_string()
+        
+        # now read the same file and look for some protocols
+        df = pd.read_pickle(ds.outFilename)
+        # print(df.head(5))
+        # print('------')
+        # print('Known column names: ', df.columns.values)
+        # for c in [ 'Date', 'Description', 'Notes', 'Species', 'Genotype', 'Age', 'Sex', 'Weight',
+        #     'Temp', 'Important', 'ElapsedT', 'CellType', 'Slice', 'SliceNotes' ,'Cell',
+        #     'CellNotes', 'Protocols', 'AllProtocols', 'Images',]:
+        #    print('****  {0:s} ****'.format(c))
+        #    print(df[c])
+        #allp = df.CompleteProtocols
+        df.set_index("Date", inplace=True)
+        # print("protocols day: ", df.loc['2017.10.25_000']['AllProtocols'])
+        allp = df.loc[['2017.10.25_000'],['Important', 'Slice', 'Cell','CompleteProtocols']]
+        print(allp)
+    if args.read:
+        df = pd.read_pickle(ds.outFilename)
+        # print(df.head(5))
+        # print('------')
+        # print('Known column names: ', df.columns.values)
+        # for c in [ 'Date', 'Description', 'Notes', 'Species', 'Genotype', 'Age', 'Sex', 'Weight',
+        #     'Temp', 'Important', 'ElapsedT', 'CellType', 'Slice', 'SliceNotes' ,'Cell',
+        #     'CellNotes', 'Protocols', 'AllProtocols', 'Images',]:
+        #    print('****  {0:s} ****'.format(c))
+        #    print(df[c])
+        #allp = df.CompleteProtocols
+        df2 = df.set_index("Date", drop=False)
+        print(df2.head(5))
+
+        day= '2017.10.25_000'
+        prots = df2.loc[day, ['Slice', 'Cell', 'CompleteProtocols']]  # to build datapaths 
+        maps = []
+        IVs = []
+        for i in range(prots['Slice'].count()):
+            u = prots.iloc[i]['CompleteProtocols'].split(', ')
+            prox = sorted(list(set(u)))
+            for x in prox:
+                c = day + '/' + prots.iloc[i]['Slice'] + '/' + prots.iloc[i]['Cell'] + '/' + x
+                if 'Map' in c:
+                    maps.append(c)
+                if 'IV' in c:
+                    IVs.append(c)
+                print (c)
+        print('maps: ', maps)
+        print('ivs: ', IVs)
+        #print(allp)
+        # prots = allp['CompleteProtocols']
+ #        print(prots)
+        #
+        
+    
+    

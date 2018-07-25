@@ -11,8 +11,10 @@ basepath : the base path to the data files
 outputpath : the path to where the output files of an analysis would be stored.
 
 In the excel file, there should be one sheet "Directories" with a directory column
-and antoher sheet "Dataplan" with at least Date, Slice, Cell, Protocols and 
+and antoher sheet "Dataplan" with at least Date, Slice, Cell, Protocols and a few other entries,
+
 """
+
 import os
 import numpy as np
 import pandas as pd
@@ -23,6 +25,23 @@ import re
 
 class DataPlan():
     def __init__(self, datadictname, sheet='Dataplan'):
+        """
+        set up and read a data plan, saving the structure and information for other uses
+        
+        Parameters
+        ----------
+        datadictname : str (no default)
+            name of the file that holds the data dictionary
+            Should end in .py or .xlsx. The file is parsed to a common structure
+        
+        sheet : str (default "Dataplan")
+            The name of the sheet in the excel file that will be used (if an excel file is specified)
+        
+        Returns
+        -------
+            Nothing. All results are in class variables
+        """
+        
         self.sheet = sheet # for excel files
         self.orderedkeys = ['subject', 'dir', 'G', 'prots', 'thr', 'rt', 'decay', 'exclist']  # default set
         data = {}
@@ -46,10 +65,12 @@ class DataPlan():
         """
         Change the ordered key list values (column names in excel sheet)
         """
+        
         self.orderedkeys = keylist
 
     def make_xls(self, dataset, outfile='test.xlsx', sheet='Dataplan'):
         """
+        Process .py files, convert to an excel sheet
         From the dictionary in dataset, write an excel spreadsheet as follows:
         Top keys are rows
         Within each row, keys are columns
@@ -58,6 +79,22 @@ class DataPlan():
         The column headings are derived from the first entry in the data set.
         If a value is missing for a given row, it is left empty
         if a new key is encountered, a new column is made
+        
+        Parameters
+        ----------
+        dataset : dict
+            Dictionary specifying the dataset (for .py file)
+        
+        outfile : str (default "test.xlsx")
+            Output excel file to create from this dataset
+        
+        sheet : str (default "Dataplan")
+            Sheet in the excel file where the plan will be written
+        
+        Retuns
+        ------
+        Nothing
+        
         """
 
         subjectkeys = dataset.keys()
@@ -92,6 +129,21 @@ class DataPlan():
         self.read_sheet(self.outfile, sheet)
 
     def read_sheet(self, filename, sheet=0):
+        """
+        Read an excel sheet and return as a pandas data structure
+        
+        Parameters
+        ----------
+        filename : str
+            name of the excel file to read (including extension)
+        sheet : int or str (defalt: 0)
+            sheet within the excel file to read
+        
+        Returns
+        --------
+        Nothing
+        """
+        
         d = pd.read_excel(filename, sheet_name=sheet).transpose()
         ds = d.to_dict()
         for s in ds.keys():
@@ -99,35 +151,59 @@ class DataPlan():
             ds[s]['exclist'] = eval(ds[s]['exclist'])
         return(ds)
 
-    def read_xlsx_datasummary(self, filename, sheet=0):
+    def read_datasummary(self, filename):
+        """
+        Read a datasummary file and store into an pandas dataframe
+        Datasummaries are flat text files in a csv format and are generated
+        by datasummary.py
+        
+        Parameters
+        ----------
+        filename : str (no default)
+            Name of the text file to read, including path and extension
+        
+        Returns
+        -------
+        dataset as a pandas datafram
+        """
+        
         re_plist = re.compile(r'([\w\(\)]+)+')
         re_sst = re.compile(r'Protocols: \[([\w\(\), ])*')
         self.excel_as_df = pd.read_excel(filename, sheet_name=sheet)
         ds = self.excel_as_df.transpose().to_dict()
-#        print(ds.keys())
         for s in ds.keys():
             ds[s]['exclist'] = ('{0:s}.{1:s}.{2:s}'.format(str(ds[s]['Date'])[:-1], str(ds[s]['Slice']), str(ds[s]['Cell'])))
-          #  print(ds[s]['exclist'], end='')
             try:
                 ds[s]['prots'] = eval(ds[s]['Protocols']).strip()
                 ds[s]['IV'] = eval(ds[s]['IV']).strip()
                 ds[s]['Map'] = eval(ds[s]['Map']).strip()
             except:
-#                print ('ds protocols: ', ds[s]['Protocols'])
                 matchstring = re_sst.match(str(ds[s]['Protocols']))
                 if matchstring:
                     res = re.findall(re_plist, matchstring.group(0))
                 ds[s]['prots'] = res[1:]
-                print(ds[s].keys())
+#                print(ds[s].keys())
                 ds[s]['IV'] = str(ds[s]['IV']).strip()
                 ds[s]['Map'] = str(ds[s]['Map']).strip()
                 #print('protos:')
-            #print('  Protocols: ', ds[s]['prots'])
-           # ds[s]['exclist'] = eval(ds[s]['exclist'])
-#            print('ds: ', s, ds[s]['IV'])
         return(ds)
 
     def add_result_columns(self, colnames, datatype='float'):
+        """
+        Add columns to the pandas data frame if they do not already exist
+        
+        Parameters
+        ----------
+        colname : str (no default)
+            the text namd for the column to add at the right hand end of the sheet
+        datatype : str (default: 'float')
+            data type for the column (must be float or str)
+        
+        Returns
+        -------
+        Nothing. The current pandas dataframe is modified
+        """
+        
         dflength = len(self.excel_as_df['CellID'])
         for colname in colnames:
             if not self.excel_as_df.columns.isin([colname]).any():
@@ -139,8 +215,26 @@ class DataPlan():
                     raise ValueError('add result column needs datatype of "float" or "str", got: %s' % str(datatypepyt))
 
     def post_result(self, dataname, dataid, colname, value):
-        # print(dir(self.excel_as_df['CellID']))
-        # print(self.excel_as_df['CellID'].values)
+        """
+        Put results into a cell in the pandas dataframe. If the column
+        does not already exist, it is added to the dataframe.
+        
+        Parameters
+        ----------
+        dataname : str
+            Idendtifier for the data namoing scheme (usuall 'cell')
+        dataid : int
+            Number/data identification associated with the dataname
+        colname : str
+            Name of the column to store the data
+        value : float or str
+            data to be stored.
+        
+        Returns
+        -------
+        Nothing. The pandas dataframe is modified
+        """
+        
         if dataid not in self.excel_as_df[dataname].values:
             raise ValueError('%s number %d is not found in current frame/excel sheet' % (dataname, dataid))
         if not self.excel_as_df.columns.isin([colname]).any():
@@ -155,8 +249,18 @@ class DataPlan():
         self.excel_as_df.at[index, colname] = value
         
     def update_xlsx(self, filename, sheet):
-        #print(self.excel_as_df.head())
-        # check to see if the df already has Rin, RMP and Taum
+        """
+        Update the excel file by writing he current pandas dataframe
+        to as an excel file. This is almost noe really needed
+        
+        Parameters
+        ----------
+        filename : str
+            Full pant and extension for the excel file
+        sheet : str or int (no default)
+            Sheet to write the result to.
+        
+        """
         self.excel_as_df.to_excel(filename, sheet_name=sheet, index=False)
         
     # def read_ods(self, ods_filename):
@@ -215,6 +319,7 @@ if __name__ == '__main__':
     # D  = DataPlan(os.path.join('ephysanalysis', 'test_data', 'CS_CHL1_minis.py'))
     # D.make_xls(D.datasets)
     #
+    # test routine -not for production. Use code like this in your own analysis script.
     D  = DataPlan('dataplan1.xlsx')
     D.post_result('CellID', 9, 'Rin', 52.3)
     #print( D.datasets)
