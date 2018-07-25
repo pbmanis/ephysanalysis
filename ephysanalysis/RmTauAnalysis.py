@@ -99,6 +99,7 @@ class RmTauAnalysis():
         self.tau_membrane(region=tauregion)
         r0 = self.Clamps.tstart + 0.9*(self.Clamps.tend-self.Clamps.tstart) # 
         self.ivss_analysis(region=[r0, self.Clamps.tend])
+        self.ivpk_analysis(region=[self.Clamps.tstart, self.Clamps.tstart+0.4*(self.Clamps.tend-self.Clamps.tstart)])
         
            
     def tau_membrane(self, peak_time=None, printWindow=False, whichTau=1, vrange=[-0.005, -0.020], region=[]):
@@ -245,11 +246,23 @@ class RmTauAnalysis():
         self.analysis_summary['RMP'] = self.rmp
 
     def ivss_analysis(self, region=None):
+        """
+        compute steady-state IV curve - from the mean voltage 
+        across the stimulus set over the defined time region 
+        (this usually will be the last half or third of the trace)
+        
+        Parameters
+        ----------
+        region : list or tuple
+            Start and end times for the analysis
+        """
+        
         data1 = self.Clamps.traces['Time': region[0]:region[1]]
- #       print 'data shape: ', data1.shape
+        self.r_in = np.nan
+        self.analysis_summary['Rin'] = np.nan
+        self.ivss_v = []
         if data1.shape[1] == 0 or data1.shape[0] == 1:
             return  # skip it
-        self.ivss_v = []
 
         # check out whether there are spikes in the window that is selected
         threshold = self.Spikes
@@ -259,28 +272,89 @@ class RmTauAnalysis():
             self.analyzeSpikes()
 
         self.ivss_v = data1.mean(axis=1)  # all traces
-        # if self.ctrl.IVCurve_SubBaseline.isChecked():
-        #     self.ivss = self.ivss - self.RmTau.ivbaseline
         self.analysis_summary['Rin'] = np.NaN
         if len(self.Spikes.nospk) >= 1:
             # Steady-state IV where there are no spikes
             self.ivss_v = self.ivss_v[self.Spikes.nospk]
             self.ivss_cmd = self.Clamps.commandLevels[self.Spikes.nospk]
-#            self.commandLevels = commands[self.nospk]
+            isort = np.argsort(self.ivss_cmd)
+            self.ivss_cmd = self.ivss_cmd[isort]
+            self.ivss_v = self.ivss_v[isort]
+            bl = self.ivbaseline[isort]
+            self.ivss_bl = bl
             # compute Rin from the SS IV:
             # this makes the assumption that:
-            # successive trials are in order (as are commands)
+            # successive trials are in order so we wort above
             # commands are not repeated...
             if len(self.ivss_cmd) > 1 and len(self.ivss_v) > 1:
-                self.r_in = np.max(np.diff
-                                   (self.ivss_v) / np.diff(self.ivss_cmd))
+                pf = np.polyfit(self.ivss_cmd, self.ivss_v, 3, rcond=None, full=False, w=None, cov=False)
+                pval = np.polyval(pf, self.ivss_cmd)
+                print('pval: ', pval)
+                slope = np.diff(pval) / np.diff(self.ivss_cmd)  # local slopes
+                imids = np.array((self.ivss_cmd[1:] + self.ivss_cmd[:-1]) / 2.)
+                self.rss_fit ={'I': imids, 'V': np.polyval(pf, imids)}
+                print('fit V: ', self.rss_fit['V'])
+                #slope = slope[[slope > 0 ] and [self.ivss_cmd[:-1] > -0.8] ] # only consider positive slope points
+                l = int(len(slope)/2)
+                maxloc = np.argmax(slope[l:]) + l
+                self.r_in = slope[maxloc]
+                self.r_in_loc = [self.ivss_cmd[maxloc], self.ivss_v[maxloc], maxloc]  # where it was found
+                minloc = np.argmin(slope[:l])
+                self.r_in_min = slope[minloc]
+                self.r_in_minloc = [self.ivss_cmd[minloc], self.ivss_v[minloc], minloc]  # where it was found
                 self.analysis_summary['Rin'] = self.r_in*1.0e-6
 
+    def ivpk_analysis(self, region=None):
+        """
+        compute peak IV curve - from the minimum voltage 
+        across the stimulus set
+        
+        Parameters
+        ----------
+        region : list or tuple
+            Start and end times for the analysis
+        """
+        
+        self.r_in_peak = np.nan
+        self.analysis_summary['Rin_peak'] = np.nan
+        self.ivpk_v = []
+        data1 = self.Clamps.traces['Time': region[0]:region[1]]
+        if data1.shape[1] == 0 or data1.shape[0] == 1:
+            return  # skip it
 
-        isort = np.argsort(self.ivss_cmd)
-        self.ivss_cmd = self.ivss_cmd[isort]
-        self.ivss_v = self.ivss_v[isort]
+        # check out whether there are spikes in the window that is selected
+        threshold = self.Spikes
+        ntr = len(self.Clamps.traces)
+        if not self.Spikes.spikes_counted:
+            print("ivss_analysis: spikes not counted yet? - let's go analyze them...")
+            self.analyzeSpikes()
 
+        self.ivpk_v = data1.min(axis=1)  # all traces, minimum voltage found
+        if len(self.Spikes.nospk) >= 1:
+            # Steady-state IV where there are no spikes
+            self.ivpk_v = self.ivpk_v[self.Spikes.nospk]
+            self.ivpk_cmd = self.Clamps.commandLevels[self.Spikes.nospk]
+            bl = self.ivbaseline[self.Spikes.nospk]
+            isort = np.argsort(self.ivpk_cmd)
+            self.ivpk_cmd = self.ivpk_cmd[isort]
+            self.ivpk_v = self.ivpk_v[isort]
+            bl = bl[isort]
+            self.ivpk_bl = bl
+            if len(self.ivpk_cmd) > 1 and len(self.ivpk_v) > 1:
+                pf = np.polyfit(self.ivpk_cmd, self.ivpk_v, 3, rcond=None, full=False, w=None, cov=False)
+                pval = np.polyval(pf, self.ivpk_cmd)
+                slope = np.diff(pval) / np.diff(self.ivpk_cmd)
+                imids = np.array((self.ivpk_cmd[1:] + self.ivpk_cmd[:-1]) / 2.)
+                self.rpk_fit ={'I': imids, 'V': np.polyval(pf, imids)}
+                l = int(len(slope)/2)
+                maxloc = np.argmax(slope[l:]) + l
+                self.r_in_peak = slope[maxloc]
+                self.r_in_peak_loc = [self.ivpk_cmd[maxloc], self.ivpk_v[maxloc], maxloc]  # where it was found
+                minloc = np.argmin(slope[:l])
+                self.r_in_minpeak = slope[minloc]
+                self.r_in_minpeak_loc = [self.ivpk_cmd[minloc], self.ivpk_v[minloc], minloc]  # where it was found
+
+                self.analysis_summary['Rin_peak'] = self.r_in_peak*1.0e-6
 
     def leak_subtract(self):
         self.yleak = np.zeros(len(self.ivss_v))

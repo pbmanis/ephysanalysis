@@ -118,10 +118,51 @@ class Acq4Read():
         self._index = configfile.readConfigFile(indexFile)
         return self._index
 
+    def readDirIndex(self, currdir=''):
+        self._dirindex = None
+        indexFile = os.path.join(currdir, '.index')
+        print (indexFile)
+        if not os.path.isfile(indexFile):
+            print("Directory '%s' is not managed!" % (currdir))
+            return self._dirindex
+        self._dirindex = configfile.readConfigFile(indexFile)
+        return self._dirindex
+
+    def _parse_index(self, index):
+        """
+        Recursive version
+        """
+        self.indent += 1
+        if isinstance(index, list):
+            for i in range(len(index)):
+                index[i] = self._parse_index(index[i])
+                if isinstance(index[i], list):
+                    print(' '*self.indent*4, ': list, len- ', len(index[i]))
+                else:
+                    print(' '*self.indent*4, index[i])
+        elif isinstance(index, dict):
+            for k in index.keys():
+                index[k] = self._parse_index(index[k])
+                if isinstance(index[k], list) or isinstance(index[k], np.ndarray):
+                    print(' '*self.indent*4, k, ': list len= ', len(index[k]))
+                else:
+                    print(' '*self.indent*4, k, ': ', index[k])
+        elif isinstance(index, bytes):  # change all bytestrings to string and remove internal quotes
+            index = index.decode('utf-8').replace("\'", '')
+          #  print(' '*self.indent*4, 'b: ', index)
+        self.indent -= 1
+        return index
+        
     def printIndex(self, index):
         """
         Generate a nice printout of the index, about as far down as we can go
         """
+        self.indent = 0
+        
+        self._parse_index(index)
+        
+        return
+        
         for k in index['.'].keys():
             print( '  ', k, ':  ', index['.'][k])
             if isinstance(index['.'][k], dict):
@@ -133,6 +174,18 @@ class Acq4Read():
                             if isinstance(index['.'][k][k2][k3], dict):
                                 for k4 in index['.'][k][k2][k3]:
                                     print( '    [', k, '][', k2, '][', k3, '][', k4, '] ::::  ', index['.'][k][k2][k3][k4])
+
+    def file_cell_protocol(self, filename):
+        """
+        file_cell_protocol breaks the current filename down and returns a
+        tuple: (date, cell, protocol)
+        last argument returned is the rest of the path...
+        """
+        (p0, proto) = os.path.split(filename)
+        (p1, cell) = os.path.split(p0)
+        (p2, sliceid) = os.path.split(p1)
+        (p3, date) = os.path.split(p2)
+        return (date, sliceid, cell, proto, p3)
 
     def getClampDevices(self, currdir=''):
         """

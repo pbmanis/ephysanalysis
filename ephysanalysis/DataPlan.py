@@ -30,6 +30,8 @@ class DataPlan():
         if ext == '':
             ext = '.py'
         if ext == '.py':
+            h = open(fn+ext).read()
+            print('h: ', h)
             exec(open(fn+ext).read(), data)
             #execfile(fn + ext, data)  old python 2.7 version
             self.datasource = datadictname
@@ -116,6 +118,7 @@ class DataPlan():
                 if matchstring:
                     res = re.findall(re_plist, matchstring.group(0))
                 ds[s]['prots'] = res[1:]
+                print(ds[s].keys())
                 ds[s]['IV'] = str(ds[s]['IV']).strip()
                 ds[s]['Map'] = str(ds[s]['Map']).strip()
                 #print('protos:')
