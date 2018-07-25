@@ -698,34 +698,50 @@ if __name__ == "__main__":
         print(allp)
     if args.read:
         df = pd.read_pickle(ds.outFilename)
-        # print(df.head(5))
-        # print('------')
-        # print('Known column names: ', df.columns.values)
-        # for c in [ 'Date', 'Description', 'Notes', 'Species', 'Genotype', 'Age', 'Sex', 'Weight',
-        #     'Temp', 'Important', 'ElapsedT', 'CellType', 'Slice', 'SliceNotes' ,'Cell',
-        #     'CellNotes', 'Protocols', 'AllProtocols', 'Images',]:
-        #    print('****  {0:s} ****'.format(c))
-        #    print(df[c])
-        #allp = df.CompleteProtocols
-        df2 = df.set_index("Date", drop=False)
-        print(df2.head(5))
+        print(df.head(10))
 
-        day= '2017.10.25_000'
+        df2 = df.set_index("Date", drop=False)
+        #print(df2.head(5))
+        # select a date:
+        
+        day= '2017.07.28_000'
+        
+        # get the complete protocols:
         prots = df2.loc[day, ['Slice', 'Cell', 'CompleteProtocols']]  # to build datapaths 
+        
         maps = []
         IVs = []
-        for i in range(prots['Slice'].count()):
-            u = prots.iloc[i]['CompleteProtocols'].split(', ')
-            prox = sorted(list(set(u)))
-            for x in prox:
-                c = day + '/' + prots.iloc[i]['Slice'] + '/' + prots.iloc[i]['Cell'] + '/' + x
+        stdIVs = []
+#        print('isdataframe: ', isinstance(prots, pd.DataFrame))
+#       Only returns a dataframe if there is more than one entry
+#       Otherwise, it is like a series or dict
+        if isinstance(prots, pd.DataFrame):
+            for i in range(prots.shape[0]):
+                u = prots.iloc[i]['CompleteProtocols'].split(', ')  # get the protocols
+                prox = sorted(list(set(u)))  # adjust for duplicates (must be a better way in pandas)
+                for x in prox:  # construct filenames and sort by analysis types
+                    c = day + '/' + prots.iloc[i]['Slice'] + '/' + prots.iloc[i]['Cell'] + '/' + x
+                    if 'Map' in c:
+                        maps.append(c)
+                    if 'IV' in c:
+                        IVs.append(c)
+#                    print (c)
+        else:
+            u = prots['CompleteProtocols'].split(', ')
+            prox = sorted(list(set(u)))  # adjust for duplicates (must be a better way in pandas)
+            for x in prox:  # construct filenames and sort by analysis types
+                c = day + '/' + prots['Slice'] + '/' + prots['Cell'] + '/' + x
                 if 'Map' in c:
                     maps.append(c)
-                if 'IV' in c:
+                if 'CCIV' in c or 'VCIV' in c:
                     IVs.append(c)
-                print (c)
-        print('maps: ', maps)
-        print('ivs: ', IVs)
+                if 'CCIV_1nA_max' in c:
+                    stdIVs.append(c)
+#                print (c)
+#            print('u: ', u)
+        print('maps: ', '   \n'.join(maps))
+        print('ivs: ', '    \n'.join(IVs))
+        print('std ivs: ', '    \n'.join(stdIVs))
         #print(allp)
         # prots = allp['CompleteProtocols']
  #        print(prots)
