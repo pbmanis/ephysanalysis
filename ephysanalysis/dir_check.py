@@ -53,6 +53,8 @@ class DirCheck():
         """
         Check directory structure
         """
+        if topdir.endswith(os.path.sep):
+            topdir = topdir[:-1]
         self.topdir = topdir
         
         self.img_re = re.compile('^[Ii]mage_(\d{3,3}).tif')  # make case insensitive - for some reason in Xuying's data
@@ -75,30 +77,31 @@ class DirCheck():
         # check to see if top dir is a day or just a generic directory
         # if it is a generic directory, we get a list of dirs
         # if it is a day, we make a list out of the day
-        path, lastdir = os.path.split(topdir)
+        path, lastdir = os.path.split(self.topdir)
         td = self.daytype.match(lastdir)
+        print(path, td)
         if td is not None:
             topdirs = [lastdir]
-            topdir = path
+            self.topdir = path
         else:
-            topdirs = os.listdir(topdir)
-        fmtstring = '{0:>15s} {1:<10s} {2:<10s} {3:<40} {4:>20}'
-        fmtstring2 = '{0:>15s} {1:<10s} {2:<40s} {3:<10} {4:>20}'
+            topdirs = os.listdir(self.topdir)
+        
+        print(topdirs)
+       # exit(1)
+        fmtstring = '{0:>15s} {1:<10s} {2:<10s} {3:<40} {4:>20}  '
+        fmtstring2 = '{0:>15s} {1:<10s} {2:<40s} {3:<10} {4:>20}  '
 
         for d in sorted(topdirs):
-            print(colored('', 'white'))
-            if d in ['.DS_Store', 'log.txt'] or d.endswith('.xlsx') or d.endswith('.py'):
+            print(colored(' ', 'white'))
+            if d in ['.DS_Store', 'log.txt'] or self.check_extensions(d):
                 continue
             if any([d.endswith(e) for e in ['.tif', '.ma']]):
                 continue
             if d in ['.index']:
-                indir = os.path.join(self.topdir, d)
+                indir = os.path.join(self.topdir)
                 ind = AR.readDirIndex(self.topdir)
                 AR.printIndex(ind)
                 continue
-
-            #ind = AR.readDirIndex(d)
-           # AR.printIndex(ind)
 
             m = self.daytype.match(d)
             tstamp = self.gettimestamp(os.path.join(self.topdir, d))
@@ -108,22 +111,32 @@ class DirCheck():
             else:
                 print(colored((fmtstring+'is not a DAY directory').format(d, '', '', '', tstamp), 'red'))
             
-            for s in sorted(os.listdir(os.path.join(topdir, d))):
-                if s in ['.index', '.DS_Store', 'log.txt']:
+            for s in sorted(os.listdir(os.path.join(self.topdir, d))):
+                if s in ['.index']:
+                    indir = os.path.join(self.topdir, d)
+                    ind = AR.readDirIndex(indir)
+                    AR.printIndex(ind)
+                    continue
+                if s in ['.index', '.DS_Store', 'log.txt'] or self.check_extensions(s):
                     continue
                 tstamp = self.gettimestamp(os.path.join(self.topdir, d, s))
                 if any([s.endswith(e) for e in ['.tif', '.ma']]):
                     st = os.stat(os.path.join(self.topdir, d, s))  # unmanaged (though may be in top index file)
                     tstamp = datetime.datetime.fromtimestamp(st[stat.ST_MTIME]).strftime('%Y-%m-%d  %H:%M:%S %z')
-                    print(colored(fmtstring + 'data file not associated with slice or cell'.format('', s, '', '', tstamp), 'cyan'))
+                    print(colored((fmtstring + 'data file not associated with slice or cell').format('', s, '', '', tstamp), 'cyan'))
                     continue
                 if s.startswith('slice_'):
                     print(colored(fmtstring.format('', s, '', '', tstamp), 'white'))
                 else:
-                    print(colored(fmtstring + '   is not a SLICE directory'.format('', s, '', '', tstamp), 'red'))
+                    print(colored((fmtstring + '   is not a SLICE directory').format('', s, '', '', tstamp), 'red'))
 
-                for c in sorted(os.listdir(os.path.join(topdir, d, s))):
-                    if c in ['.index', '.DS_Store', 'log.txt']:
+                for c in sorted(os.listdir(os.path.join(self.topdir, d, s))):
+                    if c in ['.index']:
+                        indir = os.path.join(self.topdir, d, s)
+                        ind = AR.readDirIndex(indir)
+                        AR.printIndex(ind)
+                        continue
+                    if c in ['.index', '.DS_Store', 'log.txt'] or self.check_extensions(c):
                         continue
                     if any([c.endswith(e) for e in ['.tif', '.ma']]):
                         continue
@@ -133,8 +146,8 @@ class DirCheck():
                     else:
                         print(colored((fmtstring2 + 'is not a CELL directory').format('', '', c, '', tstamp), 'red'))
                         continue
-                    for pr in sorted(os.listdir(os.path.join(topdir, d, s, c))):
-                        if pr in ['.index', '.DS_Store', 'log.txt']:
+                    for pr in sorted(os.listdir(os.path.join(self.topdir, d, s, c))):
+                        if pr in ['.index', '.DS_Store', 'log.txt'] or self.check_extensions(pr):
                             continue
                         if any([pr.endswith(e) for e in ['.tif', '.ma']]):
                             continue
@@ -143,6 +156,10 @@ class DirCheck():
         
         print(colored('-'*90, 'blue'))
 
+    def check_extensions(self, d):
+        return(any([d.endswith(e) for e in ['.xlsx', '.p', '.py', '.pkl', '.sql', '.txt', '.doc', '.docx']]))
+    
+ #   def show_index(self, )
     def gettimestamp(self, path):
         """
         Get the timestamp of an .index file

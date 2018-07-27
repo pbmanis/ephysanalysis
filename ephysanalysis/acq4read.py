@@ -16,8 +16,11 @@ import numpy as np
 import datetime
 import matplotlib.pyplot as mpl
 import pprint
+import textwrap as WR
+import collections
 
 pp = pprint.PrettyPrinter(indent=4)
+
 
 
 class Acq4Read():
@@ -124,7 +127,7 @@ class Acq4Read():
     def readDirIndex(self, currdir=''):
         self._dirindex = None
         indexFile = os.path.join(currdir, '.index')
-        print (indexFile)
+       # print (indexFile)
         if not os.path.isfile(indexFile):
             print("Directory '%s' is not managed!" % (currdir))
             return self._dirindex
@@ -152,30 +155,38 @@ class Acq4Read():
             for i in range(len(index)):
                 index[i] = self._parse_index(index[i])
                 if isinstance(index[i], list):
-                    print(' '*self.indent*4, ': list, len- ', len(index[i]))
+                    print(' '*self.indent*4, ': list, len= ', len(index[i]))
                 else:
                     print(' '*self.indent*4, index[i])
         elif isinstance(index, dict):
             for k in index.keys():
+                if k.endswith('.ma') or k.endswith('.tif'):
+                    continue
+
                 index[k] = self._parse_index(index[k])
                 if isinstance(index[k], list) or isinstance(index[k], np.ndarray):
                     print(' '*self.indent*4, k, ': list/array, len= ', len(index[k]))
-                elif k != '__timestamp__':
-                    print('{0:s}{1:>20s} : '.format(''*self.indent*4, k)) # , index[k])
-                # elif k == '__timestamp__':
-                #     tstamp = self.convert_timestamp(index[k])
-                #     if tstamp is not None:
-                #        # print (tstamp)
-                #         print('{0:>20s}'.format(tstamp))
-                else:
-                    pass
+                elif k not in ['__timestamp__', '.']:
+                    indents = ' '*(self.indent*4)
+                    indents2 = ' '*(23+self.indent*4)
+                    # do a textwrap on ths string
+                    if k in ['description', 'notes']:
+                        print('{0:s}{1:>20s} : '.format(indents, k))
+                        wrapper = WR.TextWrapper(initial_indent=indents2, subsequent_indent=indents2, width=120)
+                        for t in wrapper.wrap(str(index[k])):
+                            print(t)
+                    else:
+                        if not isinstance(index[k], collections.OrderedDict):
+                            print('{0:s}{1:>20s} : {2:<s}'.format(indents, k, str(index[k])))
+                        else:
+                            break
+                elif k in ['__timestamp__']:
+                    tstamp = self.convert_timestamp(index[k])
+                    if tstamp is not None:
+                        print('{0:s}{1:>20s} : {2:s}'.format(' '*self.indent*4, 'timestamp', tstamp))
         elif isinstance(index, bytes):  # change all bytestrings to string and remove internal quotes
             index = index.decode('utf-8').replace("\'", '')
-           # print('bytes', index)
-          #  print(' '*self.indent*4, 'b: ', index)
-            # tstamp = self._parse_timestamp(ts)
-            # if tstamp is not None:
-            #     print(' '*self.indent*4, k, ': ', index[k])
+            print(' '*self.indent*4, 'b: ', index)
         self.indent -= 1
         return index
         
@@ -185,7 +196,6 @@ class Acq4Read():
         """
         self.indent = 0
         self._parse_index(index)
-        
         return
         
         # for k in index['.'].keys():
