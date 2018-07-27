@@ -9,9 +9,11 @@ Requires pyqtgraph to read the .ma files and the .index file
 
 """
 import os
+import re
 from pyqtgraph import metaarray
 from pyqtgraph import configfile
 import numpy as np
+import datetime
 import matplotlib.pyplot as mpl
 import pprint
 
@@ -63,6 +65,7 @@ class Acq4Read():
         clamps.extend([(aon, 'Pulse_amplitude'), (apn, 'Pulse_amplitude')])
         self.clampdevices.extend([aon, apn])
         self.clamps = clamps
+        self.tstamp = re.compile('\s*(__timestamp__: )([\d.\d]*)')
         
     def setProtocol(self, pathtoprotocol):
         """
@@ -128,6 +131,18 @@ class Acq4Read():
         self._dirindex = configfile.readConfigFile(indexFile)
         return self._dirindex
 
+    def _parse_timestamp(self, lstr):
+        tstamp = None
+        ts = self.tstamp.match(lstr)
+        if ts is not None:
+            fts = float(ts.group(2))
+            tstamp = datetime.datetime.fromtimestamp(fts).strftime('%Y-%m-%d  %H:%M:%S %z')
+        return tstamp
+
+    def convert_timestamp(self, fts):
+        tstamp = datetime.datetime.fromtimestamp(fts).strftime('%Y-%m-%d  %H:%M:%S %z')
+        return tstamp
+       
     def _parse_index(self, index):
         """
         Recursive version
@@ -144,12 +159,23 @@ class Acq4Read():
             for k in index.keys():
                 index[k] = self._parse_index(index[k])
                 if isinstance(index[k], list) or isinstance(index[k], np.ndarray):
-                    print(' '*self.indent*4, k, ': list len= ', len(index[k]))
+                    print(' '*self.indent*4, k, ': list/array, len= ', len(index[k]))
+                elif k != '__timestamp__':
+                    print('{0:s}{1:>20s} : '.format(''*self.indent*4, k)) # , index[k])
+                # elif k == '__timestamp__':
+                #     tstamp = self.convert_timestamp(index[k])
+                #     if tstamp is not None:
+                #        # print (tstamp)
+                #         print('{0:>20s}'.format(tstamp))
                 else:
-                    print(' '*self.indent*4, k, ': ', index[k])
+                    pass
         elif isinstance(index, bytes):  # change all bytestrings to string and remove internal quotes
             index = index.decode('utf-8').replace("\'", '')
+           # print('bytes', index)
           #  print(' '*self.indent*4, 'b: ', index)
+            # tstamp = self._parse_timestamp(ts)
+            # if tstamp is not None:
+            #     print(' '*self.indent*4, k, ': ', index[k])
         self.indent -= 1
         return index
         
@@ -158,22 +184,21 @@ class Acq4Read():
         Generate a nice printout of the index, about as far down as we can go
         """
         self.indent = 0
-        
         self._parse_index(index)
         
         return
         
-        for k in index['.'].keys():
-            print( '  ', k, ':  ', index['.'][k])
-            if isinstance(index['.'][k], dict):
-                for k2 in index['.'][k].keys():
-                    print ('    ', k, ' ', k2, '::  ', index['.'][k][k2])
-                    if isinstance(index['.'][k][k2], dict):
-                        for k3 in index['.'][k][k2]:
-                            print ('    ', k, ' ', k2, ' ', k3, ':::  ', index['.'][k][k2][k3])
-                            if isinstance(index['.'][k][k2][k3], dict):
-                                for k4 in index['.'][k][k2][k3]:
-                                    print( '    [', k, '][', k2, '][', k3, '][', k4, '] ::::  ', index['.'][k][k2][k3][k4])
+        # for k in index['.'].keys():
+        #     print( '  ', k, ':  ', index['.'][k])
+        #     if isinstance(index['.'][k], dict):
+        #         for k2 in index['.'][k].keys():
+        #             print ('    ', k, ' ', k2, '::  ', index['.'][k][k2])
+        #             if isinstance(index['.'][k][k2], dict):
+        #                 for k3 in index['.'][k][k2]:
+        #                     print ('    ', k, ' ', k2, ' ', k3, ':::  ', index['.'][k][k2][k3])
+        #                     if isinstance(index['.'][k][k2][k3], dict):
+        #                         for k4 in index['.'][k][k2][k3]:
+        #                             print( '    [', k, '][', k2, '][', k3, '][', k4, '] ::::  ', index['.'][k][k2][k3][k4])
 
     def file_cell_protocol(self, filename):
         """
