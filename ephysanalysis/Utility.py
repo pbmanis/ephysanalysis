@@ -506,7 +506,9 @@ class Utility():
                         continue
                 else:
                     #print('utility: yere', x)
-                    st = np.append(st, xx[1]) # always save the first one
+                    if len(xx) > 1:
+                        st = np.append(st, xx[1]) # always save the first one
+
 
         # clean spike times
         #st = clean_spiketimes(st, mindT=refract)

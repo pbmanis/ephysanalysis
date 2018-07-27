@@ -33,6 +33,7 @@ Future:
 import sys
 import os
 import re
+import math  # use to check nan value...
 import argparse
 import os.path
 import gc
@@ -48,7 +49,11 @@ import pandas.compat # for StringIO
 from ephysanalysis import acq4read
 from pyqtgraph.metaarray import MetaArray
 
-
+class Printer():
+    """Print things to stdout on one line dynamically"""
+    def __init__(self,data):
+        sys.stdout.write("\033[1;36m\r\x1b[K\033[0;0m"+data.__str__())
+        sys.stdout.flush()
 
 class DataSummary():
     """
@@ -269,7 +274,7 @@ class DataSummary():
         returning information about those within the date range, with details as specified by the options
         """
         allfiles = os.listdir(self.basedir)
-        
+        self.pstring = ''
         days = []
         for thisfile in allfiles:
             m = self.daytype.match(thisfile)
@@ -291,9 +296,10 @@ class DataSummary():
                         days.append(thisfile)
         if self.monitor:
             print ('Days reported: ', days)
-        for day in days:
-            if self.monitor:
-                print ('Processing day: %s' % day)
+        for nd, day in enumerate(days):
+#            if self.monitor:
+            self.pstring = 'Processing day[%3d/%3d]: %s ' % (nd, len(days), day)
+            Printer(self.pstring)
             self.daystring = '%s\t' % (day.strip())
             self.AR.setProtocol(os.path.join(self.basedir, day))
             self.day = self.AR.getIndex()
@@ -322,14 +328,16 @@ class DataSummary():
                 continue
             if len(m.groups()) == 2:
                 slices.append(thisfile)
-        for slice in slices:
-            self.slicestring = '%s\t' % (slice)
-            self.slice = self.AR.getIndex(os.path.join(day, slice))
+        for slicen in slices:
+            self.sstring = self.pstring + ' %s' % slicen
+            Printer(self.sstring)
+            self.slicestring = '%s\t' % (slicen)
+            self.slice = self.AR.getIndex(os.path.join(day, slicen))
             self.slicestring = self.wrapstring(self.slicestring, self.slice, 'notes', self.tw['slice'])
             if self.dryrun and self.depth=='slices':
                 self.outputString(self.daystring + self.day_summarystring + self.slicestring)
             else:
-                self.doCells(os.path.join(day, slice))
+                self.doCells(os.path.join(day, slicen))
             gc.collect()
 
     def doCells(self, slice):
@@ -339,15 +347,17 @@ class DataSummary():
         :return nothing:
         """
         allfiles = os.listdir(slice)
-        celltype = re.compile("(cell_)(\d{3,3})")
+        cell_re = re.compile("(cell_)(\d{3,3})")
         cells = []
         for thisfile in allfiles:
-            m = celltype.match(thisfile)
+            m = cell_re.match(thisfile)
             if m is None:
                 continue
             if len(m.groups()) == 2:
                 cells.append(thisfile)
         for cell in cells:
+            self.cstring = self.sstring + " %s" % cell
+            Printer(self.cstring)
             self.cellstring = '%s\t' % (cell)
             try:
                 self.cell = self.AR.getIndex(os.path.join(slice, cell))  # possible that .index file is missing, so we cannot read
@@ -389,9 +399,10 @@ class DataSummary():
         self.allprotocols = ''
         self.completeprotocols = ''
         if self.InvestigateProtocols is True:
-            self.day_summarystring = 'NaN\t'*6
+           # self.day_summarystring = 'NaN\t'*6
 
             for np, protocol in enumerate(protocols):
+                Printer(self.cstring + ' Prot[%2d/%2d]: %s' % (np, len(protocols), protocol))
                 self.allprotocols += protocol+', '
                 protocolpath = os.path.join(cell, protocol)
                 if np == 0:
@@ -452,7 +463,8 @@ class DataSummary():
 
             anyprotocols = True
             prots = {}
-            for protocol in protocols:
+            for np, protocol in enumerate(protocols):
+                Printer(self.cstring + ' Prot[%2d/%2d]: %s' % (np,len(protocols), protocol))
                 self.allprotocols += protocol+', '
                 m = endmatch.search(protocol)
                 if m is not None:
@@ -572,6 +584,8 @@ class DataSummary():
         self.analysis_summary['Internal'] = self.day['internal']
         self.analysis_summary['Temp'] = self.day['temperature']
         self.analysis_summary['Important'] = 'N'
+        print('\nself cell: ', self.cell)
+        print('analysis summary[cell]: ', self.analysis_summary['Cell'])
         if 'important' in self.day.keys():
 #            print('important: ', self.day['important'])
             if self.day['important']:
@@ -579,11 +593,16 @@ class DataSummary():
                 self.day['important'] = 'N'
         else:
             self.day['important'] = 'N'
+        self.analysis_summary['CellType'] = 'X'
         if self.cell is not None and 'type' in self.cell.keys():
-            self.analysis_summary['CellType'] = self.cell[u'type']
-        else:
-            self.analysis_summary['CellType'] = 'N/A'
-
+            print ('\n   cell type: ', self.cell['type'], len(self.cell['type']))
+            if len(self.cell['type']) > 0:  # only set if there is a value
+                self.analysis_summary['CellType'] = self.cell['type']
+            if isinstance(self.cell['type'], str):
+                print('cell is string, len is: %d', len(self.cell['type']))
+            else:
+                print('isnan cell type: ', math.isnan(self.cell['type']))
+        
         today = self.analysis_summary['Day']
         if today is not None:
 
@@ -733,7 +752,7 @@ if __name__ == "__main__":
                 c = day + '/' + prots['Slice'] + '/' + prots['Cell'] + '/' + x
                 if 'Map' in c:
                     maps.append(c)
-                if 'CCIV' in c or 'VCIV' in c:
+                if 'CCIV' in c in c:
                     IVs.append(c)
                 if 'CCIV_1nA_max' in c:
                     stdIVs.append(c)

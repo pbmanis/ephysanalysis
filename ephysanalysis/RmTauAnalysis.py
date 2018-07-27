@@ -289,11 +289,11 @@ class RmTauAnalysis():
             if len(self.ivss_cmd) > 1 and len(self.ivss_v) > 1:
                 pf = np.polyfit(self.ivss_cmd, self.ivss_v, 3, rcond=None, full=False, w=None, cov=False)
                 pval = np.polyval(pf, self.ivss_cmd)
-                print('pval: ', pval)
+                #print('pval: ', pval)
                 slope = np.diff(pval) / np.diff(self.ivss_cmd)  # local slopes
                 imids = np.array((self.ivss_cmd[1:] + self.ivss_cmd[:-1]) / 2.)
                 self.rss_fit ={'I': imids, 'V': np.polyval(pf, imids)}
-                print('fit V: ', self.rss_fit['V'])
+                #print('fit V: ', self.rss_fit['V'])
                 #slope = slope[[slope > 0 ] and [self.ivss_cmd[:-1] > -0.8] ] # only consider positive slope points
                 l = int(len(slope)/2)
                 maxloc = np.argmax(slope[l:]) + l
