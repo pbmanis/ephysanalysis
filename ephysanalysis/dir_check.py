@@ -49,7 +49,7 @@ class Printer():
 
 
 class DirCheck():
-    def __init__(self, topdir):
+    def __init__(self, topdir, protocol=False):
         """
         Check directory structure
         """
@@ -57,6 +57,7 @@ class DirCheck():
             topdir = topdir[:-1]
         self.topdir = topdir
         
+        self.show_protocol = protocol
         self.img_re = re.compile('^[Ii]mage_(\d{3,3}).tif')  # make case insensitive - for some reason in Xuying's data
         self.s2p_re = re.compile('^2pStack_(\d{3,3}).ma')
         self.i2p_re = re.compile('^2pImage_(\d{3,3}).ma')
@@ -112,13 +113,10 @@ class DirCheck():
                 print(colored((fmtstring+'is not a DAY directory').format(d, '', '', '', tstamp), 'red'))
             
             for s in sorted(os.listdir(os.path.join(self.topdir, d))):
-                if s in ['.index']:
-                    indir = os.path.join(self.topdir, d)
-                    ind = AR.readDirIndex(indir)
-                    AR.printIndex(ind)
-                    continue
                 if s in ['.index', '.DS_Store', 'log.txt'] or self.check_extensions(s):
                     continue
+
+
                 tstamp = self.gettimestamp(os.path.join(self.topdir, d, s))
                 if any([s.endswith(e) for e in ['.tif', '.ma']]):
                     st = os.stat(os.path.join(self.topdir, d, s))  # unmanaged (though may be in top index file)
@@ -127,22 +125,21 @@ class DirCheck():
                     continue
                 if s.startswith('slice_'):
                     print(colored(fmtstring.format('', s, '', '', tstamp), 'white'))
+                    indir = os.path.join(self.topdir, d, s)
+                    ind = AR.readDirIndex(indir)
+                    AR.printIndex(ind)
                 else:
                     print(colored((fmtstring + '   is not a SLICE directory').format('', s, '', '', tstamp), 'red'))
 
                 for c in sorted(os.listdir(os.path.join(self.topdir, d, s))):
-                    if c in ['.index']:
-                        indir = os.path.join(self.topdir, d, s)
-                        ind = AR.readDirIndex(indir)
-                        AR.printIndex(ind)
-                        continue
                     if c in ['.index', '.DS_Store', 'log.txt'] or self.check_extensions(c):
-                        continue
-                    if any([c.endswith(e) for e in ['.tif', '.ma']]):
                         continue
                     tstamp = self.gettimestamp(os.path.join(self.topdir, d, s, c))
                     if c.startswith('cell_'):
                         print(colored(fmtstring.format('', '', c, '', tstamp), 'white'))
+                        indir = os.path.join(self.topdir, d, s, c)
+                        ind = AR.readDirIndex(indir)
+                        AR.printIndex(ind)
                     else:
                         print(colored((fmtstring2 + 'is not a CELL directory').format('', '', c, '', tstamp), 'red'))
                         continue
@@ -153,11 +150,16 @@ class DirCheck():
                             continue
                         tstamp = self.gettimestamp(os.path.join(self.topdir, d, s, c, pr))
                         print(colored(fmtstring.format('', '', '', pr, tstamp), 'white'))
+                        if self.show_protocol:
+                            indir = os.path.join(self.topdir, d, s, c, pr)
+                            ind = AR.readDirIndex(indir)
+                            AR.printIndex(ind)
+                            print('              -----------------------\n')
         
         print(colored('-'*90, 'blue'))
 
     def check_extensions(self, d):
-        return(any([d.endswith(e) for e in ['.xlsx', '.p', '.py', '.pkl', '.sql', '.txt', '.doc', '.docx']]))
+        return(any([d.endswith(e) for e in ['.xlsx', '.p', '.py', '.pkl', '.sql', '.txt', '.doc', '.docx', '.tif', '.ma']]))
     
  #   def show_index(self, )
     def gettimestamp(self, path):
@@ -185,6 +187,8 @@ if __name__ == '__main__':
                         help='Base Directory')
     parser.add_argument('-r', '--read', action='store_true', dest='read',
                         help='just read the protocol')
+    parser.add_argument('-p', action='store_true', dest='protocol',
+                        help='Print protocol information (normally suppressed, very verbose)')
     args = parser.parse_args()
-    DirCheck(args.basedir)
+    DirCheck(args.basedir, args.protocol)
     
