@@ -69,7 +69,7 @@ class Printer():
 
 class DataSummary():
 
-    def __init__(self, basedir, outputMode='terminal', daylistfile=None,
+    def __init__(self, basedir, outputMode='terminal', outputFile=None, daylistfile=None,
                  after=None, before=None, dryrun=False, depth='all', inspect=True):
         """
         Note that the init is just setup - you have to call getDay the object to do anything
@@ -118,7 +118,7 @@ class DataSummary():
         # gather input parameters
         self.basedir = basedir
         self.outputMode = outputMode  # terminal, tabfile, pandas
-        self.outFilename = ''
+        self.outFilename = outputFile
         self.daylistfile = daylistfile
         self.dryrun = dryrun
         self.after = after
@@ -170,24 +170,24 @@ class DataSummary():
                         )        
         self.AR = acq4read.Acq4Read()  # instance of the reader
 
-        outputDir = os.path.join(os.path.expanduser("~"), 'Desktop/acq4_scripts')
+#        outputDir = os.path.join(os.path.expanduser("~"), 'Desktop/acq4_scripts')
         if self.outputMode == 'tabfile':
-            self.outFilename = self.basedir.replace('/', '_') + '.tab'
-            self.outFilename = self.outFilename.replace('\\', '_')
-            if self.outFilename[0] == '_':
-                self.outFilename = self.outFilename[1:]
-            self.outFilename = os.path.join(outputDir, self.outFilename)
+            # self.outFilename = self.basedir.replace('/', '_') + '.tab'
+            # self.outFilename = self.outFilename.replace('\\', '_')
+            # if self.outFilename[0] == '_':
+            #     self.outFilename = self.outFilename[1:]
+            # self.outFilename = os.path.join(outputDir, self.outFilename)
             print('Tabfile output: Writing to {:<s}'.format(self.outFilename))
             h = open(self.outFilename, 'w')  # write new file
             h.write(self.basedir+'\n')
             h.write(self.coldefs + '\n')
             h.close()
         elif self.outputMode == 'pandas':  # save output as a pandas data structure, pickled
-            self.outFilename = self.basedir.replace('/', '_') + '.pkl'
-            self.outFilename = self.outFilename.replace('\\', '_')
-            if self.outFilename[0] == '_':
-                self.outFilename = self.outFilename[1:]
-            self.outFilename = os.path.join(outputDir, self.outFilename)
+            # self.outFilename = self.basedir.replace('/', '_') + '.pkl'
+            # self.outFilename = self.outFilename.replace('\\', '_')
+            # if self.outFilename[0] == '_':
+            #     self.outFilename = self.outFilename[1:]
+            # self.outFilename = os.path.join(outputDir, self.outFilename)
             print('Pandas output: will write to {:<s}'.format(self.outFilename))
         else:
             pass  # just print if terminal
@@ -656,6 +656,8 @@ if __name__ == "__main__":
     parser.add_argument('-o', '--output', type=str, default='terminal', dest='output',
                         choices=['terminal', 'pandas', 'excel', 'tabfile'],
                         help='Specify output dataplan key for one entry to process')
+    parser.add_argument('-f', '--filename', type=str, default='terminal', dest='outputFilename',
+                        help='Specify output file name (including full path)')
     parser.add_argument('-r', '--read', action='store_true', dest='read',
                         help='just read the summary table')
     parser.add_argument('-w', '--write', action='store_true', dest='write',
@@ -675,7 +677,7 @@ if __name__ == "__main__":
                         choices = ['days', 'slices', 'cells', 'protocols', 'all'],
                         help='Specify depth for --dry-run')
     args = parser.parse_args()
-    ds = DataSummary(basedir=args.basedir, daylistfile=args.daylist, outputMode=args.output,
+    ds = DataSummary(basedir=args.basedir, daylistfile=args.daylist, outputMode=args.output, outputFile=args.outputFilename,
             after=args.after, before=args.before, dryrun=args.dryrun, depth=args.depth, inspect=args.noinspect)
  
     if args.write:
