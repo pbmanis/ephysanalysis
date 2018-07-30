@@ -565,10 +565,7 @@ class DataSummary():
             self.imagestring += ', Videos: %3d' % len(videos)
         if len(images) + len(stacks2p) + len(images2p) + len(videos) == 0:
             self.imagestring = 'No Images or Videos'
-        
-        # if anyprotocols:
-        #     ostring = self.daystring + self.thiscell_summarystring + self.slicestring + self.cellstring + self.protocolstring + self.completeprotocols + self.imagestring
-        # else:
+
         ostring = OrderedDict([('incomplete', self.incompleteprotocolstring.rstrip(', ')),  ('complete', self.compprotstring.rstrip(', ')), ('images', self.imagestring)])
         self.outputString(ostring)
 

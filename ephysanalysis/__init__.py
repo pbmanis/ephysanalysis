@@ -18,6 +18,7 @@ import ephysanalysis.RmTauAnalysis
 import ephysanalysis.SpikeAnalysis
 import ephysanalysis.dataSummary
 import ephysanalysis.IVSummary
+import ephysanalysis.VCSummary
 
 import ephysanalysis.metaarray as MetaArray
 
