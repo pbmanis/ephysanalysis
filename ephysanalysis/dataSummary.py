@@ -24,10 +24,7 @@ Mar 2018: Version 2
 Uses acq4read and is independent of acq4 itself.
 
 July 2018: 
-Major surgery - to output Pandas (pickled) files as well. 
-
-Future:
-    Provide API/class interface (see all the "set" functions)
+Major surgery - to output Pandas (pickled) files as well. UGH.
 
 """
 import sys
@@ -49,58 +46,73 @@ import pandas.compat # for StringIO
 from ephysanalysis import acq4read
 from pyqtgraph.metaarray import MetaArray
 
+def ansi_colors(color):
+    colors = {
+    'black': '\u001b[30m',
+    'red': '\u001b[31m',
+    'green': '\u001b[32m',
+    'yellow': '\u001b[33m',
+    'blue': '\u001b[34m',
+    'magenta': '\u001b[35m',
+    'cyan': '\u001b[36m',
+    'white': '\u001b[37m',
+    'reset': '\u001b[0m',
+    }
+    return colors[color]
+    
 class Printer():
     """Print things to stdout on one line dynamically"""
-    def __init__(self,data):
-        sys.stdout.write("\033[1;36m\r\x1b[K\033[0;0m"+data.__str__())
+    def __init__(self, data, color='white'):
+        
+        sys.stdout.write(u"\r\u001b[2K%s"%ansi_colors(color)+data.__str__())
         sys.stdout.flush()
 
 class DataSummary():
-    """
-    Note that this init is just setup - you have to call getSummary on the object to do anything
-    
-    Parameters
-    ----------
-    basedir : str (required)
-        base directory to be summarized
-    
-    outputMode : str (default: 'terminal')
-        How to write the output. Current options are 'terminal', which writes to the terminal, and
-        'pandas', which will create a pandas dataframe and pickle it to a file
-    
-    daylistfile : str (default: None)
-        A filename that stores a list of days that sould be processed
-    
-    after : str (default: Jan 1, 1970)
-        A starting date for the summary - files before this date will not be processed
-        A string in a format that can be parsed by dateutil.parser.parse
-        The following will work:
-        without string quotes:
-        2018.01.01
-        2018.1.1
-        2018/7/6
-        2018-7-6
-        With quotes:
-        'Jan 1 2017'
-        'Jan 1, 2017'
-        etc..
-    
-    before : str (default 2266)
-        An ending date for the summary. Files after this date will not be processed. 
-        The format is the same as for the starting date
-    
-    dryrun : bool (default False)
-        Causes the output ti be limited and protocols are not fully investigated
-    
-    depth : str (default: 'all')
-        Causes output with dry-run to go to the depth specified
-        options are day, slice, cell, prototol
-    
-    Note that if neither before or after are specified, 
-    """
+
     def __init__(self, basedir, outputMode='terminal', daylistfile=None,
                  after=None, before=None, dryrun=False, depth='all', inspect=True):
-
+        """
+        Note that the init is just setup - you have to call getDay the object to do anything
+    
+        Parameters
+        ----------
+        basedir : str (required)
+            base directory to be summarized
+    
+        outputMode : str (default: 'terminal')
+            How to write the output. Current options are 'terminal', which writes to the terminal, and
+            'pandas', which will create a pandas dataframe and pickle it to a file
+    
+        daylistfile : str (default: None)
+            A filename that stores a list of days that sould be processed
+    
+        after : str (default: Jan 1, 1970)
+            A starting date for the summary - files before this date will not be processed
+            A string in a format that can be parsed by dateutil.parser.parse
+            The following will work:
+            without string quotes:
+            2018.01.01
+            2018.1.1
+            2018/7/6
+            2018-7-6
+            With quotes:
+            'Jan 1 2017'
+            'Jan 1, 2017'
+            etc..
+    
+        before : str (default 2266)
+            An ending date for the summary. Files after this date will not be processed. 
+            The format is the same as for the starting date
+    
+        dryrun : bool (default False)
+            Causes the output ti be limited and protocols are not fully investigated
+    
+        depth : str (default: 'all')
+            Causes output with dry-run to go to the depth specified
+            options are day, slice, cell, prototol
+    
+        Note that if neither before or after are specified, 
+        """
 
         self.setups()  # build some regex and wrappers
         # gather input parameters
@@ -123,15 +135,39 @@ class DataSummary():
             self.monitor = True
             self.reportIncompleteProtocols = False # do include incomplete protocol runs in print
             self.InvestigateProtocols = False  # set True to check out the protocols in detail
+        self.panda_string = ''
         
         # initialized dictionary that holds all the stuff
-        self.analysis_summary = {}
+        #self.analysis_summary = {}
 
         # column definitions - may need to adjust if change data that is pasted into the output
-        self.coldefs = 'Date\tDescription\tNotes\tSpecies\tGenotype\tAge\tSex\tWeight\tTemp\tImportant\tElapsedT\tCellType\tSlice\tSliceNotes\t'
-        self.coldefs += 'Cell\tCellNotes\tProtocols\tCompleteProtocols\tImages\n'
-        self.panda_string = self.coldefs
+        self.day_defs = ['date', 'description', 'notes', 'species', 'strain', 'genotype', 'age', 
+                         'sex', 'weight', 'solution', 'internal', 'temperature', 'important', 'expUnit']
+        self.slice_defs = ['slice_slice', 'slice_notes', 'slice_location', 'slice_orientation', 'important']
+        self.cell_defs =  ['cell_cell',   'cell_notes',  'cell_type', 'cell_location', 'cell_important']
+        self.data_defs = ['data_incomplete', 'data_complete', 'data_images']
         
+        # expected keys in various structural levels: days, slices, cells
+        self.day_keys = ['description', 'notes', 'species', 'strain', 'genotype', 'age', 'sex', 'weight', 'solution', 'animal identification', '__timestamp__', 
+                        'internal', 'temperature', 'expUnit', 'dirType', 'important', 'time']
+        self.slice_keys = ['notes', 'location', 'orientation', 'important', '__timestamp__']
+        self.cell_keys = [ 'notes', 'type', 'location', 'important', '__timestamp__']
+        self.data_dkeys = ['incomplete', 'complete', 'data_images']
+        
+        self.day_template = (
+            OrderedDict([('species', '{:>s}'), ('strain', '{:>s}'),('genotype', '{:>12s}'), ('age', '{:>5s}'), ('sex', '{:>1s}'), ('weight', '{:>5s}'),
+                         ('solution', '{:>s}'), ('internal', '{:>s}'), ('temperature', '{:>5s}'), ('important', '{:>s}'), ('elapsedtime', '{:>8.2f}'), 
+                         ('expUnit', '{:>s}')])
+                        )        
+        self.slice_template = (
+            OrderedDict([('type', '{:>s}'), ('location', '{:>12s}'), ('orientation', '{:>5s}')])
+                        )        
+        self.cell_template = (
+            OrderedDict([('type', '{:>s}'), ('location', '{:>12s}'), ('important', '{:>s}')])
+                        )        
+        self.data_template = (
+            OrderedDict([('incomplete', '{0:s}'), ('complete', '{1:s}'), ('images', '{2:s}')])
+                        )        
         self.AR = acq4read.Acq4Read()  # instance of the reader
 
         outputDir = os.path.join(os.path.expanduser("~"), 'Desktop/acq4_scripts')
@@ -177,7 +213,6 @@ class DataSummary():
         
         if self.daylistfile is None:  # get from command line
             self.minday = mindayx[0]*1e4+mindayx[1]*1e2+mindayx[2]
-            #maxdayx = datetime.datetime.now().timetuple()[0:3]  # get today
             self.maxday = maxdayx[0]*1e4+maxdayx[1]*1e2+maxdayx[2]
         else:
             self.daylist = []
@@ -206,54 +241,6 @@ class DataSummary():
         self.daytype = re.compile("(\d{4,4}).(\d{2,2}).(\d{2,2})_(\d{3,3})")
 #        daytype = re.compile("(2011).(06).(08)_(\d{3,3})")  # specify a day
         
-    def setMonitor(self):
-        pass
-    
-    def setBaseDir(self):
-        pass
-    
-    def setBegin(self):
-        """
-        begin (b) (define start date; end is set to current date) default: 1/1/1970
-        """
-        pass
-    
-    def setEnd(self):
-        """
-        end (e)(define end date: start date set to 1/1/1970; end is set to the end date) default: "today"
-        """
-        pass
-    
-    def setModeFull(self):
-        """
-        mode =  full (f) : do a full investigation of the data files. Makes processing very slow. (reports incomplete protocols)
-        """
-        pass
-    
-    def setModePartial(self):
-        """
-        partial (p) : do a partial investiagion of protocols: is there anything in every protocol directory? (reports incomplete protocols) - slow
-        """
-        pass
-    
-    def setModeQuick(self):
-        """
-        quick (q) : do a quick scan : does not run through protocols to find incomplete protocols. Default (over full and partial)
-        """
-        pass
-    
-    def setDebug(self):
-        """
-        debug (d) : debug monitoring of progress
-        """
-        pass
-        
-    def setOutput(self):
-        """
-        output (o) : define output file (tab delimited file for import to other programs)
-        """
-        pass
-    
     def wrapstring(self, datastring, data, argument, wrapper, default='?'):
         """
         Wrap up text in a generic way, returning the modified string
@@ -268,23 +255,22 @@ class DataSummary():
         else:
             return datastring + default + '\t'
 
-    def getSummary(self):
+    def getDay(self):
         """
-        getSummary is the entry point for scanning through all the data files in a given directory,
+        getDay is the entry point for scanning through all the data files in a given directory,
         returning information about those within the date range, with details as specified by the options
         """
+        print('getDay')
         allfiles = os.listdir(self.basedir)
         self.pstring = ''
         days = []
         for thisfile in allfiles:
             m = self.daytype.match(thisfile)
-            if m == '.DS_Store':
+            if m in ['.DS_Store']:
                 continue
             if m is None:
-               # print 'Top level file %s is incorrectly placed ' % thisfile
                 continue  # no match
             if len(m.groups()) >= 3:  # perfect match
-                # print m.groups()
                 idl = [int(d) for d in m.groups()]
                 id = idl[0]*1e4+idl[1]*1e2+idl[2]
 
@@ -297,18 +283,26 @@ class DataSummary():
         if self.monitor:
             print ('Days reported: ', days)
         for nd, day in enumerate(days):
-#            if self.monitor:
-            self.pstring = 'Processing day[%3d/%3d]: %s ' % (nd, len(days), day)
-            Printer(self.pstring)
-            self.daystring = '%s\t' % (day.strip())
+            if self.monitor:
+                self.pstring = 'Processing day[%3d/%3d]: %s ' % (nd, len(days), day)
             self.AR.setProtocol(os.path.join(self.basedir, day))
-            self.day = self.AR.getIndex()
-            self.daystring = self.wrapstring(self.daystring, self.day, 'description', self.twd['day'])
-            self.daystring = self.wrapstring(self.daystring, self.day, 'notes', self.tw['day'])
-            if self.dryrun and self.depth=='days':
-                self.outputString(self.daystring + self.day_summarystring)                
-            else:
-                self.doSlices(os.path.join(self.basedir, day))
+            self.day_index = self.AR.getIndex()
+            self.day_index['date'] = day.strip()
+            #print('\nday index: ', self.day_index.keys())
+            # now add the rest of the index information to the daystring
+            for k in self.day_defs:
+                if k not in self.day_index.keys():
+                    #print('\nadded: ', k)
+                    self.day_index[k] = ' '
+                if isinstance(self.day_index[k], bool):
+                    self.day_index[k] = str(self.day_index[k])
+                self.day_index[k].replace('\n', ' ')
+                if len(self.day_index[k]) == 0:
+                    self.day_index[k] = ' '
+            # for k in self.day_defs:
+            #     print('{:>32s} : {:<40s}'.format(k, self.day_index[k]))
+
+            self.doSlices(os.path.join(self.basedir, day))  # next level
             os.closerange(8, 65535)  # close all files in each iteration
             gc.collect()
 
@@ -318,7 +312,7 @@ class DataSummary():
         :param day:
         :return nothing:
         """
-
+#        print('\ndo slices')
         allfiles = os.listdir(day)
         slicetype = re.compile("(slice\_)(\d{3,3})")
         slices = []
@@ -332,21 +326,32 @@ class DataSummary():
             self.sstring = self.pstring + ' %s' % slicen
             Printer(self.sstring)
             self.slicestring = '%s\t' % (slicen)
-            self.slice = self.AR.getIndex(os.path.join(day, slicen))
-            self.slicestring = self.wrapstring(self.slicestring, self.slice, 'notes', self.tw['slice'])
-            if self.dryrun and self.depth=='slices':
-                self.outputString(self.daystring + self.day_summarystring + self.slicestring)
-            else:
-                self.doCells(os.path.join(day, slicen))
+#            print('slicestring: ', self.slicestring)
+            self.slice_index = self.AR.getIndex(os.path.join(day, slicen))
+            if self.slice_index is None:  # directory is not managed and probably empty
+                self.slice_index = {}
+                continue
+            self.slice_index['slice'] = slicen
+            for k in self.slice_defs:
+                ks = k.replace('slice_', '')
+                if ks not in self.slice_index.keys():
+                    self.slice_index[ks] = ' '
+                if isinstance(self.slice_index[ks], bool):
+                    self.slice_index[ks] = str(self.slice_index[ks])
+                if len(self.slice_index[ks]) == 0 :
+                    self.slice_index[ks] = ' '
+                self.slice_index[ks].replace('\n', ' ')
+            self.doCells(os.path.join(day, slicen))
             gc.collect()
 
-    def doCells(self, slice):
+    def doCells(self, thisslice):
         """
         process all of the cells from a slice
         :param slice:
         :return nothing:
         """
-        allfiles = os.listdir(slice)
+#        print('\ndo cells')
+        allfiles = os.listdir(thisslice)
         cell_re = re.compile("(cell_)(\d{3,3})")
         cells = []
         for thisfile in allfiles:
@@ -358,28 +363,33 @@ class DataSummary():
         for cell in cells:
             self.cstring = self.sstring + " %s" % cell
             Printer(self.cstring)
-            self.cellstring = '%s\t' % (cell)
-            try:
-                self.cell = self.AR.getIndex(os.path.join(slice, cell))  # possible that .index file is missing, so we cannot read
-            except:
-                self.cell = None
-            self.cellstring = self.wrapstring(self.cellstring, self.cell, 'notes', self.tw['cell'])
-            self.day_summary(name=os.path.join(slice, cell))
-            if self.dryrun and self.depth=='cells':
-                self.outputString(self.daystring + self.day_summarystring + self.slicestring + self.cellstring)
-            else:
-                self.doProtocols(os.path.join(slice, cell))
+            self.cell_index = self.AR.getIndex(os.path.join(thisslice, cell))  # possible that .index file is missing, so we cannot read
+            if self.cell_index is None:
+                self.cell_index = {}  # directory is not managed, so skip
+                continue
+#            print('\nCell Index: ', self.cell_index)
+            self.cell_index['cell'] = cell
+            for k in self.cell_defs:
+                ks = k.replace('cell_', '')
+                if ks not in self.cell_index.keys():
+                    self.cell_index[ks] = ' '
+                if isinstance(self.cell_index[ks], bool):
+                    self.cell_index[ks] = str(self.cell_index[ks])
+                self.cell_index[ks].replace('\n', ' ')
+                if len(self.cell_index[ks]) == 0:
+                    self.cell_index[ks] = ' '
+#            print('\n cell index: ', self.cell_index)
+            self.doProtocols(os.path.join(thisslice, cell))
             gc.collect()
 
-    def doProtocols(self, cell):
+    def doProtocols(self, thiscell):
         """
         process all of the protocols for a given cell
         :param cell:
         :return nothing:
         """
-        #print( 'doing protocols')
-        allfiles = os.listdir(cell)
-        #celltype = re.compile("(Cell_)(\d{3,3})")
+#        print( '\n\nSearching protocols')
+        allfiles = os.listdir(thiscell)
         protocols = []
         nonprotocols = []
         anyprotocols = False
@@ -390,23 +400,25 @@ class DataSummary():
 
         endmatch = re.compile("[\_(\d{3,3})]$")  # look for _lmn at end of directory name
         for thisfile in allfiles:
-            if os.path.isdir(os.path.join(cell, thisfile)):
+            if os.path.isdir(os.path.join(thiscell, thisfile)):
                 protocols.append(thisfile)
             else:
                 nonprotocols.append(thisfile)
 
         self.protocolstring = ''
-        self.allprotocols = ''
-        self.completeprotocols = ''
+        self.allprotocols = []
+        self.incompleteprotocols = []
+        self.completeprotocols = []
+        self.compprotstring = ''
         if self.InvestigateProtocols is True:
-           # self.day_summarystring = 'NaN\t'*6
+           # self.thiscell_summarystring = 'NaN\t'*6
 
             for np, protocol in enumerate(protocols):
                 Printer(self.cstring + ' Prot[%2d/%2d]: %s' % (np, len(protocols), protocol))
                 self.allprotocols += protocol+', '
-                protocolpath = os.path.join(cell, protocol)
-                if np == 0:
-                    self.day_summary(name=protocolpath)
+                protocolpath = os.path.join(thiscell, protocol)
+                # if np == 0:
+               #      self.getDay(name=protocolpath)
                 dirs = self.AR.subDirs(protocolpath)
                 protocolok = True  # assume that protocol is ok
                 modes = []
@@ -445,9 +457,11 @@ class DataSummary():
                             continue
                         self.holding = self.AR.parseClampHoldingLevel(clampInfo)
                         self.amp_settings = self.AR.parseClampWCCompSettings(clampInfo)
-                        ncomplete = ncomplete + 1
-                        self.completeprotocols += protocol+', '
-                
+                        if protocol not in self.completeprotocols:
+                            ncomplete = ncomplete + 1
+                            self.completeprotocols.append(protocol)
+                if protocol_truncated:
+                    self.incompleteprotocols.append(protocol)
                 gc.collect()  # and force garbage collection of freed objects inside the loop
                 if modes == []:
                     modes = ['Unknown mode']
@@ -456,16 +470,17 @@ class DataSummary():
                     anyprotocols = True  # indicate that ANY protocol ran to completion
                 else:
                     if self.reportIncompleteProtocols:
-                        self.protocolstring += '[{:<s}, ({:s}, {:d}/{:d}, Incomplete)], '.format(protocol, modes[0][0], ncomplete, nexpected)
+                        self.protocolstring += '{0:<s}.{1:s}.{2:d}/{3:d}, '.format(protocol, modes[0][0], ncomplete, nexpected)
                 gc.collect()
         else:
-            self.protocolstring += 'Protocols: '
+            self.protocolstring += ''
 
             anyprotocols = True
             prots = {}
             for np, protocol in enumerate(protocols):
                 Printer(self.cstring + ' Prot[%2d/%2d]: %s' % (np,len(protocols), protocol))
-                self.allprotocols += protocol+', '
+                if protocol not in self.allprotocols:
+                    self.allprotocols.append(protocol)
                 m = endmatch.search(protocol)
                 if m is not None:
                     p = protocol[:-4]
@@ -476,16 +491,18 @@ class DataSummary():
                 else:
                     prots[p] += 1
             if len(prots.keys()) > 0:
-                self.protocolstring += '['
                 for p in prots.keys():
                     self.protocolstring += '{:<s}({:<d}), '.format(p, prots[p])
-                self.protocolstring += ']'
             else:
                 self.protocolstring = '<No protocols found>'
-        self.protocolstring += '\t'
-        self.allprotocols += '\t'
-        self.completeprotocols += '\t'
 
+        if len(self.completeprotocols) == 0:
+            self.completeprotocols = ' '
+        else:
+            self.compprotstring = ', '.join([str(cp) for cp in self.completeprotocols])
+        # print('\n: ', self.completeprotocols)
+        # exit(1)
+        self.allprotocols = ', '.join(self.allprotocols)
         for thisfile in nonprotocols:
             x = self.img_re.match(thisfile)  # look for image files
             if x is not None:
@@ -511,30 +528,77 @@ class DataSummary():
         if len(images) + len(stacks2p) + len(images2p) + len(videos) == 0:
             self.imagestring = 'No Images or Videos'
         
-        if anyprotocols:
-            ostring = self.daystring + self.day_summarystring + self.slicestring + self.cellstring + self.protocolstring + self.completeprotocols + self.imagestring
-        else:
-            ostring = self.daystring + self.day_summarystring + self.slicestring + self.cellstring + self.protocolstring + self.completeprotocols + self.imagestring
+        # if anyprotocols:
+        #     ostring = self.daystring + self.thiscell_summarystring + self.slicestring + self.cellstring + self.protocolstring + self.completeprotocols + self.imagestring
+        # else:
+        ostring = OrderedDict([('incomplete', self.protocolstring.rstrip(', ')),  ('complete', self.compprotstring.rstrip(', ')), ('images', self.imagestring)])
         self.outputString(ostring)
 
+    def colprint(self, phdr, ostring):
+        ps = phdr.split('\t')
+        os = ostring.split('\t')
+        for i in range(len(ps)):
+            if i > len(os):
+                break
+            if os[i] == ' ':
+                os[i] = '--'
+            print('{0:3d}: {1:>20s} : {2:<s}'.format(i, ps[i], os[i]))
+
     def outputString(self, ostring):
+        day_string = ''
+        phdr = ''
+        for k in self.day_defs:
+            day_string += str(self.day_index[k])+'\t'
+            phdr += k +'\t'
+        
+        slice_string = ''
+        for k in self.slice_defs:
+            ks = k.replace('slice_', '')
+            slice_string += str(self.slice_index[ks])+'\t'
+            phdr += k +'\t'
+        
+        cell_string = ''
+        for k in self.cell_defs:
+            kc = k.replace('cell_', '')
+            cell_string += str(self.cell_index[kc])+'\t'
+            phdr += k +'\t'
+        
+        prot_string = ''
+        ohdr = ''
+        for k in self.data_defs:
+            kc = k.replace('data_', '')
+            pstx = str(ostring[kc])
+            if len(pstx) == 0:
+                pstx = ' '
+            prot_string += pstx + '\t'
+            phdr += k + '\t'
+            ohdr += k + '\t'
+        # print('\n\nestring: ', ostring)
+        # print('\nprot_string: ', prot_string)
+        # print('\nohdr: ', ohdr)
+            
+        ostring = day_string + slice_string + cell_string + prot_string
+        ostring = ostring.replace('\n', ' ')
+        ostring = ostring.rstrip('\t ')
+        ostring += '\n'
+        # print('\nOSTRING: \n', ostring.replace('\t', '##').replace('\n', '&&'))
+        phdr = phdr.rstrip('\t\n')
+        if len(self.panda_string) == 0:  # catch the header
+            self.panda_string = phdr.replace('\n', '') + '\n'  # clip the last \t and add a 
+        
         if self.outputMode in [None, 'terminal']:
             print('{0:s}'.format(ostring))
+        
         elif self.outputMode == 'text':
             h = open(self.outFilename, 'a')  # append mode
-            h.write(ostring + '\n')
+            h.write(ostring )
             h.close()
+        
         elif self.outputMode == 'pandas':
-            #print('\n******* building pd string', 'ostring: \n', ostring)
-            self.panda_string += ('{0:d}\t').format(self.index) + ostring+'\n'  # -1 needed to remove last tab... 
-            # this just is useful to check that the data are in the right tabbed fields
-            # print('\n', self.panda_string)
-            # tstr = ( ostring+'\n').split('\t')
-            # for i, c in enumerate(self.coldefs.split('\t')):
-            #     #print (c)
-            #     print(c, ' : ', tstr[i])
-            #
-            # exit(1)
+            # self.colprint(phdr, ostring)            
+            # print('\n******* building Pandas string', 'ostring: \n', ostring)
+            self.panda_string += ('{0:d}\t{1:s}').format(self.index, ostring)  # -1 needed to remove last tab...
+            #self.panda_string += ostring + '\n'
             self.index += 1
         else:
             pass
@@ -544,9 +608,12 @@ class DataSummary():
         Write an output string using pandas dataframe
         """
         if self.outputMode == 'pandas':
+            print('\nOUTPUTTING VIA PANDAS')
+          #  self.colprint()
             df = pd.read_csv(pandas.compat.StringIO(self.panda_string), delimiter='\t')
+           # print('Head write: \n', df.head(5), '\n')
             df.to_pickle(self.outFilename)
-            # print('Wrote pandas dataframe to pickled file: {0:s}'.format(self.outFilename))
+            print('Wrote pandas dataframe to pickled file: {0:s}'.format(self.outFilename))
 
     def get_file_information(self, dh=None):
         """
@@ -566,95 +633,7 @@ class DataSummary():
         leftseq.insert(0, 'All')
         rightseq.insert(0, 'All')
 
-    def day_summary(self, name=None):
-        """
-        day_summary generates a dictionary of information about the cell
-        for the selected directory handle (usually a protocol; could be a file)
-        builds a formatted string with some of the information.
-        
-        :return nothing:
-        """
-        self.analysis_summary = {}  # always clear the summary.
-        self.day_summarystring = ''
-        # other info into a dictionary
-        self.analysis_summary['Day'] = self.day
-        self.analysis_summary['Slice'] = self.slice
-        self.analysis_summary['Cell'] = self.cell
-        self.analysis_summary['ACSF'] = self.day['solution']
-        self.analysis_summary['Internal'] = self.day['internal']
-        self.analysis_summary['Temp'] = self.day['temperature']
-        self.analysis_summary['Important'] = 'N'
-        print('\nself cell: ', self.cell)
-        print('analysis summary[cell]: ', self.analysis_summary['Cell'])
-        if 'important' in self.day.keys():
-#            print('important: ', self.day['important'])
-            if self.day['important']:
-                self.analysis_summary['Important'] = 'Y'
-                self.day['important'] = 'N'
-        else:
-            self.day['important'] = 'N'
-        self.analysis_summary['CellType'] = 'X'
-        if self.cell is not None and 'type' in self.cell.keys():
-            print ('\n   cell type: ', self.cell['type'], len(self.cell['type']))
-            if len(self.cell['type']) > 0:  # only set if there is a value
-                self.analysis_summary['CellType'] = self.cell['type']
-            if isinstance(self.cell['type'], str):
-                print('cell is string, len is: %d', len(self.cell['type']))
-            else:
-                print('isnan cell type: ', math.isnan(self.cell['type']))
-        
-        today = self.analysis_summary['Day']
-        if today is not None:
 
-            if 'description' in today.keys():
-                self.analysis_summary['Description'] = today['description']
-            if 'weight' in today.keys():
-                self.analysis_summary['Weight'] = today['weight']
-            if 'strain' in today.keys():
-                self.analysis_summary['Strain'] = today['strain']
-            if 'notes' in today.keys():
-                self.analysis_summary['Notes'] = today['notes']
-            if 'age' in today.keys():
-                self.analysis_summary['Age'] = today['age']
-            if 'sex' in today.keys():
-                self.analysis_summary['Sex'] = today['sex']
-            if 'animal identifier' in today.keys():
-                self.analysis_summary['AnimalIdentifier'] = today['animal identifier']
-            if 'genotype' in today.keys():
-                self.analysis_summary['Genotype'] = today['genotype']
-            if 'temperature' in today.keys():
-                self.analysis_summary['Temp'] = today['temperature']
-            if 'species' in today.keys():
-                self.analysis_summary['Species'] = today['species']
-
-
-        if self.analysis_summary['Cell'] is not None:
-            ct = self.analysis_summary['Cell']['__timestamp__']
-        else:
-            ct = 0.
-        try:
-            pt = dh.info()['__timestamp__']
-        except:
-            pt = 0.
-        self.analysis_summary['ElapsedTime'] = pt-ct  # save elapsed time between cell opening and protocol start
-        (date, sliceid, cell, proto, p3) = self.file_cell_protocol(name)
-        self.analysis_summary['CellID'] = os.path.join(date, sliceid, cell)  # use this as the "ID" for the cell later on
-        data_template = (
-            OrderedDict([('Species', '{:>s}'), ('Genotype', '{:>12s}'), ('Age', '{:>5s}'), ('Sex', '{:>1s}'), ('Weight', '{:>5s}'),
-                         ('Temp', '{:>5s}'), ('Important', '{:>1s}'), ('ElapsedTime', '{:>8.2f}'), ('CellType', '{:>12s}')])
-                        )
-        ltxt = ''
-        utxt = ''  # to make a little table comparing the template and data retrieved
-        for a in data_template.keys():
-            if a in self.analysis_summary.keys():
-                ltxt += ((data_template[a] + '\t').format(self.analysis_summary[a]))
-                utxt += '{0:s} = {1:s}\n'.format(a, str(self.analysis_summary[a]))
-            else:
-                ltxt += (('NaN\t'))
-                utxt += '{0:s} = {1:s}\n'.format(a, 'missing in keys')
-        self.day_summarystring = ltxt
-        
-       # print('cell summary: \n', utxt)
 
     def file_cell_protocol(self, filename):
         """
@@ -677,6 +656,11 @@ if __name__ == "__main__":
     parser.add_argument('-o', '--output', type=str, default='terminal', dest='output',
                         choices=['terminal', 'pandas', 'excel', 'tabfile'],
                         help='Specify output dataplan key for one entry to process')
+    parser.add_argument('-r', '--read', action='store_true', dest='read',
+                        help='just read the summary table')
+    parser.add_argument('-w', '--write', action='store_true', dest='write',
+                        help='janalyze and write the data summary')
+    
     parser.add_argument('--daylist', type=str, default=None, dest='daylist',
                         help='Specify daylistfile')
     parser.add_argument('-a', '--after', type=str, default=None, dest='after',
@@ -690,81 +674,55 @@ if __name__ == "__main__":
     parser.add_argument('-d', '--depth', type=str, default='all', dest='depth',
                         choices = ['days', 'slices', 'cells', 'protocols', 'all'],
                         help='Specify depth for --dry-run')
-    parser.add_argument('-r', '--read', action='store_true', dest='read',
-                        help='just read the protocol')
     args = parser.parse_args()
     ds = DataSummary(basedir=args.basedir, daylistfile=args.daylist, outputMode=args.output,
             after=args.after, before=args.before, dryrun=args.dryrun, depth=args.depth, inspect=args.noinspect)
-    if not args.read:
-        ds.getSummary()
+ 
+    if args.write:
+        ds.getDay()
         if args.output in ['pandas']:
             ds.write_string()
         
-        # now read the same file and look for some protocols
-        df = pd.read_pickle(ds.outFilename)
-        # print(df.head(5))
-        # print('------')
-        # print('Known column names: ', df.columns.values)
-        # for c in [ 'Date', 'Description', 'Notes', 'Species', 'Genotype', 'Age', 'Sex', 'Weight',
-        #     'Temp', 'Important', 'ElapsedT', 'CellType', 'Slice', 'SliceNotes' ,'Cell',
-        #     'CellNotes', 'Protocols', 'AllProtocols', 'Images',]:
-        #    print('****  {0:s} ****'.format(c))
-        #    print(df[c])
-        #allp = df.CompleteProtocols
-        df.set_index("Date", inplace=True)
-        # print("protocols day: ", df.loc['2017.10.25_000']['AllProtocols'])
-        allp = df.loc[['2017.10.25_000'],['Important', 'Slice', 'Cell','CompleteProtocols']]
-        print(allp)
     if args.read:
+        print('args.read')
+        print('reading: ', ds.outFilename)
         df = pd.read_pickle(ds.outFilename)
         print(df.head(10))
 
-        df2 = df.set_index("Date", drop=False)
-        #print(df2.head(5))
-        # select a date:
-        
-        day= '2017.07.28_000'
-        
-        # get the complete protocols:
-        prots = df2.loc[day, ['Slice', 'Cell', 'CompleteProtocols']]  # to build datapaths 
-        
+        df2 = df.set_index("date", drop=False)
+        print(df2.head(5))
         maps = []
         IVs = []
         stdIVs = []
-#        print('isdataframe: ', isinstance(prots, pd.DataFrame))
+        
+        print(df2.columns.values)
+        for day in range(len(df2.index)):
 #       Only returns a dataframe if there is more than one entry
 #       Otherwise, it is like a series or dict
-        if isinstance(prots, pd.DataFrame):
-            for i in range(prots.shape[0]):
-                u = prots.iloc[i]['CompleteProtocols'].split(', ')  # get the protocols
-                prox = sorted(list(set(u)))  # adjust for duplicates (must be a better way in pandas)
-                for x in prox:  # construct filenames and sort by analysis types
-                    c = day + '/' + prots.iloc[i]['Slice'] + '/' + prots.iloc[i]['Cell'] + '/' + x
-                    if 'Map' in c:
-                        maps.append(c)
-                    if 'IV' in c:
-                        IVs.append(c)
-#                    print (c)
-        else:
-            u = prots['CompleteProtocols'].split(', ')
+            date = df2.iloc[day]['date']
+            u = df2.iloc[day]['data_complete'].split(', ')
             prox = sorted(list(set(u)))  # adjust for duplicates (must be a better way in pandas)
-            for x in prox:  # construct filenames and sort by analysis types
-                c = day + '/' + prots['Slice'] + '/' + prots['Cell'] + '/' + x
+            for p in prox:
+                print('    protocol: ', p)
+
+                c = date + '/' + df2.iloc[day]['slice_slice'] + '/' + df2.iloc[day]['cell_cell'] + '/' + p
                 if 'Map' in c:
                     maps.append(c)
-                if 'CCIV' in c in c:
+                if 'IV' in c:
                     IVs.append(c)
-                if 'CCIV_1nA_max' in c:
-                    stdIVs.append(c)
-#                print (c)
-#            print('u: ', u)
+        # else:
+       #      u = prots['data_complete'].split(', ')
+       #      prox = sorted(list(set(u)))  # adjust for duplicates (must be a better way in pandas)
+       #      for x in prox:  # construct filenames and sort by analysis types
+       #          c = day + '/' + prots['slice_slice'] + '/' + prots['cell_cell'] + '/' + x
+       #          if 'Map' in c:
+       #              maps.append(c)
+       #          if 'CCIV' in c in c:
+       #              IVs.append(c)
+       #          if 'CCIV_1nA_max' in c:
+       #              stdIVs.append(c)
         print('maps: ', '   \n'.join(maps))
         print('ivs: ', '    \n'.join(IVs))
         print('std ivs: ', '    \n'.join(stdIVs))
-        #print(allp)
-        # prots = allp['CompleteProtocols']
- #        print(prots)
-        #
-        
-    
+
     
