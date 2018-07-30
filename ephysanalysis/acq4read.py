@@ -157,10 +157,17 @@ class Acq4Read():
                 if isinstance(index[i], list):
                     print(' '*self.indent*4, ': list, len= ', len(index[i]))
                 else:
-                    print(' '*self.indent*4, index[i])
+                    if not isinstance(index[i], tuple):
+                        print(' '*self.indent*4, index[i])
+        
+        elif isinstance(index, tuple):
+            print(' '*self.indent*4, 'Device, Sequence : ({0:s}, {1:s})'.format(str(index[0]), str(index[1])))
+ 
         elif isinstance(index, dict):
             for k in index.keys():
                 if k.endswith('.ma') or k.endswith('.tif'):
+                    continue
+                if k in ['splitter']:
                     continue
 
                 index[k] = self._parse_index(index[k])
@@ -184,6 +191,7 @@ class Acq4Read():
                     tstamp = self.convert_timestamp(index[k])
                     if tstamp is not None:
                         print('{0:s}{1:>20s} : {2:s}'.format(' '*self.indent*4, 'timestamp', tstamp))
+        
         elif isinstance(index, bytes):  # change all bytestrings to string and remove internal quotes
             index = index.decode('utf-8').replace("\'", '')
             print(' '*self.indent*4, 'b: ', index)
