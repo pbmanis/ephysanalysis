@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 # Use Semantic Versioning, http://semver.org/
-version_info = (0, 2, 0, 'a')
+version_info = (0, 2, 2, 'a')
 __version__ = "%d.%d.%d%s" % version_info
 
 #print ("apparent version: ", __version__)
@@ -18,5 +18,7 @@ import ephysanalysis.RmTauAnalysis
 import ephysanalysis.SpikeAnalysis
 import ephysanalysis.dataSummary
 import ephysanalysis.IVSummary
+
+import ephysanalysis.metaarray as MetaArray
 
 
