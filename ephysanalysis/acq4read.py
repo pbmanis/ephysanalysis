@@ -57,7 +57,7 @@ class Acq4Read():
         else:
             self.dataname = dataname
         self.clampInfo = {}
-        
+        self.lb = '\n'
         # establish known clamp devices:
         maxclamps = 4
         clamps = []
@@ -112,7 +112,8 @@ class Acq4Read():
                 print( '****************** Error: Missing .index file? (fails to detect protocol sequence)')
                 raise Exception("Directory '%s' does not appear to be a protocol sequence." % dh.name())
 
-    def getIndex(self, currdir=''):
+    def getIndex(self, currdir='', lineend='\n'):
+        self.lb = lineend  # set line break character
         self._readIndex(currdir=currdir)
         if self._index is not None:
             return self._index['.']
@@ -160,13 +161,14 @@ class Acq4Read():
             for i in range(len(index)):
                 index[i] = self._parse_index(index[i])
                 if isinstance(index[i], list):
-                    self.textline += ('{0:s}  list, len={1:d}\n'.format(' '*self.indent*4,  len(index[i])))
+                    self.textline += ('{0:s}  list, len={1:d}{2:s}'.format(' '*self.indent*4,  len(index[i]), self.lb))
                 else:
                     if not isinstance(index[i], tuple):
-                        self.textline += ('{0:s}  {1:d}\n',format(' '*self.indent*4, index[i]))
+                        self.textline += ('{0:s}  {1:d}{2:s}',format(' '*self.indent*4, index[i], self.lb))
         
         elif isinstance(index, tuple):
-            self.textline += ('{0:s} Device, Sequence : {1:s}, {2:s}\n'.format(' '*self.indent*4, str(index[0]), str(index[1])))
+            self.textline += ('{0:s} Device, Sequence : {1:s}, {2:s}{3:s}'.format(' '*self.indent*4, str(index[0]), str(index[1]),
+                self.lb))
  
         elif isinstance(index, dict):
             for k in index.keys():
@@ -177,7 +179,8 @@ class Acq4Read():
 
                 index[k] = self._parse_index(index[k])
                 if isinstance(index[k], list) or isinstance(index[k], np.ndarray):
-                    self.textline += ('{0:s} {1:3d} : list/array, len= {2:4d}\n'.format(' '*self.indent*4, k, len(index[k])))
+                    self.textline += ('{0:s} {1:3d} : list/array, len= {2:4d}{3:s}'.format(' '*self.indent*4, k, len(index[k]),
+                        self.lb))
                 elif k not in ['__timestamp__', '.']:
                     indents = ' '*(self.indent*4)
                     indents2 = ' '*(self.indent*4)
@@ -187,20 +190,20 @@ class Acq4Read():
                       #  self.textline += hdr
                         wrapper = WR.TextWrapper(initial_indent='', subsequent_indent=len(hdr)*' ', width=100)
                         for t in wrapper.wrap(hdr + str(index[k])):
-                            self.textline += t+'\n'
+                            self.textline += t+self.lb
                     else:
                         if not isinstance(index[k], collections.OrderedDict):
-                            self.textline += ('{0:s} {1:>20s} : {2:<s}\n'.format(indents, k, str(index[k])))
+                            self.textline += ('{0:s} {1:>20s} : {2:<s}{3:s}'.format(indents, k, str(index[k]), self.lb))
                         else:
                             break
                 elif k in ['__timestamp__']:
                     tstamp = self.convert_timestamp(index[k])
                     if tstamp is not None:
-                        self.textline += ('{0:s} {1:>20s} : {2:s}\n'.format(' '*self.indent*4, 'timestamp', tstamp))
+                        self.textline += ('{0:s} {1:>20s} : {2:s}{3:s}'.format(' '*self.indent*4, 'timestamp', tstamp, self.lb))
         
         elif isinstance(index, bytes):  # change all bytestrings to string and remove internal quotes
             index = index.decode('utf-8').replace("\'", '')
-            self.textline += ('{0:s}  b: {1:d}\n'.format(' '*self.indent*4, index))
+            self.textline += ('{0:s}  b: {1:d}{2:s}'.format(' '*self.indent*4, inde, self.lb))
         self.indent -= 1
         return index
         

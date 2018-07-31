@@ -41,6 +41,27 @@ import pandas.compat # for StringIO
 from ephysanalysis import acq4read
 from pyqtgraph.metaarray import MetaArray
 
+latex_header = """\\documentclass[8pt, letterpaper, oneside]{article}
+\\usepackage[utf8]{inputenc}
+\\usepackage{geometry}
+\\geometry{
+ landscape,
+ left=0.5in,
+ top=0.5in,
+ }
+
+\\title{dircheck}
+\\author{dir_check.py}
+\\date{1:s}
+ 
+\\begin{document}
+\\begin{verbatim}
+"""
+
+latex_footer = """
+\\end{verbatim}
+\\end{document}
+"""
 class Printer():
     """Print things to stdout on one line dynamically"""
     def __init__(self, data):
@@ -58,11 +79,21 @@ class DirCheck():
         self.topdir = topdir
         self.outfile = None
         self.coloredOutput = True
+        self.outputMode = 'text'
+        self.lb = '\n'
         if output is not None:
             self.coloredOutput = False
             self.outfile = output
             with open(self.outfile, 'w') as f:
                 pass
+
+            p, e = os.path.splitext(self.outfile)
+            if e == '.tex':  # write latex header and set up 
+                self.outputMode = 'latex'
+                with open(self.outfile, 'a') as f:
+                    f.write(latex_header)
+                self.lb = '\n'
+            
             
         self.show_protocol = protocol
         self.img_re = re.compile('^[Ii]mage_(\d{3,3}).tif')  # make case insensitive - for some reason in Xuying's data
@@ -96,10 +127,19 @@ class DirCheck():
         
         fmtstring = '{0:>15s} {1:<10s} {2:<10s} {3:<40} {4:>20}'
         if self.outfile is not None:
-            fmtstring += '\n'  # insert newlines when writing output to file
+            fmtstring += self.lb  # insert newlines when writing output to file
         fmtstring2 = '{0:>15s} {1:<10s} {2:<40s} {3:<10} {4:>20}'
-
-        for d in sorted(topdirs):
+        if self.outputMode == 'latex':
+            self.printLine('\\end{verbatim}' + self.lb)
+            self.printLine('\\vspace{2cm}\\center{\\textbf{\\large{Directory Check/Protocol Listing}}}'+self.lb)
+            self.printLine('\\vspace{2cm}\\center{\\textbf{\huge{'+self.outfile.replace('_', '$\_$')+'}}}' + self.lb)
+            self.printLine('\\vspace{1cm}\\center{\\textbf{\\large{'+self.topdir.replace('_', '$\_$')+'}}}' + self.lb)
+            now = datetime.datetime.now().strftime('%Y-%m-%d  %H:%M:%S %z')
+            self.printLine('\\vspace{1cm}\\center{\\textbf{\\huge{'+now+'}}}' + self.lb)
+            self.printLine('\\newpage')
+            self.printLine('\\begin{verbatim}')
+            
+        for ndir, d in enumerate(sorted(topdirs)):
             self.printLine(' ', 'white')
             if d in ['.DS_Store', 'log.txt'] or self.check_extensions(d):
                 continue
@@ -108,12 +148,16 @@ class DirCheck():
             if d in ['.index']:
                 indir = os.path.join(self.topdir)
                 ind = AR.readDirIndex(self.topdir)
-                self.printLine(AR.getIndex(ind))
+                if ndir > 0:
+                    self.printLine(AR.getIndex(ind))
                 continue
 
             m = self.daytype.match(d)
             tstamp = self.gettimestamp(os.path.join(self.topdir, d))
-            self.printLine('+'*100+'\n')
+            if ndir > 1:
+                self.printLine('\\end{verbatim}')
+                self.printLine('+'*100+self.lb+'\\newpage')
+                self.printLine('\\begin{verbatim}')
             if m is not None:
                 self.printLine(fmtstring.format(d, '', '', '', tstamp), 'white')
             else:
@@ -124,7 +168,7 @@ class DirCheck():
                     indir = os.path.join(self.topdir, d)
                     ind = AR.readDirIndex(indir)
                     self.printLine(AR.getIndex(ind))
-                    self.printLine('            {0:16s} : {1:20s}\n'.format('-'*16, '-'*20))             
+                    self.printLine('            {0:16s} : {1:20s}{2:s}'.format('-'*16, '-'*20, self.lb))             
                     daysdone.append(d)
                 if s in ['.index', '.DS_Store', 'log.txt'] or self.check_extensions(s):
                     continue
@@ -149,12 +193,12 @@ class DirCheck():
                         continue
                     tstamp = self.gettimestamp(os.path.join(self.topdir, d, s, c))
                     if c.startswith('cell_'):
-                        self.printLine('\n'+fmtstring.format('', '', c, '', tstamp), 'white')
+                        self.printLine(self.lb+fmtstring.format('', '', c, '', tstamp), 'white')
                         indir = os.path.join(self.topdir, d, s, c)
                         ind = AR.readDirIndex(indir)
                         self.printLine(AR.getIndex(ind))
                     else:
-                        self.printLine((fmtstring2 + 'is not a CELL directory\n').format('', '', c, '', tstamp), 'red')
+                        self.printLine((fmtstring2 + 'is not a CELL directory'+self.lb).format('', '', c, '', tstamp), 'red')
                         continue
                     for pr in sorted(os.listdir(os.path.join(self.topdir, d, s, c))):
                         if pr in ['.index', '.DS_Store', 'log.txt'] or self.check_extensions(pr):
@@ -167,9 +211,12 @@ class DirCheck():
                             indir = os.path.join(self.topdir, d, s, c, pr)
                             ind = AR.readDirIndex(indir)
                             self.printLine(AR.getIndex(ind))
-                            self.printLine('              -----------------------\n')
-        
+                            self.printLine('              -----------------------'+self.lb)
+            #self.printLine('\f')  # would be nice to put a page break here, but ... doesn't survive. 
         self.printLine('-'*100, 'blue')
+        if self.outputMode == 'latex':
+            with open(self.outfile, 'a') as f:
+                f.write(latex_footer)
         
     def check_extensions(self, d):
         return(any([d.endswith(e) for e in ['.xlsx', '.p', '.py', '.pkl', '.sql', '.txt', '.doc', '.docx', '.tif', '.ma']]))
@@ -193,6 +240,8 @@ class DirCheck():
         return tstamp
 
     def printLine(self, text, color='white'):
+        # if self.outputMode == 'latex':
+        #     text = text.replace('_', '$\_$')
         if self.outfile is None:
             if self.coloredOutput:
                 print(colored(text, color))
@@ -212,7 +261,7 @@ if __name__ == '__main__':
     parser.add_argument('-p', action='store_true', dest='protocol',
                         help='Print protocol information (normally suppressed, very verbose)')
     parser.add_argument('-o', '--output', type=str, dest='output', default=None,
-                        help='Designate an output file name')
+                        help='Designate an output file name (if .tex, generates a LaTeX file)')
     args = parser.parse_args()
     DirCheck(args.basedir, args.protocol, args.output)
     
