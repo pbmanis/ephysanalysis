@@ -49,14 +49,21 @@ class Printer():
 
 
 class DirCheck():
-    def __init__(self, topdir, protocol=False):
+    def __init__(self, topdir, protocol=False, output=None):
         """
         Check directory structure
         """
         if topdir.endswith(os.path.sep):
             topdir = topdir[:-1]
         self.topdir = topdir
-        
+        self.outfile = None
+        self.coloredOutput = True
+        if output is not None:
+            self.coloredOutput = False
+            self.outfile = output
+            with open(self.outfile, 'w') as f:
+                pass
+            
         self.show_protocol = protocol
         self.img_re = re.compile('^[Ii]mage_(\d{3,3}).tif')  # make case insensitive - for some reason in Xuying's data
         self.s2p_re = re.compile('^2pStack_(\d{3,3}).ma')
@@ -80,20 +87,20 @@ class DirCheck():
         # if it is a day, we make a list out of the day
         path, lastdir = os.path.split(self.topdir)
         td = self.daytype.match(lastdir)
-        print(path, td)
+        #print(path, td)
         if td is not None:
             topdirs = [lastdir]
             self.topdir = path
         else:
             topdirs = os.listdir(self.topdir)
         
-        print(topdirs)
-       # exit(1)
-        fmtstring = '{0:>15s} {1:<10s} {2:<10s} {3:<40} {4:>20}  '
-        fmtstring2 = '{0:>15s} {1:<10s} {2:<40s} {3:<10} {4:>20}  '
+        fmtstring = '{0:>15s} {1:<10s} {2:<10s} {3:<40} {4:>20}'
+        if self.outfile is not None:
+            fmtstring += '\n'  # insert newlines when writing output to file
+        fmtstring2 = '{0:>15s} {1:<10s} {2:<40s} {3:<10} {4:>20}'
 
         for d in sorted(topdirs):
-            print(colored(' ', 'white'))
+            self.printLine(' ', 'white')
             if d in ['.DS_Store', 'log.txt'] or self.check_extensions(d):
                 continue
             if any([d.endswith(e) for e in ['.tif', '.ma']]):
@@ -101,18 +108,24 @@ class DirCheck():
             if d in ['.index']:
                 indir = os.path.join(self.topdir)
                 ind = AR.readDirIndex(self.topdir)
-                AR.printIndex(ind)
+                self.printLine(AR.getIndex(ind))
                 continue
 
             m = self.daytype.match(d)
             tstamp = self.gettimestamp(os.path.join(self.topdir, d))
-            print('-'*90)
+            self.printLine('+'*100+'\n')
             if m is not None:
-                print(colored(fmtstring.format(d, '', '', '', tstamp), 'white'))
+                self.printLine(fmtstring.format(d, '', '', '', tstamp), 'white')
             else:
-                print(colored((fmtstring+'is not a DAY directory').format(d, '', '', '', tstamp), 'red'))
-            
+                self.printLine((fmtstring+'is not a DAY directory').format(d, '', '', '', tstamp), 'red')
+            daysdone = []
             for s in sorted(os.listdir(os.path.join(self.topdir, d))):
+                if d not in daysdone:
+                    indir = os.path.join(self.topdir, d)
+                    ind = AR.readDirIndex(indir)
+                    self.printLine(AR.getIndex(ind))
+                    self.printLine('            {0:16s} : {1:20s}\n'.format('-'*16, '-'*20))             
+                    daysdone.append(d)
                 if s in ['.index', '.DS_Store', 'log.txt'] or self.check_extensions(s):
                     continue
 
@@ -121,27 +134,27 @@ class DirCheck():
                 if any([s.endswith(e) for e in ['.tif', '.ma']]):
                     st = os.stat(os.path.join(self.topdir, d, s))  # unmanaged (though may be in top index file)
                     tstamp = datetime.datetime.fromtimestamp(st[stat.ST_MTIME]).strftime('%Y-%m-%d  %H:%M:%S %z')
-                    print(colored((fmtstring + 'data file not associated with slice or cell').format('', s, '', '', tstamp), 'cyan'))
+                    self.printLine((fmtstring + 'data file not associated with slice or cell').format('', s, '', '', tstamp), 'cyan')
                     continue
                 if s.startswith('slice_'):
-                    print(colored(fmtstring.format('', s, '', '', tstamp), 'white'))
+                    self.printLine(fmtstring.format('', s, '', '', tstamp), 'white')
                     indir = os.path.join(self.topdir, d, s)
                     ind = AR.readDirIndex(indir)
-                    AR.printIndex(ind)
+                    self.printLine(AR.getIndex(ind))
                 else:
-                    print(colored((fmtstring + '   is not a SLICE directory').format('', s, '', '', tstamp), 'red'))
-
+                    self.printLine((fmtstring + '   is not a SLICE directory').format('', s, '', '', tstamp), 'red')
+                
                 for c in sorted(os.listdir(os.path.join(self.topdir, d, s))):
                     if c in ['.index', '.DS_Store', 'log.txt'] or self.check_extensions(c):
                         continue
                     tstamp = self.gettimestamp(os.path.join(self.topdir, d, s, c))
                     if c.startswith('cell_'):
-                        print(colored(fmtstring.format('', '', c, '', tstamp), 'white'))
+                        self.printLine('\n'+fmtstring.format('', '', c, '', tstamp), 'white')
                         indir = os.path.join(self.topdir, d, s, c)
                         ind = AR.readDirIndex(indir)
-                        AR.printIndex(ind)
+                        self.printLine(AR.getIndex(ind))
                     else:
-                        print(colored((fmtstring2 + 'is not a CELL directory').format('', '', c, '', tstamp), 'red'))
+                        self.printLine((fmtstring2 + 'is not a CELL directory\n').format('', '', c, '', tstamp), 'red')
                         continue
                     for pr in sorted(os.listdir(os.path.join(self.topdir, d, s, c))):
                         if pr in ['.index', '.DS_Store', 'log.txt'] or self.check_extensions(pr):
@@ -149,15 +162,15 @@ class DirCheck():
                         if any([pr.endswith(e) for e in ['.tif', '.ma']]):
                             continue
                         tstamp = self.gettimestamp(os.path.join(self.topdir, d, s, c, pr))
-                        print(colored(fmtstring.format('', '', '', pr, tstamp), 'white'))
+                        self.printLine(fmtstring.format('', '', '', pr, tstamp), 'white')
                         if self.show_protocol:
                             indir = os.path.join(self.topdir, d, s, c, pr)
                             ind = AR.readDirIndex(indir)
-                            AR.printIndex(ind)
-                            print('              -----------------------\n')
+                            self.printLine(AR.getIndex(ind))
+                            self.printLine('              -----------------------\n')
         
-        print(colored('-'*90, 'blue'))
-
+        self.printLine('-'*100, 'blue')
+        
     def check_extensions(self, d):
         return(any([d.endswith(e) for e in ['.xlsx', '.p', '.py', '.pkl', '.sql', '.txt', '.doc', '.docx', '.tif', '.ma']]))
     
@@ -179,6 +192,15 @@ class DirCheck():
 #                            print('time: ', tstamp)
         return tstamp
 
+    def printLine(self, text, color='white'):
+        if self.outfile is None:
+            if self.coloredOutput:
+                print(colored(text, color))
+            else:
+                print(text)
+        else:
+            with open(self.outfile, 'a') as f:
+                f.write(text)
 
 
 if __name__ == '__main__':
@@ -189,6 +211,8 @@ if __name__ == '__main__':
                         help='just read the protocol')
     parser.add_argument('-p', action='store_true', dest='protocol',
                         help='Print protocol information (normally suppressed, very verbose)')
+    parser.add_argument('-o', '--output', type=str, dest='output', default=None,
+                        help='Designate an output file name')
     args = parser.parse_args()
-    DirCheck(args.basedir, args.protocol)
+    DirCheck(args.basedir, args.protocol, args.output)
     

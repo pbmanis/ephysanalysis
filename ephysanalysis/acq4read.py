@@ -155,13 +155,13 @@ class Acq4Read():
             for i in range(len(index)):
                 index[i] = self._parse_index(index[i])
                 if isinstance(index[i], list):
-                    print(' '*self.indent*4, ': list, len= ', len(index[i]))
+                    self.textline += ('{0:s}  list, len={1:d}\n'.format(' '*self.indent*4,  len(index[i])))
                 else:
                     if not isinstance(index[i], tuple):
-                        print(' '*self.indent*4, index[i])
+                        self.textline += ('{0:s}  {1:d}\n',format(' '*self.indent*4, index[i]))
         
         elif isinstance(index, tuple):
-            print(' '*self.indent*4, 'Device, Sequence : ({0:s}, {1:s})'.format(str(index[0]), str(index[1])))
+            self.textline += ('{0:s} Device, Sequence : {1:s}, {2:s}\n'.format(' '*self.indent*4, str(index[0]), str(index[1])))
  
         elif isinstance(index, dict):
             for k in index.keys():
@@ -172,29 +172,30 @@ class Acq4Read():
 
                 index[k] = self._parse_index(index[k])
                 if isinstance(index[k], list) or isinstance(index[k], np.ndarray):
-                    print(' '*self.indent*4, k, ': list/array, len= ', len(index[k]))
+                    self.textline += ('{0:s} {1:3d} : list/array, len= {2:4d}\n'.format(' '*self.indent*4, k, len(index[k])))
                 elif k not in ['__timestamp__', '.']:
                     indents = ' '*(self.indent*4)
-                    indents2 = ' '*(23+self.indent*4)
+                    indents2 = ' '*(self.indent*4)
                     # do a textwrap on ths string
                     if k in ['description', 'notes']:
-                        print('{0:s}{1:>20s} : '.format(indents, k))
-                        wrapper = WR.TextWrapper(initial_indent=indents2, subsequent_indent=indents2, width=120)
-                        for t in wrapper.wrap(str(index[k])):
-                            print(t)
+                        hdr = ('{0:s} {1:>20s} : '.format(indents, k))
+                      #  self.textline += hdr
+                        wrapper = WR.TextWrapper(initial_indent='', subsequent_indent=len(hdr)*' ', width=100)
+                        for t in wrapper.wrap(hdr + str(index[k])):
+                            self.textline += t+'\n'
                     else:
                         if not isinstance(index[k], collections.OrderedDict):
-                            print('{0:s}{1:>20s} : {2:<s}'.format(indents, k, str(index[k])))
+                            self.textline += ('{0:s} {1:>20s} : {2:<s}\n'.format(indents, k, str(index[k])))
                         else:
                             break
                 elif k in ['__timestamp__']:
                     tstamp = self.convert_timestamp(index[k])
                     if tstamp is not None:
-                        print('{0:s}{1:>20s} : {2:s}'.format(' '*self.indent*4, 'timestamp', tstamp))
+                        self.textline += ('{0:s} {1:>20s} : {2:s}\n'.format(' '*self.indent*4, 'timestamp', tstamp))
         
         elif isinstance(index, bytes):  # change all bytestrings to string and remove internal quotes
             index = index.decode('utf-8').replace("\'", '')
-            print(' '*self.indent*4, 'b: ', index)
+            self.textline += ('{0:s}  b: {1:d}\n'.format(' '*self.indent*4, index))
         self.indent -= 1
         return index
         
@@ -203,8 +204,19 @@ class Acq4Read():
         Generate a nice printout of the index, about as far down as we can go
         """
         self.indent = 0
-        self._parse_index(index)
+        self.textline = ''
+        t = self._parse_index(index)
+        print(t)
         return
+
+    def getIndex(self, index):
+        """
+        Generate a nice printout of the index, about as far down as we can go
+        """
+        self.indent = 0
+        self.textline = ''
+        t = self._parse_index(index)
+        return self.textline
         
         # for k in index['.'].keys():
         #     print( '  ', k, ':  ', index['.'][k])
