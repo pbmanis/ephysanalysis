@@ -203,6 +203,15 @@ class SpikeAnalysis():
         Nothing (but see doc notes above)
         """
         
+        # initialize the summary results, as there may not be spikes, but we should
+        # be sure that the arrays are built.
+        self.analysis_summary['AP1_Latency'] = np.inf
+        self.analysis_summary['AP1_HalfWidth'] = np.inf
+        self.analysis_summary['AP2_Latency'] = np.inf
+        self.analysis_summary['AP2_HalfWidth'] = np.inf
+        self.analysis_summary['FiringRate_1p5T'] = 0.
+        self.analysis_summary['AHP_Depth'] = np.inf  # convert to mV
+        
         ntr = len(self.Clamps.traces)
 #        print 'analyzespikeshape, self.spk: ', self.spk
         self.spikeShape = OrderedDict()
@@ -311,7 +320,8 @@ class SpikeAnalysis():
         self.analysis_summary['spikes'] = self.spikeShape  # save in the summary dictionary too       
         self.analysis_summary['iHold'] = np.mean(iHold)
         self.analysis_summary['pulseDuration'] = self.Clamps.tend - self.Clamps.tstart
-        self.getClassifyingInfo()  # build analysis summary here as well.
+        if len(self.spikeShape.keys()) > 0:  # only try to classify if there are spikes
+            self.getClassifyingInfo()  # build analysis summary here as well.
 
     def getIVCurrentThresholds(self):
         """ figure out "threshold" for spike, get 150% and 300% points.
@@ -331,9 +341,6 @@ class SpikeAnalysis():
         """
         # nsp = []
         icmd = []  # list of command currents that resulted in spikes.
-        # print('spike shape: ', self.spikeShape)
-        # print('***')
-        # print('sk keys:', self.spikeShape.keys())
         for m in sorted(self.spikeShape.keys()):
             n = len(list(self.spikeShape[m].keys())) # number of spikes in the trace
             for n in list(self.spikeShape[m].keys()):
@@ -344,7 +351,13 @@ class SpikeAnalysis():
         try:
             iamin = np.argmin(icmd)
         except:
+            print('SpikeAnalysis, Problem with command: ')
+            print('self.spikeShape.keys(): ', self.spikeShape.keys())
+            print('   m = ', m)
+            print('   n = ', n)
+            print('   current? ', self.spikeShape[m][n]['current'])
             raise ValueError('IVCurve:getIVCurrentThresholds - icmd seems to be ? : ', icmd)
+            
         imin = np.min(icmd)
         ia150 = np.argmin(np.abs(1.5*imin-np.array(icmd)))
         iacmdthr = np.argmin(np.abs(imin-self.Clamps.values))

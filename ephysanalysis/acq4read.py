@@ -10,7 +10,12 @@ Requires pyqtgraph to read the .ma files and the .index file
 """
 import os
 import re
-from pyqtgraph import metaarray
+#from pyqtgraph import metaarray
+import ephysanalysis.metaarray as EM
+# print(EM)
+# print(dir(EM))
+# print(EM.MetaArray)
+# exit(1)
 from pyqtgraph import configfile
 import numpy as np
 import datetime
@@ -242,7 +247,7 @@ class Acq4Read():
         (p3, date) = os.path.split(p2)
         return (date, sliceid, cell, proto, p3)
 
-    def getClampDevices(self, currdir=''):
+    def getClampDevices(self, currdir='', verbose=False):
         """
         Search for a known clamp device in the list of devices 
         used in the current protocol directory...
@@ -253,6 +258,8 @@ class Acq4Read():
             List will be empty if no recognized device is found.
         """
         info = self.getIndex(currdir=currdir)
+        if verbose:
+            print('\ngetClampDevices info: ', info['devices'])
         devs = []
         if info is not None and 'devices' in info.keys():
             devices = info['devices']
@@ -268,7 +275,7 @@ class Acq4Read():
         info = None
         if (os.path.isfile(fn)):
             try:
-                tr = metaarray.MetaArray(file=fn, readAllData=False)
+                tr = EM.MetaArray(file=fn, readAllData=False)
             except:
                 return info
             info = tr[0].infoCopy()
@@ -372,7 +379,7 @@ class Acq4Read():
                     continue
             if check:
                 return True
-            tr = metaarray.MetaArray(file=fn)
+            tr = EM.MetaArray(file=fn)
             info = tr[0].infoCopy()
             self.parseClampInfo(info)
             # if i == 0:
@@ -403,7 +410,7 @@ class Acq4Read():
         else:
             ntr = len(self.values)
 
-        self.traces = metaarray.MetaArray(self.data_array,
+        self.traces = EM.MetaArray(self.data_array,
             info=[{'name': 'Command', 'units': cmd.axisUnits(-1),
              'values': np.array(self.values)},
              tr.infoCopy('Time'), tr.infoCopy(-1)])
@@ -449,7 +456,7 @@ class Acq4Read():
                     units = 'V'
                 else:
                     units = 'A'
-                return MetaArray(np.zeros(tVals.shape), info=[{'name': 'Time', 'values': tVals, 'units': 's'}, {'units': units}])
+                return EM.MetaArray(np.zeros(tVals.shape), info=[{'name': 'Time', 'values': tVals, 'units': 's'}, {'units': units}])
         return None
 
     def getBlueLaserTimes(self):
