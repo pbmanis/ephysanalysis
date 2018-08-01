@@ -112,15 +112,10 @@ class Acq4Read():
                 print( '****************** Error: Missing .index file? (fails to detect protocol sequence)')
                 raise Exception("Directory '%s' does not appear to be a protocol sequence." % dh.name())
 
-    def getIndex(self, currdir='', lineend='\n'):
-        self.lb = lineend  # set line break character
-        self._readIndex(currdir=currdir)
-        if self._index is not None:
-            return self._index['.']
-        else:
-            return None
-
     def _readIndex(self, currdir=''):
+        """
+        Private method to read .index in the specified directory
+        """
         self._index = None
         indexFile = os.path.join(self.protocol, currdir, '.index')
 #        print self.protocol, currdir, indexFile
@@ -131,93 +126,20 @@ class Acq4Read():
         return self._index
 
     def readDirIndex(self, currdir=''):
+        """
+        Read the .index file that is in the specified
+        current directory currdir
+        wrapper for _readIndex
+        """
         self._dirindex = None
         indexFile = os.path.join(currdir, '.index')
-       # print (indexFile)
         if not os.path.isfile(indexFile):
             print("Directory '%s' is not managed!" % (currdir))
-            return self._dirindex
-        self._dirindex = configfile.readConfigFile(indexFile)
+        else:
+            self._dirindex = configfile.readConfigFile(indexFile)['.']
         return self._dirindex
 
-    def _parse_timestamp(self, lstr):
-        tstamp = None
-        ts = self.tstamp.match(lstr)
-        if ts is not None:
-            fts = float(ts.group(2))
-            tstamp = datetime.datetime.fromtimestamp(fts).strftime('%Y-%m-%d  %H:%M:%S %z')
-        return tstamp
-
-    def convert_timestamp(self, fts):
-        tstamp = datetime.datetime.fromtimestamp(fts).strftime('%Y-%m-%d  %H:%M:%S %z')
-        return tstamp
-       
-    def _parse_index(self, index):
-        """
-        Recursive version
-        """
-        self.indent += 1
-        if isinstance(index, list):
-            for i in range(len(index)):
-                index[i] = self._parse_index(index[i])
-                if isinstance(index[i], list):
-                    self.textline += ('{0:s}  list, len={1:d}{2:s}'.format(' '*self.indent*4,  len(index[i]), self.lb))
-                else:
-                    if not isinstance(index[i], tuple):
-                        self.textline += ('{0:s}  {1:d}{2:s}',format(' '*self.indent*4, index[i], self.lb))
-        
-        elif isinstance(index, tuple):
-            self.textline += ('{0:s} Device, Sequence : {1:s}, {2:s}{3:s}'.format(' '*self.indent*4, str(index[0]), str(index[1]),
-                self.lb))
- 
-        elif isinstance(index, dict):
-            for k in index.keys():
-                if k.endswith('.ma') or k.endswith('.tif'):
-                    continue
-                if k in ['splitter']:
-                    continue
-
-                index[k] = self._parse_index(index[k])
-                if isinstance(index[k], list) or isinstance(index[k], np.ndarray):
-                    self.textline += ('{0:s} {1:3d} : list/array, len= {2:4d}{3:s}'.format(' '*self.indent*4, k, len(index[k]),
-                        self.lb))
-                elif k not in ['__timestamp__', '.']:
-                    indents = ' '*(self.indent*4)
-                    indents2 = ' '*(self.indent*4)
-                    # do a textwrap on ths string
-                    if k in ['description', 'notes']:
-                        hdr = ('{0:s} {1:>20s} : '.format(indents, k))
-                      #  self.textline += hdr
-                        wrapper = WR.TextWrapper(initial_indent='', subsequent_indent=len(hdr)*' ', width=100)
-                        for t in wrapper.wrap(hdr + str(index[k])):
-                            self.textline += t+self.lb
-                    else:
-                        if not isinstance(index[k], collections.OrderedDict):
-                            self.textline += ('{0:s} {1:>20s} : {2:<s}{3:s}'.format(indents, k, str(index[k]), self.lb))
-                        else:
-                            break
-                elif k in ['__timestamp__']:
-                    tstamp = self.convert_timestamp(index[k])
-                    if tstamp is not None:
-                        self.textline += ('{0:s} {1:>20s} : {2:s}{3:s}'.format(' '*self.indent*4, 'timestamp', tstamp, self.lb))
-        
-        elif isinstance(index, bytes):  # change all bytestrings to string and remove internal quotes
-            index = index.decode('utf-8').replace("\'", '')
-            self.textline += ('{0:s}  b: {1:d}{2:s}'.format(' '*self.indent*4, inde, self.lb))
-        self.indent -= 1
-        return index
-        
-    def printIndex(self, index):
-        """
-        Generate a nice printout of the index, about as far down as we can go
-        """
-        self.indent = 0
-        self.textline = ''
-        t = self._parse_index(index)
-        print(t)
-        return
-
-    def getIndex(self, index):
+    def getIndex_fromstring(self, index):
         """
         Generate a nice printout of the index, about as far down as we can go
         """
@@ -237,6 +159,90 @@ class Acq4Read():
         #                     if isinstance(index['.'][k][k2][k3], dict):
         #                         for k4 in index['.'][k][k2][k3]:
         #                             print( '    [', k, '][', k2, '][', k3, '][', k4, '] ::::  ', index['.'][k][k2][k3][k4])
+
+    def _parse_timestamp(self, lstr):
+        tstamp = None
+        ts = self.tstamp.match(lstr)
+        if ts is not None:
+            fts = float(ts.group(2))
+            tstamp = datetime.datetime.fromtimestamp(fts).strftime('%Y-%m-%d  %H:%M:%S %z')
+        return tstamp
+
+    def convert_timestamp(self, fts):
+        tstamp = datetime.datetime.fromtimestamp(fts).strftime('%Y-%m-%d  %H:%M:%S %z')
+        return tstamp
+       
+    def _parse_index(self, index):
+        """
+        Recursive version
+        """
+        self.indent += 1
+        indents = ' '*(self.indent*4)
+        indents2 = ' '*(self.indent*4)
+        if isinstance(index, list):
+            for i in range(len(index)):
+                index[i] = self._parse_index(index[i])
+                if isinstance(index[i], list):
+                    self.textline += ('{0:s} {1:>24s} : {2:d}{3:s}'.format(
+                            indents, 'list, len', len(index[i]), self.lb))
+                else:
+                    if not isinstance(index[i], tuple):
+                        self.textline += ('{0:s}  {1:d}{2:s}',format(indents, index[i], self.lb))
+        
+        elif isinstance(index, tuple):
+            self.textline += ('{0:s} {1:>24s} : {2:<s}, {3:s}{4:s}'.format(
+                            indents, 'Device, Sequence', str(index[0]), str(index[1]),
+                self.lb))
+ 
+        elif isinstance(index, dict):
+            for k in index.keys():
+                if k.endswith('.ma') or k.endswith('.tif'):
+                    continue
+                if k in ['splitter', 'params']:
+                    continue
+
+                index[k] = self._parse_index(index[k])
+                if isinstance(index[k], list) or isinstance(index[k], np.ndarray):
+                    self.textline += ('{0:s} {1:>24s} : list/array, len= {2:4d}{3:s}'.format(
+                            indents, k, len(index[k]),
+                        self.lb))
+                    #self.textline += str(index[k])  # print out to see what is there... 
+                elif k not in ['__timestamp__', '.']:
+
+                    # do a textwrap on ths string
+                    if k in ['description', 'notes']:
+                        hdr = ('{0:s} {1:>24s} : '.format(indents, k))
+                      #  self.textline += hdr
+                        wrapper = WR.TextWrapper(initial_indent='', subsequent_indent=len(hdr)*' ', width=100)
+                        for t in wrapper.wrap(hdr + str(index[k])):
+                            self.textline += t + self.lb
+                    else:
+                        if not isinstance(index[k], collections.OrderedDict):
+                            self.textline += ('{0:s} {1:>24s} : {2:<s}{3:s}'.format(
+                                    indents, k, str(index[k]), self.lb))
+                        else:
+                            break
+                elif k in ['__timestamp__']:
+                    tstamp = self.convert_timestamp(index[k])
+                    if tstamp is not None:
+                        self.textline += ('{0:s} {1:>24s} : {2:s}{3:s}'.format(
+                                indents, 'timestamp', tstamp, self.lb))
+        
+        elif isinstance(index, bytes):  # change all bytestrings to string and remove internal quotes
+            index = index.decode('utf-8').replace("\'", '')
+            self.textline += ('{0:s}  b: {1:d}{2:s}'.format(indents, inde, self.lb))
+        self.indent -= 1
+        return index
+        
+    def printIndex(self, index):
+        """
+        Generate a nice printout of the index, about as far down as we can go
+        """
+        self.indent = 0
+        self.textline = ''
+        t = self._parse_index(index)
+        print(t)
+        return
 
     def file_cell_protocol(self, filename):
         """
@@ -260,8 +266,11 @@ class Acq4Read():
         list of valid clamp devices found (there may be more than one)
             List will be empty if no recognized device is found.
         """
-        info = self.getIndex(currdir=currdir)
+        info = self.readDirIndex(currdir=currdir)
+
         if verbose:
+            print('dir: ', currdir)
+            print('info gcd: ', info.keys())
             print('\ngetClampDevices info: ', info['devices'])
         devs = []
         if info is not None and 'devices' in info.keys():
@@ -382,7 +391,7 @@ class Acq4Read():
                     continue
             if check:
                 return True
-            tr = EM.MetaArray(file=fn)
+            tr = EM.MetaArray(file=fn)  # reads metaarray format of file
             info = tr[0].infoCopy()
             self.parseClampInfo(info)
             # if i == 0:

@@ -297,7 +297,10 @@ class DataSummary():
             if self.verbose:
                 self.pstring = 'Processing day[%3d/%3d]: %s ' % (nd, len(days), day)
             self.AR.setProtocol(os.path.join(self.basedir, day))
-            self.day_index = self.AR.getIndex()
+            self.day_index = self.AR.readDirIndex(os.path.join(self.basedir, day))
+            # print('ind: ', ind)
+           #  self.day_index = self.AR.readDirIndex(ind)
+           #  print('day index: ', self.day_index)
             self.day_index['date'] = day.strip()
             #print('\nday index: ', self.day_index.keys())
             # now add the rest of the index information to the daystring
@@ -348,7 +351,7 @@ class DataSummary():
             self.sstring = day + ' ' + self.pstring + ' %s' % slicen
             Printer(self.sstring)
             self.slicestring = '%s\t' % (slicen)
-            self.slice_index = self.AR.getIndex(os.path.join(self.basedir, day, slicen))
+            self.slice_index = self.AR.readDirIndex(os.path.join(self.basedir, day, slicen))
             if self.slice_index is None:  # directory is not managed and probably empty
                 self.slice_index = {}
                 continue
@@ -395,7 +398,7 @@ class DataSummary():
         for cell in cells:
             self.cstring = self.sstring + " %s" % cell
             Printer(self.cstring)
-            self.cell_index = self.AR.getIndex(os.path.join(thisslice, cell))  # possible that .index file is missing, so we cannot read
+            self.cell_index = self.AR.readDirIndex(os.path.join(thisslice, cell))  # possible that .index file is missing, so we cannot read
             if self.cell_index is None:
                 self.cell_index = {}  # directory is not managed, so skip
                 continue
@@ -459,43 +462,37 @@ class DataSummary():
             self.allprotocols += protocol + ', '
             protocolpath = os.path.join(thiscell, protocol)
             dirs = self.AR.subDirs(protocolpath)  # get all sequence entries (directories) under the protocol
-
-            info = self.AR.getIndex(protocolpath)
-            clampDevices = self.AR.getClampDevices(protocolpath, verbose=self.verbose)
             modes = []
-
-            # must be able to handle multiple data formats, even in one experiment...
-            data_mode = 'Missing mode information'
-            if len(clampDevices) > 0 and 'devices' in info.keys():
-                data_mode = info['devices'][clampDevices[0]]['mode']  # get mode from top of protocol information
-            else:
-                print('? no clamp devices... ')
-                continue
-            
-            if data_mode not in modes:
-                modes.append(data_mode)
+            info = self.AR.readDirIndex(protocolpath)  # top level info dict
+            devices = info['devices'].keys()
+            clampDevices = []
+            for d in devices:
+                if d in self.AR.clampdevices:
+                    clampDevices.append(d)
+            if len(clampDevices) == 0:
+                exit(1)
+            mainDevice = clampDevices[0]
+            modes = self.getClampDeviceMode(info, mainDevice, modes)
+#            print('modes: ', modes)
             nexpected = len(dirs)  # acq4 writes dirs before, so this is the expected fill
             ncomplete = 0  # count number actually done
             for i, directory_name in enumerate(dirs):  # dirs has the names of the runs within the protocol
-                info = self.AR.getIndex(directory_name)
-                if info is None:  # no index, so we have a problem.
-                    break
                 if self.verbose:
                     print('**DATA INFO: ', info)
-                datafile = os.path.join(directory_name, clampDevices[0]+'.ma')  # clamp device file name
+                datafile = os.path.join(directory_name, mainDevice+'.ma')  # clamp device file name
                 if self.deep_check:  # .index file is found, so proceed
                     clampInfo = self.AR.getDataInfo(datafile)
                     if self.verbose:
                         print('**CLAMPINFO: ', clampInfo)
                         print('**DATAFILE: ', datafile)
-                        print('**DEVICE: ', clampDevices[0])
+                        print('**DEVICE: ', mainDevice)
                     if clampInfo is None:
                         break
                     self.holding = self.AR.parseClampHoldingLevel(clampInfo)
                     self.amp_settings = self.AR.parseClampWCCompSettings(clampInfo)
                     ncomplete += 1  # count up
                 else:  # superficial check for existence of the file
-                    datafile = os.path.join(directory_name, clampDevices[0]+'.ma')  # clamp device file name
+                    datafile = os.path.join(directory_name, mainDevice+'.ma')  # clamp device file name
                     if os.path.isfile(datafile):  # only check for existence of the fle
                         ncomplete += 1  # count anyway without going "deep"
             if ncomplete == nexpected:
@@ -568,6 +565,17 @@ class DataSummary():
 
         ostring = OrderedDict([('incomplete', self.incompleteprotocolstring.rstrip(', ')),  ('complete', self.compprotstring.rstrip(', ')), ('images', self.imagestring)])
         self.outputString(ostring)
+
+    def getClampDeviceMode(self, info, clampDevice, modes):
+        # print('info: ', info)
+        if info is not None:  # no index, so we have a problem.
+            if 'devices' in info.keys():
+                data_mode = info['devices'][clampDevice]['mode']  # get mode from top of protocol information
+            else:
+                print('? no clamp devices... ')
+            if data_mode not in modes:
+                modes.append(data_mode)
+        return(modes)
 
     def colprint(self, phdr, ostring):
         ps = phdr.split('\t')
@@ -813,7 +821,7 @@ if __name__ == "__main__":
                # print('    protocol: ', p)
 
                 c = date + '/' + df2.iloc[day]['slice_slice'] + '/' + df2.iloc[day]['cell_cell'] + '/' + p
-                print('c: ', c)
+                print(c)
             print('='*80)
 
     

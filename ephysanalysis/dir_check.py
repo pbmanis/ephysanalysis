@@ -25,6 +25,9 @@ import os
 import re
 import math  # use to check nan value...
 import argparse
+import contextlib
+import subprocess
+
 import os.path
 import stat
 import gc
@@ -43,6 +46,8 @@ from pyqtgraph.metaarray import MetaArray
 
 latex_header = """\\documentclass[8pt, letterpaper, oneside]{article}
 \\usepackage[utf8]{inputenc}
+\\usepackage{fancyvrb}
+\\usepackage{xcolor}
 \\usepackage{geometry}
 \\geometry{
  landscape,
@@ -55,11 +60,12 @@ latex_header = """\\documentclass[8pt, letterpaper, oneside]{article}
 \\date{1:s}
  
 \\begin{document}
-\\begin{verbatim}
+
 """
 
 latex_footer = """
-\\end{verbatim}
+
+\\end{Verbatim}
 \\end{document}
 """
 class Printer():
@@ -70,7 +76,7 @@ class Printer():
 
 
 class DirCheck():
-    def __init__(self, topdir, protocol=False, output=None):
+    def __init__(self, topdir, protocol=False, output=None, args=None):
         """
         Check directory structure
         """
@@ -80,6 +86,9 @@ class DirCheck():
         self.outfile = None
         self.coloredOutput = True
         self.outputMode = 'text'
+        self.after = DUP.parse(args.after)
+        self.before = DUP.parse(args.before)
+        
         self.lb = '\n'
         if output is not None:
             self.coloredOutput = False
@@ -130,44 +139,56 @@ class DirCheck():
             fmtstring += self.lb  # insert newlines when writing output to file
         fmtstring2 = '{0:>15s} {1:<10s} {2:<40s} {3:<10} {4:>20}'
         if self.outputMode == 'latex':
-            self.printLine('\\end{verbatim}' + self.lb)
+        #    self.printLine('\\end{Verbatim}' + self.lb)
             self.printLine('\\vspace{2cm}\\center{\\textbf{\\large{Directory Check/Protocol Listing}}}'+self.lb)
             self.printLine('\\vspace{2cm}\\center{\\textbf{\huge{'+self.outfile.replace('_', '$\_$')+'}}}' + self.lb)
             self.printLine('\\vspace{1cm}\\center{\\textbf{\\large{'+self.topdir.replace('_', '$\_$')+'}}}' + self.lb)
             now = datetime.datetime.now().strftime('%Y-%m-%d  %H:%M:%S %z')
             self.printLine('\\vspace{1cm}\\center{\\textbf{\\huge{'+now+'}}}' + self.lb)
-            self.printLine('\\newpage')
-            self.printLine('\\begin{verbatim}')
+            self.printLine('\\newpage'+self.lb)
+            self.printLine('\\begin{Verbatim} '+self.lb)
             
         for ndir, d in enumerate(sorted(topdirs)):
-            self.printLine(' ', 'white')
+
             if d in ['.DS_Store', 'log.txt'] or self.check_extensions(d):
                 continue
             if any([d.endswith(e) for e in ['.tif', '.ma']]):
                 continue
+            if d.startswith('Accidental'):
+                continue
             if d in ['.index']:
-                indir = os.path.join(self.topdir)
+                indir = os.path.join(self.topdir, d)
                 ind = AR.readDirIndex(self.topdir)
                 if ndir > 0:
-                    self.printLine(AR.getIndex(ind))
+                    self.printLine(AR.getIndex_fromstring(ind))
                 continue
+            
+            dp, ds = os.path.split(d)
+            dsday, nx = ds.split('_')
+         #   print('&&&& ', dsday)
+            thisday = datetime.datetime.strptime(dsday, '%Y.%m.%d')
+            if thisday < self.after or thisday > self.before:
+                continue
+
+            self.printLine(' ')
 
             m = self.daytype.match(d)
             tstamp = self.gettimestamp(os.path.join(self.topdir, d))
             if ndir > 1:
-                self.printLine('\\end{verbatim}')
-                self.printLine('+'*100+self.lb+'\\newpage')
-                self.printLine('\\begin{verbatim}')
+                self.printLine(self.lb + '\\end{Verbatim}'+self.lb)
+                self.printLine('+'*100 + self.lb + '\\newpage')
+                self.printLine('\\begin{Verbatim} ' + self.lb)
             if m is not None:
-                self.printLine(fmtstring.format(d, '', '', '', tstamp), 'white')
+                self.printLine(fmtstring.format(d, '', '', '', tstamp))
             else:
                 self.printLine((fmtstring+'is not a DAY directory').format(d, '', '', '', tstamp), 'red')
             daysdone = []
+
             for s in sorted(os.listdir(os.path.join(self.topdir, d))):
-                if d not in daysdone:
-                    indir = os.path.join(self.topdir, d)
+                if ds not in daysdone:
+                    indir = os.path.join(self.topdir, ds)
                     ind = AR.readDirIndex(indir)
-                    self.printLine(AR.getIndex(ind))
+                    self.printLine(AR.getIndex_fromstring(ind), color='blue')
                     self.printLine('            {0:16s} : {1:20s}{2:s}'.format('-'*16, '-'*20, self.lb))             
                     daysdone.append(d)
                 if s in ['.index', '.DS_Store', 'log.txt'] or self.check_extensions(s):
@@ -178,48 +199,83 @@ class DirCheck():
                 if any([s.endswith(e) for e in ['.tif', '.ma']]):
                     st = os.stat(os.path.join(self.topdir, d, s))  # unmanaged (though may be in top index file)
                     tstamp = datetime.datetime.fromtimestamp(st[stat.ST_MTIME]).strftime('%Y-%m-%d  %H:%M:%S %z')
-                    self.printLine((fmtstring + 'data file not associated with slice or cell').format('', s, '', '', tstamp), 'cyan')
+                    self.printLine((fmtstring + 'data file not associated with slice or cell').format('', s, '', '', tstamp), color='cyan')
                     continue
                 if s.startswith('slice_'):
-                    self.printLine(fmtstring.format('', s, '', '', tstamp), 'white')
+                    self.printLine(fmtstring.format('', s, '', '', tstamp))
                     indir = os.path.join(self.topdir, d, s)
                     ind = AR.readDirIndex(indir)
-                    self.printLine(AR.getIndex(ind))
+                    self.printLine(AR.getIndex_fromstring(ind))
                 else:
-                    self.printLine((fmtstring + '   is not a SLICE directory').format('', s, '', '', tstamp), 'red')
+                    self.printLine((fmtstring + '   is not a SLICE directory').format('', s, '', '', tstamp), color='red')
                 
                 for c in sorted(os.listdir(os.path.join(self.topdir, d, s))):
                     if c in ['.index', '.DS_Store', 'log.txt'] or self.check_extensions(c):
                         continue
                     tstamp = self.gettimestamp(os.path.join(self.topdir, d, s, c))
                     if c.startswith('cell_'):
-                        self.printLine(self.lb+fmtstring.format('', '', c, '', tstamp), 'white')
+                        self.printLine(self.lb+fmtstring.format('', '', c, '', tstamp))
                         indir = os.path.join(self.topdir, d, s, c)
-                        ind = AR.readDirIndex(indir)
-                        self.printLine(AR.getIndex(ind))
+                        try:
+                            ind = AR.readDirIndex(indir)
+                        except:
+                            self.printLine((fmtstring2 + 'Broken Index file'+self.lb).format('', '', c, '', tstamp), color='red')
+                            self.printLine((fmtstring2 + 'File: '+self.lb).format('', '', indir, '', ''))
+                            continue
+                        self.printLine(AR.getIndex_fromstring(ind))
                     else:
-                        self.printLine((fmtstring2 + 'is not a CELL directory'+self.lb).format('', '', c, '', tstamp), 'red')
+                        self.printLine((fmtstring2 + 'is not a CELL directory'+self.lb).format('', '', c, '', tstamp), color='red')
                         continue
-                    for pr in sorted(os.listdir(os.path.join(self.topdir, d, s, c))):
-                        if pr in ['.index', '.DS_Store', 'log.txt'] or self.check_extensions(pr):
+                    protodir = os.path.join(self.topdir, d, s, c)
+                    for pr in sorted(os.listdir(protodir)):  # all protocols
+                        if pr in ['.DS_Store', 'log.txt'] or self.check_extensions(pr):
+                            continue
+                        if pr in ['.index']:
+                            stx = os.stat(os.path.join(protodir, pr))
+                            if stx.st_size == 0:
+                                self.printLine('   {0:s} is empty'.format(pr), color='red')
                             continue
                         if any([pr.endswith(e) for e in ['.tif', '.ma']]):
                             continue
                         tstamp = self.gettimestamp(os.path.join(self.topdir, d, s, c, pr))
-                        self.printLine(fmtstring.format('', '', '', pr, tstamp), 'white')
+                        self.printLine(fmtstring.format('', '', '', pr, tstamp))
                         if self.show_protocol:
                             indir = os.path.join(self.topdir, d, s, c, pr)
                             ind = AR.readDirIndex(indir)
-                            self.printLine(AR.getIndex(ind))
+                            self.printLine(AR.getIndex_fromstring(ind))
                             self.printLine('              -----------------------'+self.lb)
+                        for f in os.listdir(os.path.join(protodir, pr)):  # for all runs in the protocol directory
+                            if f in ['.DS_Store', 'log.txt']:
+                                continue
+                            protodatafile = os.path.join(protodir, pr, f)
+                            if os.path.isdir(protodatafile):  # directory  - walk it
+                                for f2 in os.listdir(protodatafile):  # for all runs in the protocol directory
+                                    if f2 in ['.DS_Store', 'log.txt']:
+                                        continue
+                                    stx = os.stat(os.path.join(protodatafile, f2))
+                                    # print('***** F2: ', f2, stx.st_size)
+                                    if stx.st_size == 0:
+                                        self.printLine('   {0:s} is empty'.format(os.path.join(protodatafile, f2)), color='cyan')
+                                        raise ValueError('File with 0 length is wrong - check data transfers')
+                            elif os.path.isfile(protodatafile):  # is a file
+                                stx = os.stat(protodatafile)
+                                # print('***** F: ', protodatafile, stx.st_size)
+                                if stx.st_size == 0:
+                                    self.printLine('   {0:s} is empty'.format(protodatafile), color='red')
+                                    raise ValueError('File with 0 length is wrong - check data transfers')
+
+                            
             #self.printLine('\f')  # would be nice to put a page break here, but ... doesn't survive. 
-        self.printLine('-'*100, 'blue')
+        self.printLine('-'*100+self.lb, color='blue')
         if self.outputMode == 'latex':
             with open(self.outfile, 'a') as f:
                 f.write(latex_footer)
         
     def check_extensions(self, d):
-        return(any([d.endswith(e) for e in ['.xlsx', '.p', '.py', '.pkl', '.sql', '.txt', '.doc', '.docx', '.tif', '.ma']]))
+        return(any([d.endswith(e) for e in ['.p', '.pkl', '.sql',
+            '.txt', '.doc', '.docx', '.xlsx', '.py', '.tex', '.cfg', '.ini',
+            '.tif', '.tiff', '.jpg', '.jpeg', '.gif', '.png', '.pdf',
+            '.ma', '.mosaic']]))
     
  #   def show_index(self, )
     def gettimestamp(self, path):
@@ -239,17 +295,24 @@ class DirCheck():
 #                            print('time: ', tstamp)
         return tstamp
 
-    def printLine(self, text, color='white'):
+    def printLine(self, text, color=None):
         # if self.outputMode == 'latex':
         #     text = text.replace('_', '$\_$')
         if self.outfile is None:
             if self.coloredOutput:
+                if color==None:
+                    color='white'
                 print(colored(text, color))
             else:
                 print(text)
         else:
             with open(self.outfile, 'a') as f:
+                if self.outputMode == 'latex' and color != None:
+                    f.write(self.lb + '\\end{Verbatim} ' + self.lb+ '\\begin{Verbatim}[formatcom=\\color{%s}]'%color+self.lb)
                 f.write(text)
+                if self.outputMode == 'latex' and color != None:
+                    f.write(self.lb + '\\end{Verbatim} ' + self.lb + '\\begin{Verbatim} ' + self.lb)
+ 
 
 
 if __name__ == '__main__':
@@ -258,10 +321,26 @@ if __name__ == '__main__':
                         help='Base Directory')
     parser.add_argument('-r', '--read', action='store_true', dest='read',
                         help='just read the protocol')
-    parser.add_argument('-p', action='store_true', dest='protocol',
+    parser.add_argument('-p', '--show-protocol', action='store_true', dest='protocol',
                         help='Print protocol information (normally suppressed, very verbose)')
     parser.add_argument('-o', '--output', type=str, dest='output', default=None,
                         help='Designate an output file name (if .tex, generates a LaTeX file)')
+    parser.add_argument('-a', '--after', type=str, default='1970.1.1', dest='after',
+                        help='only analyze dates on or after a date')
+    parser.add_argument('-b', '--before', type=str, default='2266.1.1', dest='before',
+                        help='only analyze dates on or before a date')
     args = parser.parse_args()
-    DirCheck(args.basedir, args.protocol, args.output)
+
+    DC = DirCheck(args.basedir, args.protocol, args.output, args=args)
+    
+    # remove latex intermediate files that are not needed after pdf generation
+    p, e = os.path.splitext(DC.outfile)
+    if e != '.tex':
+        exit(0)
+    subprocess.call(["pdflatex", DC.outfile])
+    exts = ['.aux', '.log', '.dvi', '.ps']
+    for filename in [p+e for e in exts]:
+        with contextlib.suppress(FileNotFoundError):
+            os.remove(filename)
+    subprocess.call(['open', p+'.pdf'])
     
