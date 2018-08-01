@@ -398,7 +398,11 @@ class DataSummary():
         for cell in cells:
             self.cstring = self.sstring + " %s" % cell
             Printer(self.cstring)
-            self.cell_index = self.AR.readDirIndex(os.path.join(thisslice, cell))  # possible that .index file is missing, so we cannot read
+            try:
+                self.cell_index = self.AR.readDirIndex(os.path.join(thisslice, cell))  # possible that .index file is missing, so we cannot read
+            except:
+                self.cell_index={}  # unreadable...
+                continue
             if self.cell_index is None:
                 self.cell_index = {}  # directory is not managed, so skip
                 continue
@@ -458,19 +462,23 @@ class DataSummary():
         if self.verbose:
             print('\nInvestigating Protocols')
         for np, protocol in enumerate(protocols):  # all protocols on the cell
+            if protocol.startswith('Patch'):
+                continue
             Printer(self.cstring + ' Prot[%2d/%2d]: %s' % (np, len(protocols), protocol))
             self.allprotocols += protocol + ', '
             protocolpath = os.path.join(thiscell, protocol)
             dirs = self.AR.subDirs(protocolpath)  # get all sequence entries (directories) under the protocol
             modes = []
             info = self.AR.readDirIndex(protocolpath)  # top level info dict
+            if 'devices' not in info.keys():  # just safety... 
+                continue
             devices = info['devices'].keys()
             clampDevices = []
             for d in devices:
                 if d in self.AR.clampdevices:
                     clampDevices.append(d)
             if len(clampDevices) == 0:
-                exit(1)
+                continue # ignore protocol
             mainDevice = clampDevices[0]
             modes = self.getClampDeviceMode(info, mainDevice, modes)
 #            print('modes: ', modes)

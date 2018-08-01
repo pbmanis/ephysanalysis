@@ -77,9 +77,11 @@ class VCSummary():
         #print('path: ', self.datapath)
         self.AR.setProtocol(self.datapath)  # define the protocol path where the data is
         self.setup(clamps=self.AR)
-        self.AR.getData()  # get that data.
-        self.analyze()
-        self.plot_vciv()
+        if self.AR.getData():  # get that data.
+            self.analyze()
+            self.plot_vciv()
+            return True
+        return False
 
     def analyze(self, rmpregion=[0., 0.05], tauregion=[0.1, 0.125]):
         #self.rmp_analysis(region=rmpregion)

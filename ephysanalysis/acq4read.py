@@ -365,6 +365,9 @@ class Acq4Read():
         trx = []
         cmd = []
         sequence_values = None
+        if 'sequenceParams' not in index['.'].keys():
+            print(' acq4read.getData: no params or sequence')
+            return False
         self.sequence =  index['.']['sequenceParams']
         # building command voltages or currents - get amplitudes to clamp
 
