@@ -299,7 +299,6 @@ class Acq4Read():
         self.mode = info[1]['ClampState']['mode']
         self.units = [info[1]['ClampState']['primaryUnits'], info[1]['ClampState']['secondaryUnits']]
         self.samp_rate = info[1]['DAQ']['primary']['rate']
-      #  print('MODE: ', self.mode)
         if self.mode in ['IC', 'I=0']:
             self.tracepos = 1
             self.cmdpos = 0
