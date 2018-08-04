@@ -794,9 +794,14 @@ class MetaArray(object):
         ## Read meta information until the first blank line
         while True:
             line = fd.readline().strip()
-            if line == '':
+            if line == '' or line == b'':
                 break
-            meta += line
+            try:
+                meta += line
+            except:
+                print('meta: ', meta)
+                print('line: ', line)
+                raise ValueError('adios')
         ret = eval(meta)
         #print ret
         return ret

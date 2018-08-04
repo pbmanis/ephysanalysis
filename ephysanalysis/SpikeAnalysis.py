@@ -232,7 +232,7 @@ class SpikeAnalysis():
                                               0.0, self.Clamps.tstart)
             for j in range(len(self.spikes[i])):
                 thisspike = {'trace': i, 'AP_number': j, 'AP_beginIndex': None, 'AP_endIndex': None, 
-                             'peakIndex': None, 'peak_T': None, 'peak_V': None, 'AP_Latency': None,
+                             'AP_peakIndex': None, 'peak_T': None, 'peak_V': None, 'AP_Latency': None,
                              'AP_beginV': None, 'halfwidth': None, 'trough_T': None,
                              'trough_V': None, 'peaktotroughT': None,
                              'current': None, 'iHold': None,
@@ -240,9 +240,9 @@ class SpikeAnalysis():
                 thisspike['current'] = self.Clamps.values[i] - iHold[i]
                 thisspike['iHold'] = iHold[i]
                 thisspike['pulseDuration'] = self.Clamps.tend - self.Clamps.tstart  # in seconds
-                thisspike['peakIndex'] = self.spikeIndices[i][j]
-                thisspike['peak_T'] = self.Clamps.time_base[thisspike['peakIndex']]
-                thisspike['peak_V'] = self.Clamps.traces[i][thisspike['peakIndex']]  # max voltage of spike
+                thisspike['AP_peakIndex'] = self.spikeIndices[i][j]
+                thisspike['peak_T'] = self.Clamps.time_base[thisspike['AP_peakIndex']]
+                thisspike['peak_V'] = self.Clamps.traces[i][thisspike['AP_peakIndex']]  # max voltage of spike
                 thisspike['tstart'] = self.Clamps.tstart
                 
                 # find the minimum going forward - that is AHP min
@@ -279,13 +279,13 @@ class SpikeAnalysis():
                     #     continue # kbegin = kbegin + int(0.001/dt)  # 1 msec
                 # revise k to start at max of rising phase
                # print('dv, kbegin, k, j: ', kbegin, k, j)
-                if k < kbegin:
-                    k = kbegin+1
+                if k <= kbegin:
+                    k = kbegin + 2
                 km = np.argmax(dv[kbegin:k]) + kbegin
                 if ((km - kbegin) < 1):
                     km = kbegin + int((k - kbegin)/2.) + 1
                 kthresh = np.argmin(np.fabs(dv[kbegin:km] - begin_dV)) + kbegin  # point where slope is closest to begin
-               # print('begin:, peak: ', km, kbegin, kthresh, thisspike['peakIndex'], dv[kbegin:km], begin_dV)
+               # print('begin:, peak: ', km, kbegin, kthresh, thisspike['AP_peakIndex'], dv[kbegin:km], begin_dV)
 # #                import matplotlib.pyplot as mpl
 #                 mpl.plot(self.Clamps.time_base, self.Clamps.traces[i])
 #                 cl = ['r', 'g', 'b']
@@ -296,12 +296,17 @@ class SpikeAnalysis():
                 thisspike['AP_beginIndex'] = kthresh
                 thisspike['AP_Latency'] = self.Clamps.time_base[kthresh]
                 thisspike['AP_beginV'] = self.Clamps.traces[i][thisspike['AP_beginIndex']]
-                if thisspike['AP_beginIndex'] is not None and thisspike['AP_endIndex'] is not None:
+                if (
+                    (thisspike['AP_beginIndex'] is not None) and
+                    (thisspike['AP_endIndex'] is not None) and
+                    (thisspike['AP_beginIndex'] < thisspike['AP_peakIndex']) and
+                    (thisspike['AP_peakIndex'] < thisspike['AP_endIndex'])
+                    ):
                     halfv = 0.5*(thisspike['peak_V'] + thisspike['AP_beginV'])
-                    kup = np.argmin(np.fabs(self.Clamps.traces[i][thisspike['AP_beginIndex']:thisspike['peakIndex']] - halfv))
+                    kup = np.argmin(np.fabs(self.Clamps.traces[i][thisspike['AP_beginIndex']:thisspike['AP_peakIndex']] - halfv))
                     kup += thisspike['AP_beginIndex']
-                    kdown = np.argmin(np.fabs(self.Clamps.traces[i][thisspike['peakIndex']:thisspike['AP_endIndex']] - halfv))
-                    kdown += thisspike['peakIndex'] 
+                    kdown = np.argmin(np.fabs(self.Clamps.traces[i][thisspike['AP_peakIndex']:thisspike['AP_endIndex']] - halfv))
+                    kdown += thisspike['AP_peakIndex'] 
                     if kup is not None and kdown is not None:
                         thisspike['halfwidth'] = self.Clamps.time_base[kdown] - self.Clamps.time_base[kup]
                         thisspike['hw_up'] = self.Clamps.time_base[kup]

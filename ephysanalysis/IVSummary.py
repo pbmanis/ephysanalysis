@@ -50,13 +50,16 @@ class IVSummary():
         """
         #print('path: ', self.datapath)
         self.AR.setProtocol(self.datapath)  # define the protocol path where the data is
-        self.AR.getData()  # get that data.
-        self.SP.setup(clamps=self.AR, threshold=-0.010,  refractory=0.0001, peakwidth=0.001, interpolate=False, verify=False, mode='peak')
-        self.SP.analyzeSpikes()
-        self.SP.analyzeSpikeShape()
-        self.RM.setup(self.AR, self.SP)
-        self.RM.analyze()
-        self.plot_iv()
+        if self.AR.getData():  # get that data.
+            self.SP.setup(clamps=self.AR, threshold=-0.010,  refractory=0.0001, peakwidth=0.001, interpolate=False, verify=False, mode='peak')
+            self.SP.analyzeSpikes()
+            self.SP.analyzeSpikeShape()
+            self.RM.setup(self.AR, self.SP)
+            self.RM.analyze()
+            self.plot_iv()
+            return True
+        else:
+            return False
 
     def plot_iv(self):
         P = PH.regular_grid(2 , 2, order='columns', figsize=(8., 6.), showgrid=False,
@@ -87,15 +90,19 @@ class IVSummary():
         fisi = []
         iflatcur = []
         iisicur = []
-        for k in self.SP.analysis_summary['spikes'].keys():
-            flat.append(self.SP.analysis_summary['spikes'][k][0]['AP_Latency'])
-            iflatcur.append(self.SP.analysis_summary['spikes'][k][0]['current'])
+        for spk in self.SP.analysis_summary['spikes']:
             try:
-                fisi.append(self.SP.analysis_summary['spikes'][k][1]['AP_Latency']-self.SP.analysis_summary['spikes'][k][0]['AP_Latency'])
-                iisicur.append(self.SP.analysis_summary['spikes'][k][0]['current'])
+                flat.append(spk[0]['AP_Latency'])
+                latcur.append(spk[0]['current'])
+            except:
+                pass
+            try:
+                fisi.append(spk[1]['AP_Latency']-spk[k][0]['AP_Latency'])
+                iisicur.append(spk[0]['current'])
             except:
                 pass
         P.axdict['D'].plot(np.array(iflatcur)*1e9, (np.array(flat)-self.AR.tstart)*1000., 'sk-')
+        #print('isicur: ', len(iisicur), 'fisi: ', len(fisi))
         P.axdict['D'].plot(np.array(iisicur)*1e9, (np.array(fisi))*1000., '^b-')
         PH.talbotTicks(P.axdict['C'], tickPlacesAdd={'x': 1, 'y': 0}, floatAdd={'x': 1, 'y': 0})
         P.axdict['D'].set_xlabel('I (nA)')
