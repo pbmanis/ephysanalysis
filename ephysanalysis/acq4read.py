@@ -294,7 +294,6 @@ class Acq4Read():
         self.mode = info[1]['ClampState']['mode']
         self.units = [info[1]['ClampState']['primaryUnits'], info[1]['ClampState']['secondaryUnits']]
         self.samp_rate = info[1]['DAQ']['primary']['rate']
-      #  print('MODE: ', self.mode)
         if self.mode in ['IC', 'I=0']:
             self.tracepos = 1
             self.cmdpos = 0
@@ -400,7 +399,7 @@ class Acq4Read():
             #print ('i: %d   cmd: %f' % (i, sequence_values[i]*1e12))
         if self.mode is None:
             print ('no files processed...')
-            exit(1)
+            return False
         if 'v' in self.mode.lower():
             units = 'V'
         else:
