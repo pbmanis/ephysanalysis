@@ -12,10 +12,6 @@ import os
 import re
 #from pyqtgraph import metaarray
 import ephysanalysis.metaarray as EM
-# print(EM)
-# print(dir(EM))
-# print(EM.MetaArray)
-# exit(1)
 from pyqtgraph import configfile
 import numpy as np
 import datetime
@@ -412,7 +408,7 @@ class Acq4Read():
             #print ('i: %d   cmd: %f' % (i, sequence_values[i]*1e12))
         if self.mode is None:
             print ('no files processed...')
-            exit(1)
+            return False
         if 'v' in self.mode.lower():
             units = 'V'
         else:
@@ -480,7 +476,6 @@ class Acq4Read():
         """
         supindex = self._readIndex(self.protocol)
         #print(supindex['.']['devices']['PockelCell']['channels']['Switch'].keys())
-        #exit(1)
         try:
             stimuli = supindex['.']['devices']['Laser-Blue-raw']['channels']['pCell']
             # print('GOT PCELL')
@@ -547,7 +542,10 @@ class Acq4Read():
         pars={}
         pars['sequence1'] = {}
         pars['sequence2'] = {}
-        reps = supindex['.']['sequenceParams'][('protocol', 'repetitions')]
+        try:
+            reps = supindex['.']['sequenceParams'][('protocol', 'repetitions')]
+        except:
+            reps = [0]  # just fill in one rep. SOme files may be missing the protocol/repetitions entry for some reason
         pars['sequence1']['index'] = reps
         pars['sequence2']['index'] = ntargets
         self.sequenceparams = pars
