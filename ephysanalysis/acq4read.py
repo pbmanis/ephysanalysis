@@ -12,6 +12,7 @@ import os
 import re
 #from pyqtgraph import metaarray
 import ephysanalysis.metaarray as EM
+import ephysanalysis.boundrect as BR
 # print(EM)
 # print(dir(EM))
 # print(EM.MetaArray)
@@ -23,6 +24,7 @@ import matplotlib.pyplot as mpl
 import pprint
 import textwrap as WR
 import collections
+import tifffile as tf
 
 pp = pprint.PrettyPrinter(indent=4)
 
@@ -112,10 +114,15 @@ class Acq4Read():
                 print( '****************** Error: Missing .index file? (fails to detect protocol sequence)')
                 raise Exception("Directory '%s' does not appear to be a protocol sequence." % dh.name())
 
+    def getIndex(self, currdir='', lineend='\n'):
+        self.lb = lineend  # set line break character
+        self._readIndex(currdir=currdir)
+        if self._index is not None:
+            return self._index['.']
+        else:
+            return None
+
     def _readIndex(self, currdir=''):
-        """
-        Private method to read .index in the specified directory
-        """
         self._index = None
         indexFile = os.path.join(self.protocol, currdir, '.index')
 #        print self.protocol, currdir, indexFile
@@ -126,20 +133,93 @@ class Acq4Read():
         return self._index
 
     def readDirIndex(self, currdir=''):
-        """
-        Read the .index file that is in the specified
-        current directory currdir
-        wrapper for _readIndex
-        """
         self._dirindex = None
         indexFile = os.path.join(currdir, '.index')
+       # print (indexFile)
         if not os.path.isfile(indexFile):
             print("Directory '%s' is not managed!" % (currdir))
-        else:
-            self._dirindex = configfile.readConfigFile(indexFile)['.']
+            return self._dirindex
+        self._dirindex = configfile.readConfigFile(indexFile)
         return self._dirindex
 
-    def getIndex_fromstring(self, index):
+    def _parse_timestamp(self, lstr):
+        tstamp = None
+        ts = self.tstamp.match(lstr)
+        if ts is not None:
+            fts = float(ts.group(2))
+            tstamp = datetime.datetime.fromtimestamp(fts).strftime('%Y-%m-%d  %H:%M:%S %z')
+        return tstamp
+
+    def convert_timestamp(self, fts):
+        tstamp = datetime.datetime.fromtimestamp(fts).strftime('%Y-%m-%d  %H:%M:%S %z')
+        return tstamp
+       
+    def _parse_index(self, index):
+        """
+        Recursive version
+        """
+        self.indent += 1
+        if isinstance(index, list):
+            for i in range(len(index)):
+                index[i] = self._parse_index(index[i])
+                if isinstance(index[i], list):
+                    self.textline += ('{0:s}  list, len={1:d}{2:s}'.format(' '*self.indent*4,  len(index[i]), self.lb))
+                else:
+                    if not isinstance(index[i], tuple):
+                        self.textline += ('{0:s}  {1:d}{2:s}',format(' '*self.indent*4, index[i], self.lb))
+        
+        elif isinstance(index, tuple):
+            self.textline += ('{0:s} Device, Sequence : {1:s}, {2:s}{3:s}'.format(' '*self.indent*4, str(index[0]), str(index[1]),
+                self.lb))
+ 
+        elif isinstance(index, dict):
+            for k in index.keys():
+                if k.endswith('.ma') or k.endswith('.tif'):
+                    continue
+                if k in ['splitter']:
+                    continue
+
+                index[k] = self._parse_index(index[k])
+                if isinstance(index[k], list) or isinstance(index[k], np.ndarray):
+                    self.textline += ('{0:s} {1:3d} : list/array, len= {2:4d}{3:s}'.format(' '*self.indent*4, k, len(index[k]),
+                        self.lb))
+                elif k not in ['__timestamp__', '.']:
+                    indents = ' '*(self.indent*4)
+                    indents2 = ' '*(self.indent*4)
+                    # do a textwrap on ths string
+                    if k in ['description', 'notes']:
+                        hdr = ('{0:s} {1:>20s} : '.format(indents, k))
+                      #  self.textline += hdr
+                        wrapper = WR.TextWrapper(initial_indent='', subsequent_indent=len(hdr)*' ', width=100)
+                        for t in wrapper.wrap(hdr + str(index[k])):
+                            self.textline += t+self.lb
+                    else:
+                        if not isinstance(index[k], collections.OrderedDict):
+                            self.textline += ('{0:s} {1:>20s} : {2:<s}{3:s}'.format(indents, k, str(index[k]), self.lb))
+                        else:
+                            break
+                elif k in ['__timestamp__']:
+                    tstamp = self.convert_timestamp(index[k])
+                    if tstamp is not None:
+                        self.textline += ('{0:s} {1:>20s} : {2:s}{3:s}'.format(' '*self.indent*4, 'timestamp', tstamp, self.lb))
+        
+        elif isinstance(index, bytes):  # change all bytestrings to string and remove internal quotes
+            index = index.decode('utf-8').replace("\'", '')
+            self.textline += ('{0:s}  b: {1:d}{2:s}'.format(' '*self.indent*4, inde, self.lb))
+        self.indent -= 1
+        return index
+        
+    def printIndex(self, index):
+        """
+        Generate a nice printout of the index, about as far down as we can go
+        """
+        self.indent = 0
+        self.textline = ''
+        t = self._parse_index(index)
+        print(t)
+        return
+
+    def getIndex(self, index):
         """
         Generate a nice printout of the index, about as far down as we can go
         """
@@ -159,90 +239,6 @@ class Acq4Read():
         #                     if isinstance(index['.'][k][k2][k3], dict):
         #                         for k4 in index['.'][k][k2][k3]:
         #                             print( '    [', k, '][', k2, '][', k3, '][', k4, '] ::::  ', index['.'][k][k2][k3][k4])
-
-    def _parse_timestamp(self, lstr):
-        tstamp = None
-        ts = self.tstamp.match(lstr)
-        if ts is not None:
-            fts = float(ts.group(2))
-            tstamp = datetime.datetime.fromtimestamp(fts).strftime('%Y-%m-%d  %H:%M:%S %z')
-        return tstamp
-
-    def convert_timestamp(self, fts):
-        tstamp = datetime.datetime.fromtimestamp(fts).strftime('%Y-%m-%d  %H:%M:%S %z')
-        return tstamp
-       
-    def _parse_index(self, index):
-        """
-        Recursive version
-        """
-        self.indent += 1
-        indents = ' '*(self.indent*4)
-        indents2 = ' '*(self.indent*4)
-        if isinstance(index, list):
-            for i in range(len(index)):
-                index[i] = self._parse_index(index[i])
-                if isinstance(index[i], list):
-                    self.textline += ('{0:s} {1:>24s} : {2:d}{3:s}'.format(
-                            indents, 'list, len', len(index[i]), self.lb))
-                else:
-                    if not isinstance(index[i], tuple):
-                        self.textline += ('{0:s}  {1:d}{2:s}',format(indents, index[i], self.lb))
-        
-        elif isinstance(index, tuple):
-            self.textline += ('{0:s} {1:>24s} : {2:<s}, {3:s}{4:s}'.format(
-                            indents, 'Device, Sequence', str(index[0]), str(index[1]),
-                self.lb))
- 
-        elif isinstance(index, dict):
-            for k in index.keys():
-                if k.endswith('.ma') or k.endswith('.tif'):
-                    continue
-                if k in ['splitter', 'params']:
-                    continue
-
-                index[k] = self._parse_index(index[k])
-                if isinstance(index[k], list) or isinstance(index[k], np.ndarray):
-                    self.textline += ('{0:s} {1:>24s} : list/array, len= {2:4d}{3:s}'.format(
-                            indents, k, len(index[k]),
-                        self.lb))
-                    #self.textline += str(index[k])  # print out to see what is there... 
-                elif k not in ['__timestamp__', '.']:
-
-                    # do a textwrap on ths string
-                    if k in ['description', 'notes']:
-                        hdr = ('{0:s} {1:>24s} : '.format(indents, k))
-                      #  self.textline += hdr
-                        wrapper = WR.TextWrapper(initial_indent='', subsequent_indent=len(hdr)*' ', width=100)
-                        for t in wrapper.wrap(hdr + str(index[k])):
-                            self.textline += t + self.lb
-                    else:
-                        if not isinstance(index[k], collections.OrderedDict):
-                            self.textline += ('{0:s} {1:>24s} : {2:<s}{3:s}'.format(
-                                    indents, k, str(index[k]), self.lb))
-                        else:
-                            break
-                elif k in ['__timestamp__']:
-                    tstamp = self.convert_timestamp(index[k])
-                    if tstamp is not None:
-                        self.textline += ('{0:s} {1:>24s} : {2:s}{3:s}'.format(
-                                indents, 'timestamp', tstamp, self.lb))
-        
-        elif isinstance(index, bytes):  # change all bytestrings to string and remove internal quotes
-            index = index.decode('utf-8').replace("\'", '')
-            self.textline += ('{0:s}  b: {1:d}{2:s}'.format(indents, inde, self.lb))
-        self.indent -= 1
-        return index
-        
-    def printIndex(self, index):
-        """
-        Generate a nice printout of the index, about as far down as we can go
-        """
-        self.indent = 0
-        self.textline = ''
-        t = self._parse_index(index)
-        print(t)
-        return
 
     def file_cell_protocol(self, filename):
         """
@@ -266,11 +262,8 @@ class Acq4Read():
         list of valid clamp devices found (there may be more than one)
             List will be empty if no recognized device is found.
         """
-        info = self.readDirIndex(currdir=currdir)
-
+        info = self.getIndex(currdir=currdir)
         if verbose:
-            print('dir: ', currdir)
-            print('info gcd: ', info.keys())
             print('\ngetClampDevices info: ', info['devices'])
         devs = []
         if info is not None and 'devices' in info.keys():
@@ -364,9 +357,6 @@ class Acq4Read():
         trx = []
         cmd = []
         sequence_values = None
-        if 'sequenceParams' not in index['.'].keys():
-            print(' acq4read.getData: no params or sequence')
-            return False
         self.sequence =  index['.']['sequenceParams']
         # building command voltages or currents - get amplitudes to clamp
 
@@ -393,7 +383,7 @@ class Acq4Read():
                     continue
             if check:
                 return True
-            tr = EM.MetaArray(file=fn)  # reads metaarray format of file
+            tr = EM.MetaArray(file=fn)
             info = tr[0].infoCopy()
             self.parseClampInfo(info)
             # if i == 0:
@@ -542,6 +532,8 @@ class Acq4Read():
         rep = 0
         tar = 0
         supindex = self._readIndex(self.protocol)
+        if not 'sequenceParams' in supindex['.'].keys():
+            return(False)
         ntargets = len(supindex['.']['sequenceParams'][('Scanner', 'targets')])
         pars={}
         pars['sequence1'] = {}
@@ -550,6 +542,7 @@ class Acq4Read():
         pars['sequence1']['index'] = reps
         pars['sequence2']['index'] = ntargets
         self.sequenceparams = pars
+        self.scannerCamera = {}
         self.scannerinfo = {}
         for i, d in enumerate(dirs):
             index = self._readIndex(d)
@@ -558,15 +551,84 @@ class Acq4Read():
                 self.targets[i] = index['.'][('Scanner', 'targets')]
                 self.spotsize = index['.']['Scanner']['spotSize']
                 self.scannerinfo[(rep, tar)] = {'directory': d, 'rep': rep, 'pos': self.scannerpositions[i]}
+            # elif ('Scanner', 'targets') in index['.']:
+            #         print ('scanner targets: ', index['.'][('Scanner', 'targets')])
+            #         self.scannerpositions[i] = index['.'][('Scanner', 'targets')]['position']
+            #         self.targets[i] = index['.'][('Scanner', 'targets')]
+            #         self.spotsize = index['.']['Scanner']['spotSize']
             else:
-                self.scannerpositions[i] = [0., 0.]
-                self.targets[i] = None
-                self.spotsize = None
-                self.scannerinfo[(rep, tar)] = {'directory': d, 'rep': rep, 'pos': self.scannerpositions[i]}
+#                print('Scanner information not found in index: ', d, '\n', index['.'].keys())
+                return False # protocol is short... 
+#                self.scannerinfo[(rep, tar)] = {'directory': d, 'rep': rep, 'pos': self.scannerpositions[i]}
+            if 'Camera' in supindex['.']['devices'].keys() and len(self.scannerCamera) == 0:  # read the camera outline
+                cindex = self._readIndex(os.path.join(d, 'Camera'))
+                self.scannerCamera = cindex
+            else:
+                pass
+                
+                
             tar = tar + 1
             if tar > ntargets:
                 tar = 0
                 rep = rep + 1
+        return True # indicate protocol is all ok
+
+    def getImage(self, filename):
+        """
+        getImage
+        Returns the image file in the dataname
+        Requires full path to the data
+        """
+        self.imageData = tf.imread(filename)
+        # imageframe = EM.MetaArray(file=dataname)
+#         img = imageframe.view(np.ndarray)
+        return(self.imageData)
+
+    def getAverageScannerImages(self, dataname='Camera/frames.ma', mode='average', firstonly=False):
+        dirs = self.subDirs(self.protocol)
+
+        rep = 0
+        tar = 0
+        supindex = self._readIndex(self.protocol)
+        ntargets = len(supindex['.']['sequenceParams'][('Scanner', 'targets')])
+        pars={}
+        pars['sequence1'] = {}
+        pars['sequence2'] = {}
+        reps = supindex['.']['sequenceParams'][('protocol', 'repetitions')]
+        pars['sequence1']['index'] = reps
+        pars['sequence2']['index'] = ntargets
+        scannerImages = []
+        self.sequenceparams = pars
+        self.scannerinfo = {}
+        for i, d in enumerate(dirs):
+            index = self._readIndex(d)
+            imageframe = EM.MetaArray(file=os.path.join(d, dataname))
+            cindex = self._readIndex(os.path.join(d, 'Camera'))
+            frsize = cindex['frames.ma']['region']
+            print ('image shape: ', imageframe.shape)
+            if imageframe.ndim == 3 and imageframe.shape[0] > 1:
+                imageframed = imageframe[1]-imageframe[0]
+            if imageframe.ndim == 3 and imageframe.shape[0] == 1:
+                imageframed = imageframe[0]
+            if i == 0:
+                scannerImages = np.zeros((len(dirs), frsize[2], frsize[3]))
+            scannerImages[i] = imageframed.view(np.ndarray)
+            if firstonly:
+                break
+
+
+        avgfr = np.zeros((scannerImages.shape[1], scannerImages.shape[2]))
+        if not firstonly:
+            # simple maximum projection
+            if mode == 'max':
+                for i in range(scannerImages.shape[0]):
+                    avgfr = np.maximum(avgfr, scannerImages[i])
+            elif mode == 'average':
+                avgfr = np.mean(scannerImages, axis=0)
+        else:
+            avgfr = imageframed.view(np.ndarray)
+        return avgfr
+        
 
     def plotClampData(self, all=True):
         f, ax = mpl.subplots(2)
@@ -581,16 +643,93 @@ class Acq4Read():
 if __name__ == '__main__':
     # test on a big file
     a = Acq4Read()
-    a.setProtocol('/Users/pbmanis/Documents/data/MRK_Pyramidal/2018.01.26_000/slice_000/cell_000/CCIV_1nA_max_000/')
-#    a.setProtocol('/Volumes/Pegasus/ManisLab_Data3/Kasten, Michael/2017.11.20_000/slice_000/cell_000/CCIV_4nA_max_000')
-    # a.getScannerPositions()
-    # print a.scannerpositions
-    # print (a.spotsize)
-#    mpl.plot(a.scannerpositions[:,0], a.scannerpositions[:,1], 'ro')
-    a.getData()
-    a.plotClampData(all=True)
+    BRI = BR.BoundRect()
+#    a.setProtocol('/Users/pbmanis/Documents/data/MRK_Pyramidal/2018.01.26_000/slice_000/cell_000/CCIV_1nA_max_000/')
+    cell = '/Users/pbmanis/Documents/data/mrk/2017.09.12_000/slice_000/cell_001'
+    datasets = os.listdir(cell)
+    imageplotted = False
+    imagetimes = []
+    imagename = []
+    maptimes = []
+    mapname = []
+    supindex = a.readDirIndex(currdir=cell)
+    for k in supindex:
+        if k.startswith('image_'):
+            print('Found Image: ', k)
+            imagetimes.append(supindex[k]['__timestamp__'])
+            imagename.append(k)
+        if k.startswith('Map_'):
+            maptimes.append(supindex[k]['__timestamp__'])
+            mapname.append(k)
+    print(maptimes)
+    print(imagetimes)
+    maptoimage = {}
+    for im, m in enumerate(maptimes):
+        u = np.argmin(maptimes[im] - np.array(imagetimes))
+        maptoimage[mapname[im]] = imagename[u]
+            
+    print (maptoimage)
+
+    for i, d in enumerate(datasets):
+        pa, da = os.path.split(d)
+        if 'Map'  not in da:
+            continue
+        print('d: ', d)
+        a.setProtocol(os.path.join(cell, d))
+    #    a.setProtocol('/Volumes/Pegasus/ManisLab_Data3/Kasten, Michael/2017.11.20_000/slice_000/cell_000/CCIV_4nA_max_000')
+        if not a.getScannerPositions():
+           continue
+        
+    
+        print( a.scannerCamera['frames.ma']['transform'])
+        pos = a.scannerCamera['frames.ma']['transform']['pos']
+        scale = a.scannerCamera['frames.ma']['transform']['scale']
+        region = a.scannerCamera['frames.ma']['region']
+        binning = a.scannerCamera['frames.ma']['binning']
+        print('bining: ', binning)
+        if a.spotsize is not None:
+            print ('Spot Size: {0:0.3f} microns'.format(a.spotsize*1e6))
+        else:
+            a.spotsize=50.
+
+        camerabox = [[pos[0] + scale[0]*region[0], pos[1] + scale[1]*region[1]],
+               [pos[0] + scale[0]*region[0], pos[1] + scale[1]*region[3]],
+               [pos[0] + scale[0]*region[2], pos[1] + scale[1]*region[3]],
+               [pos[0] + scale[0]*region[2], pos[1] + scale[1]*region[1]],
+               [pos[0] + scale[0]*region[0], pos[1] + scale[1]*region[1]]
+           ]
+        scannerbox = BRI.getRectangle(a.scannerpositions)
+        print(scannerbox)
+        print(scannerbox.shape)
+        fp = np.array([scannerbox[0][0], scannerbox[1][1]]).reshape(2,1)
+        print(fp.shape)
+        scannerbox = np.append(scannerbox, fp, axis=1)
+        print(scannerbox)
+    
+        boxw = np.swapaxes(np.array(camerabox), 0, 1)
+        print('camera box: ', boxw)
+        scboxw = np.array(scannerbox)
+        print('scanner box: ', scboxw)
+        mpl.plot(boxw[0,:], boxw[1,:], linewidth=1.5)
+        avgfr = a.getAverageScannerImages(firstonly=True, mode='average')
+        if not imageplotted:
+            imgd = a.getImage(os.path.join(cell, 'image_001.tif'))
+           # mpl.imshow(np.flipud(np.rot90(avgfr), aspect='equal', extent=[np.min(boxw[0]), np.max(boxw[0]), np.min(boxw[1]), np.max(boxw[1])])
+            mpl.imshow(imgd, aspect='equal', cmap='gist_gray',
+                extent=[np.min(boxw[0]), np.max(boxw[0]), np.min(boxw[1]), np.max(boxw[1])])
+            imageplotted = True
+        mpl.plot(a.scannerpositions[:,0], a.scannerpositions[:,1], 'ro', alpha=0.2, markeredgecolor='w')
+        mpl.plot(boxw[0,:], boxw[1,:], 'g-', linewidth=5)
+        mpl.plot(scboxw[0,:], scboxw[1,:], linewidth=1.5, label=d.replace('_', '\_'))
+    
+    # a.getData()
+    # a.plotClampData(all=True)
     #print a.clampInfo
    # print a.traces[0]
+    pos = mpl.ginput(-1, show_clicks=True)
+    print(pos)
+    
+    mpl.legend()
     mpl.show()
             
 

@@ -19,6 +19,7 @@ import ephysanalysis.SpikeAnalysis
 import ephysanalysis.dataSummary
 import ephysanalysis.IVSummary
 import ephysanalysis.VCSummary
+import ephysanalysis.boundrect
 
 import ephysanalysis.metaarray as MetaArray
 
