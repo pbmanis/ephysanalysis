@@ -225,7 +225,7 @@ class DataSummary():
                 maxdayx = (dt.year, dt.month, dt.day)
             except:
                 raise ValueError('Date for BEFORE cannot be parsed : {0:s}'.format(self.before))
-        
+        print(self.after, self.before, mindayx, maxdayx)
         if self.daylistfile is None:  # get from command line
             self.minday = mindayx[0]*1e4+mindayx[1]*1e2+mindayx[2]
             self.maxday = maxdayx[0]*1e4+maxdayx[1]*1e2+maxdayx[2]
@@ -275,11 +275,13 @@ class DataSummary():
         allfiles = os.listdir(self.basedir)
         self.pstring = ''
         days = []
+        print('allfiles: ', allfiles)
         for thisfile in allfiles:
             m = self.daytype.match(thisfile)
             if m in ['.DS_Store']:
                 continue
             if m is None:
+                print('no match in daytype : ', thisfile)
                 continue  # no match
             if len(m.groups()) >= 3:  # perfect match
                 idl = [int(d) for d in m.groups()]
@@ -291,6 +293,7 @@ class DataSummary():
                 else:
                     if thisfile[0:10] in self.daylist:
                         days.append(thisfile)
+        print('days: ', days)
         if self.verbose:
             print ('Days reported: ', days)
         for nd, day in enumerate(days):
