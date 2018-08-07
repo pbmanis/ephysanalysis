@@ -13,6 +13,7 @@ Required Packages
 #  montager ()
 
 General Packages
+These can all be "conda install... " into the environment
 ----------------
 matplotlib
 pandas
@@ -23,10 +24,12 @@ termcolor
 seaborn
 tifffile
 numba
+openpyxl (and it's dependencies)
 
 
 
-Although the code will run under Python 2.7, we strongly recommend running it under a recent version of Python 3.
+
+Although the code might run under Python 2.7, we strongly recommend running it under a recent version of Python 3.
 
 We also recommend setting up a python3 environment in anaconda (or however you prefer) so that there is a clean
 
