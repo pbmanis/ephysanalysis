@@ -150,7 +150,9 @@ class SpikeAnalysis():
                 lastspikecount = self.spikecount[i]  # update rate (sets max rate)
             
         iAR = np.where(ar > 0)  # valid AR and monotonically rising
-        self.adapt_ratio = np.mean(ar[iAR])  # only where we made the measurement
+        self.adapt_ratio = np.nan
+        if len(ar[iAR]) > 0:
+            self.adapt_ratio = np.mean(ar[iAR])  # only where we made the measurement
         self.ar = ar  # stores all the ar values
         self.analysis_summary['AdaptRatio'] = self.adapt_ratio
         self.nospk = np.where(self.spikecount == 0)
@@ -323,7 +325,7 @@ class SpikeAnalysis():
                     pp.pprint(self.spikeShape[m][n])
         self.iHold = np.mean(iHold)
         self.analysis_summary['spikes'] = self.spikeShape  # save in the summary dictionary too       
-        self.analysis_summary['iHold'] = np.mean(iHold)
+        self.analysis_summary['iHold'] = self.iHold
         self.analysis_summary['pulseDuration'] = self.Clamps.tend - self.Clamps.tstart
         if len(self.spikeShape.keys()) > 0:  # only try to classify if there are spikes
             self.getClassifyingInfo()  # build analysis summary here as well.
@@ -479,6 +481,7 @@ class SpikeAnalysis():
         fpnt = np.where(yd > 0)  # find first point where cell fires
         fbr = fpnt[0][0]-1
         ibreak0 = x[fbr]  # use point before first spike as the initial break point
+        # check first to see if x is empty:
         dx = np.abs(np.mean(np.diff(x)))  # get current steps
         xp = x[fpnt]
         xp = xp-ibreak0-dx
