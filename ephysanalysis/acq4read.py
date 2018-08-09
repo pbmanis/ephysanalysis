@@ -134,7 +134,12 @@ class Acq4Read():
         if not os.path.isfile(indexFile):
             print("Directory '%s' is not managed!" % (currdir))
             return self._dirindex
-        self._dirindex = configfile.readConfigFile(indexFile)
+        try:
+            self._dirindex = configfile.readConfigFile(indexFile)
+        except:
+            print('Failed to read index file for %s' % currdir)
+            print('Probably bad formatting or broken .index file')
+            return self._dirindex
         return self._dirindex
 
     def _parse_timestamp(self, lstr):
@@ -211,7 +216,7 @@ class Acq4Read():
         self.indent = 0
         self.textline = ''
         t = self._parse_index(index)
-        print(t)
+        print('Index: \n', t)
         return
 
     def getIndex(self, index):
@@ -528,7 +533,10 @@ class Acq4Read():
         supindex = self._readIndex(self.protocol)
         if not 'sequenceParams' in supindex['.'].keys():
             return(False)
-        ntargets = len(supindex['.']['sequenceParams'][('Scanner', 'targets')])
+        try:
+            ntargets = len(supindex['.']['sequenceParams'][('Scanner', 'targets')])
+        except:
+            return(False)
         pars={}
         pars['sequence1'] = {}
         pars['sequence2'] = {}
@@ -581,7 +589,29 @@ class Acq4Read():
 #         img = imageframe.view(np.ndarray)
         return(self.imageData)
 
-    def getAverageScannerImages(self, dataname='Camera/frames.ma', mode='average', firstonly=False):
+    def getAverageScannerImages(self, dataname='Camera/frames.ma', mode='average', firstonly=False, limit=None):
+        """
+        Average the images across the scanner camera files
+        the images are collected into a stack prior to any operation
+        
+        Parameters
+        ----------
+        dataname : str (default: 'Camera/frames.ma')
+            Name of the camera data file (metaarray format)
+        
+        mode : str (default: 'average')
+            Operation to do on the collected images
+            average : compute the average image
+            max : compute the max projection across the stack
+            std : compute the standard deviation across the stack
+        
+        Returns
+        -------
+            a single image frame that is the result of the specified operation
+
+        """
+        assert mode in ['average', 'max', 'std']
+        print('average scanner images')
         dirs = self.subDirs(self.protocol)
 
         rep = 0
@@ -591,41 +621,51 @@ class Acq4Read():
         pars={}
         pars['sequence1'] = {}
         pars['sequence2'] = {}
-        reps = supindex['.']['sequenceParams'][('protocol', 'repetitions')]
+        try:
+            reps = supindex['.']['sequenceParams'][('protocol', 'repetitions')]
+        except:
+            reps = [0]
         pars['sequence1']['index'] = reps
         pars['sequence2']['index'] = ntargets
         scannerImages = []
         self.sequenceparams = pars
         self.scannerinfo = {}
+        if limit is None:
+            nmax = len(dirs)
+        else:
+            nmax = min(limit, len(dirs))
         for i, d in enumerate(dirs):
+            if i == nmax:  # check limit here first
+                break
             index = self._readIndex(d)
             imageframe = EM.MetaArray(file=os.path.join(d, dataname))
             cindex = self._readIndex(os.path.join(d, 'Camera'))
             frsize = cindex['frames.ma']['region']
-            print ('image shape: ', imageframe.shape)
+            binning = cindex['frames.ma']['binning']
+           # print ('image shape: ', imageframe.shape)
             if imageframe.ndim == 3 and imageframe.shape[0] > 1:
-                imageframed = imageframe[1]-imageframe[0]
+                imageframed = imageframe[1]
             if imageframe.ndim == 3 and imageframe.shape[0] == 1:
                 imageframed = imageframe[0]
-            if i == 0:
-                scannerImages = np.zeros((len(dirs), frsize[2], frsize[3]))
-            scannerImages[i] = imageframed.view(np.ndarray)
             if firstonly:
-                break
+                resultframe = imageframed.view(np.ndarray)
+                return resultframe
+            if i == 0:
+                scannerImages = np.zeros((limit, int(frsize[2]/binning[0]), int(frsize[3]/binning[1])))
+            scannerImages[i] = imageframed.view(np.ndarray)
 
-
-        avgfr = np.zeros((scannerImages.shape[1], scannerImages.shape[2]))
-        if not firstonly:
-            # simple maximum projection
-            if mode == 'max':
-                for i in range(scannerImages.shape[0]):
-                    avgfr = np.maximum(avgfr, scannerImages[i])
-            elif mode == 'average':
-                avgfr = np.mean(scannerImages, axis=0)
-        else:
-            avgfr = imageframed.view(np.ndarray)
-        return avgfr
-        
+        resultframe = np.zeros((scannerImages.shape[1], scannerImages.shape[2]))
+        # simple maximum projection
+        print('mode: %s' % mode)
+        print('scanner images: ', scannerImages.shape)
+        if mode == 'max':
+            for i in range(scannerImages.shape[0]):
+                resultframe = np.maximum(resultframe, scannerImages[i])
+        elif mode == 'average':
+            resultframe = np.mean(scannerImages, axis=0)
+        elif mode == 'std':
+            resultframe = np.std(scannerImages, axis=0)
+        return resultframe
 
     def plotClampData(self, all=True):
         f, ax = mpl.subplots(2)
