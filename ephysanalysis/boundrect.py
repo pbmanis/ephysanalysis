@@ -194,12 +194,15 @@ class BoundRect():
         return (angle, min_bbox[1], min_bbox[2], min_bbox[3], center_point, corner_points) # rot_angle, area, width, height, center_point, corner_points
 
     def getRectangle(self, xy_points):
-            hull = scipy.spatial.ConvexHull(xy_points)
-            hull_points = hull.vertices  
-            # print(hull_points)
-            hull_points = xy_points[hull_points][::-1]
-            (rot_angle, area, width, height, center_point, corner_points) = self.minBoundingRect(hull_points)
-            return(corner_points.T)
+            try:
+                hull = scipy.spatial.ConvexHull(xy_points)
+                hull_points = hull.vertices  
+                # print(hull_points)
+                hull_points = xy_points[hull_points][::-1]
+                (rot_angle, area, width, height, center_point, corner_points) = self.minBoundingRect(hull_points)
+                return(corner_points.T)
+            except:
+                return None
         
 if __name__ == "__main__":
     #
