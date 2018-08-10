@@ -178,7 +178,7 @@ class Fitting():
             else:
                 return y - yd
     
-    def expeval(self, p, x, y=None, C = None, sumsq = False, weights=None):
+    def expeval(self, p, x, y=None, C=None, sumsq=False, weights=None):
         """
         Exponential with offset
         """
@@ -616,7 +616,6 @@ p[4]*numpy.exp(-(p[5] + x)/p[6]))**2.0
         # print 'datatype: ', dataType
         # print 'nblock: ', nblock
         # print 'whichdata: ', whichdata
-
         for block in range(nblock):
             for record in whichdata:
                 if dataType == 'blocks':
@@ -674,7 +673,7 @@ p[4]*numpy.exp(-(p[5] + x)/p[6]))**2.0
                     print ('method %s not recognized, please check Fitting.py' % (method))
                     return    
                 xfit = numpy.arange(t0, t1, (t1-t0)/100.0)
-                yfit = func[0](plsq, xfit, C=fixedPars)
+                yfit = func[0](plsq, xfit-t0, C=fixedPars)
                 yy = func[0](plsq, tx, C=fixedPars) # calculate function
                 self.fitSum2Err = numpy.sum((dy - yy)**2)
                 # if plotInstance is not None:
