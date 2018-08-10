@@ -357,12 +357,14 @@ class Acq4Read():
         trx = []
         cmd = []
         sequence_values = None
-        self.sequence =  index['.']['sequenceParams']
+        if 'sequenceParams' in index['.'].keys():
+            self.sequence =  index['.']['sequenceParams']
+        else:
+            self.sequence = []
         # building command voltages or currents - get amplitudes to clamp
 
         reps = ('protocol', 'repetitions')
         foundclamp = False
-        sequence_values = None
         for clamp in self.clamps:
             if clamp in self.sequence:
                 foundclamp = True
