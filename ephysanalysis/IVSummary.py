@@ -55,7 +55,9 @@ class IVSummary():
             self.SP.analyzeSpikes()
             self.SP.analyzeSpikeShape()
             self.RM.setup(self.AR, self.SP)
-            self.RM.analyze()
+            self.RM.analyze(rmpregion=[0., self.AR.tstart-0.001],
+                            tauregion=[self.AR.tstart,
+                                       self.AR.tstart + (self.AR.tend-self.AR.tstart)/5.])
             self.plot_iv()
             return True
         else:
@@ -66,12 +68,15 @@ class IVSummary():
                         verticalspacing=0.1, horizontalspacing=0.12,
                         margins={'leftmargin': 0.12, 'rightmargin': 0.12, 'topmargin': 0.08, 'bottommargin': 0.1},
                         labelposition=(-0.12, 0.95))
-        P.figure_handle.suptitle(self.datapath.replace('_', '\_'), fontsize=12)
+        P.figure_handle.suptitle(self.datapath, fontsize=8)
         for i in range(self.AR.traces.shape[0]):
-            P.axdict['A'].plot(self.AR.time_base*1e3, self.AR.traces[i,:]*1e3, 'k-', linewidth=0.5)
+            P.axdict['A'].plot(self.AR.time_base*1e3, self.AR.traces[i,:]*1e3, '-', linewidth=0.5)
+        for k in self.RM.taum_fitted.keys():
+            P.axdict['A'].plot(self.RM.taum_fitted[k][0]*1e3, self.RM.taum_fitted[k][1]*1e3, '--k', linewidth=0.30)
+            
         P.axdict['B'].plot(self.SP.analysis_summary['FI_Curve'][0]*1e9, self.SP.analysis_summary['FI_Curve'][1]/(self.AR.tend-self.AR.tstart), 'ko-', markersize=4, linewidth=0.5)
         P.axdict['C'].plot(self.RM.ivss_cmd*1e9, self.RM.ivss_v*1e3, 'ko-', markersize=4, linewidth=1.0)
-        P.axdict['C'].text(-0.05, 0.95, r'RMP: {0:.1f} mV {1:s}${{R_{{in}}}}$: {2:.1f} ${{M\Omega}}${3:s}${{\tau_{{m}}}}$: {4:.2f} ms'.format(
+        P.axdict['C'].text(-0.05, 0.80, r'RMP: {0:.1f} mV {1:s}${{R_{{in}}}}$: {2:.1f} ${{M\Omega}}${3:s}${{\tau_{{m}}}}$: {4:.2f} ms'.format(
                     self.RM.analysis_summary['RMP'], '\n', self.RM.analysis_summary['Rin'], '\n', self.RM.analysis_summary['taum']*1e3),
                     transform=P.axdict['C'].transAxes, horizontalalignment='left', verticalalignment='top')
      #   P.axdict['C'].xyzero=([0., -0.060])
@@ -81,33 +86,31 @@ class IVSummary():
         P.axdict['B'].set_xlabel('I (nA)')
         P.axdict['B'].set_ylabel('Spikes/s')
         PH.talbotTicks(P.axdict['B'], tickPlacesAdd={'x': 1, 'y': 0}, floatAdd={'x': 2, 'y': 0})
-        PH.crossAxes(P.axdict['C'], xyzero=(0., -60))
+        maxv = np.max(self.RM.ivss_v*1e3)
+        ycross = np.around(maxv/5., decimals=0)*5.
+        if ycross > maxv:
+            ycross = maxv
+      #  print('ycross: ', ycross)
+        PH.crossAxes(P.axdict['C'], xyzero=(0., ycross))
         PH.talbotTicks(P.axdict['C'], tickPlacesAdd={'x': 1, 'y': 0}, floatAdd={'x': 2, 'y': 0})
         P.axdict['C'].set_xlabel('I (nA)')
         P.axdict['C'].set_ylabel('V (mV)')
 
-        flat = []
-        fisi = []
-        iflatcur = []
-        iisicur = []
-        for spk in self.SP.analysis_summary['spikes']:
-            try:
-                flat.append(spk[0]['AP_Latency'])
-                latcur.append(spk[0]['current'])
-            except:
-                pass
-            try:
-                fisi.append(spk[1]['AP_Latency']-spk[k][0]['AP_Latency'])
-                iisicur.append(spk[0]['current'])
-            except:
-                pass
-        P.axdict['D'].plot(np.array(iflatcur)*1e9, (np.array(flat)-self.AR.tstart)*1000., 'sk-')
-        #print('isicur: ', len(iisicur), 'fisi: ', len(fisi))
-        P.axdict['D'].plot(np.array(iisicur)*1e9, (np.array(fisi))*1000., '^b-')
+        for i in range(len(self.SP.spikes)):
+            if len(self.SP.spikes[i]) == 0:
+                continue
+            spx = np.argwhere((self.SP.spikes[i] > self.SP.Clamps.tstart) & (self.SP.spikes[i] <= self.SP.Clamps.tend)).ravel()
+            spkl = (np.array(self.SP.spikes[i][spx])-self.SP.Clamps.tstart )*1e3 # just shorten...
+            if len(spkl) == 1:
+                P.axdict['D'].plot(spkl[0], spkl[0], 'or', markersize=4)
+            else:
+                P.axdict['D'].plot(spkl[:-1], np.diff(spkl), 'o-', markersize=3, linewidth=0.5)
+                
         PH.talbotTicks(P.axdict['C'], tickPlacesAdd={'x': 1, 'y': 0}, floatAdd={'x': 1, 'y': 0})
-        P.axdict['D'].set_xlabel('I (nA)')
-        P.axdict['D'].set_ylabel('Latency (ms)')
-
+        P.axdict['D'].set_yscale('log')
+        P.axdict['D'].set_ylim((1.0, P.axdict['D'].get_ylim()[1]))
+        P.axdict['D'].set_xlabel('Latency (ms)')
+        P.axdict['D'].set_ylabel('ISI (ms)')
         self.IVFigure = P.figure_handle
     
         if self.plot:

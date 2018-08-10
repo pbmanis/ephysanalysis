@@ -33,7 +33,7 @@ import functools
 import numpy as np
 import scipy
 import pyqtgraph as pg
-import pylibrary.Fitting as Fitting
+import ephysanalysis.Fitting as Fitting
 import pprint
 import time
 
@@ -62,7 +62,7 @@ class RmTauAnalysis():
 
         
 
-    def setup(self, clamps=None, spikes=None, dataplot=None, baseline=[0, 0.001], taumbounds = [0.002, 0.050]):
+    def setup(self, clamps=None, spikes=None, dataplot=None, baseline=[0, 0.001], taumbounds = [0.001, 0.050]):
         """
         Set up for the fitting
         
@@ -90,7 +90,7 @@ class RmTauAnalysis():
         self.Spikes = spikes
         self.dataPlot = dataplot
         self.baseline = baseline
-#        self.taum_fitted = {}
+        self.taum_fitted = {}
         self.tauh_fitted = {}
         self.taum_bounds = taumbounds
     
@@ -102,7 +102,7 @@ class RmTauAnalysis():
         self.ivpk_analysis(region=[self.Clamps.tstart, self.Clamps.tstart+0.4*(self.Clamps.tend-self.Clamps.tstart)])
         
            
-    def tau_membrane(self, peak_time=None, printWindow=False, whichTau=1, vrange=[-0.005, -0.020], region=[]):
+    def tau_membrane(self, peak_time=None, printWindow=False, whichTau=1, vrange=[-0.002, -0.010], region=[]):
         """
         Compute time constant (single exponential) from the onset of the response to a current step
         
@@ -142,7 +142,7 @@ class RmTauAnalysis():
             self.rmp_analysis(region=self.baseline)
 
         Fits = Fitting.Fitting() # get a fitting instance
-        initpars = [self.rmp*1e-3, 0.010, 0.01]  # rmp is in units of mV
+        initpars = [self.rmp*1e-3, -0.010, 0.010]  # rmp is in units of mV
         icmdneg = np.where(self.Clamps.commandLevels < -20e-12)
         maxcmd = np.min(self.Clamps.commandLevels)
         ineg = np.where(self.Clamps.commandLevels[icmdneg] < 0.0)
@@ -157,6 +157,13 @@ class RmTauAnalysis():
         # vrange is in mV
         indxs = np.where(np.logical_and((vmeans[ineg] >= vrange[0]), 
                          (vmeans[ineg] <= vrange[1])))
+        # print('baseline: ', self.ivbaseline)
+        # print('vrange: ', vrange)
+        # print('vmeans: ', vmeans.view(np.ndarray))
+        # print('indxs: ', indxs)
+        # print('ineg: ', ineg)
+        # print('self.Clamps.commandLevels', self.Clamps.commandLevels)
+
         # print 'ineg: ', ineg
         # print self.Clamps.commandLevels
         # print 'icmdneg: ', icmdneg
@@ -165,12 +172,13 @@ class RmTauAnalysis():
         # print 'indxs: ', indxs
         indxs = list(indxs[0])
         whichdata = ineg[0][indxs]  # restricts to valid values
+        # print('whichdata: ', whichdata)
         itaucmd = self.Clamps.commandLevels[ineg]
         whichaxis = 0
         fpar = []
         names = []
         okdata = []
-        if len(list(self.taum_fitted.keys())) > 0:
+        if len(list(self.taum_fitted.keys())) > 0 and self.dataPlot is not None:
             [self.taum_fitted[k].clear() for k in list(self.taum_fitted.keys())]
         self.taum_fitted = {}
 
@@ -187,17 +195,24 @@ class RmTauAnalysis():
                                                fitFunc=Func,
                                                fitPars=initpars,
                                                method='SLSQP',
-                                               bounds=[(-0.1, 0.1), (-0.1, 0.1), 
-                                               (self.taum_bounds[0], self.taum_bounds[1])])
+                                               bounds=[(-0.08, 0.05), (-0.1, 0.1), 
+                                               (self.taum_bounds[0], self.taum_bounds[1])],
+                                               )
         
             if not fparx:
               raise Exception('IVCurve::update_Tau_membrane: Charging tau fitting failed - see log')
             #print 'j: ', j, len(fpar)
-            if fparx[0][1] < 2.5e-3:  # amplitude must be > 2.5 mV to be useful
-                continue
+            # if fparx[0][1] < 2.5e-3:  # amplitude must be > 2.5 mV to be useful
+            #     continue
             fpar.append(fparx[0])
             names.append(namesx[0])
             okdata.append(k)
+            self.taum_fitted[k] = [xf[0], yf[0]]
+            # import matplotlib.pyplot as mpl
+            # mpl.plot(self.Clamps.time_base, np.array(self.Clamps.traces[k]), 'k-')
+            # mpl.plot(xf[0], yf[0], 'r--', linewidth=1)
+            # mpl.show()
+            # exit(1)
         self.taum_pars = fpar
         self.taum_win = rgnpk
         self.taum_func = Func
