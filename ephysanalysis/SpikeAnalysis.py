@@ -76,6 +76,8 @@ class SpikeAnalysis():
         self.verify = verify
         self.verbose = verbose
         self.mode = mode
+        self.ar_window = 0.1
+        self.ar_lastspike = 0.075
 
     def analyzeSpikes(self):
         """
@@ -108,7 +110,7 @@ class SpikeAnalysis():
         maxspkrate = 50  # max rate to count  in adaptation is 50 spikes/second
         minspk = 4
         maxspk = int(maxspkrate*twin)  # scale max dount by range of spike counts
- 
+        #print('max spike rate: ', maxspk)
         ntr = len(self.Clamps.traces)
         self.spikecount = np.zeros(ntr)
         self.fsl = np.zeros(ntr)
@@ -144,17 +146,28 @@ class SpikeAnalysis():
                 self.fisi[i] = (spikes[1] - spikes[0])*1e3  # first ISI
                 self.allisi.append(np.diff(spikes)*1e3)
             # for Adaptation ratio analysis: limit spike rate, and also only on monotonic increase in rate
-            if (minspk <= len(spikes) <= maxspk) and (self.spikecount[i] > lastspikecount):
-                misi = np.mean(np.diff(spikes[-3:]))*1e3  # late ISIs
-                ar[i] = misi / self.fisi[i]
-                lastspikecount = self.spikecount[i]  # update rate (sets max rate)
+            # 8/2018: 
+            #   AR needs to be tethered to time into stimulus
+            #   Here we return a standardized ar measured during the first 100 msec
+            #  (standard ar)
+            if (minspk <= len(spikes)) and (self.spikecount[i] > lastspikecount):
+#                print(spikes)
+                spx = spikes[np.where(spikes-self.Clamps.tstart < self.ar_window)]  # default is 100 msec
+                if len(spx) >= 4: # at least 4 spikes
+#                    print('spx: ', spx)
+                    if spx[-1] > self.ar_lastspike+self.Clamps.tstart:  # default 75 msec
+                        misi = np.mean(np.diff(spx[-2:]))*1e3  # last ISIs in the interval
+                        ar[i] = misi / self.fisi[i]
+            lastspikecount = self.spikecount[i]  # update rate (sets max rate)
             
         iAR = np.where(ar > 0)  # valid AR and monotonically rising
+#        print('iAR: ', iAR)
         self.adapt_ratio = np.nan
         if len(ar[iAR]) > 0:
             self.adapt_ratio = np.mean(ar[iAR])  # only where we made the measurement
         self.ar = ar  # stores all the ar values
-        self.analysis_summary['AdaptRatio'] = self.adapt_ratio
+        self.analysis_summary['AdaptRatio'] = self.adapt_ratio  # only the valid values
+#        print('AR: ', self.adapt_ratio)
         self.nospk = np.where(self.spikecount == 0)
         self.spk = np.where(self.spikecount > 0)[0]
         self.analysis_summary['FI_Curve'] = np.array([self.Clamps.values, self.spikecount])

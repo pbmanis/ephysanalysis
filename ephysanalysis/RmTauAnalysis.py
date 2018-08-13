@@ -102,7 +102,7 @@ class RmTauAnalysis():
         self.ivpk_analysis(region=[self.Clamps.tstart, self.Clamps.tstart+0.4*(self.Clamps.tend-self.Clamps.tstart)])
         
            
-    def tau_membrane(self, peak_time=None, printWindow=False, whichTau=1, vrange=[-0.002, -0.010], region=[]):
+    def tau_membrane(self, peak_time=None, printWindow=False, whichTau=1, vrange=[-0.002, -0.050], region=[]):
         """
         Compute time constant (single exponential) from the onset of the response to a current step
         
@@ -143,7 +143,7 @@ class RmTauAnalysis():
 
         Fits = Fitting.Fitting() # get a fitting instance
         initpars = [self.rmp*1e-3, -0.010, 0.010]  # rmp is in units of mV
-        icmdneg = np.where(self.Clamps.commandLevels < -20e-12)
+        icmdneg = np.where(self.Clamps.commandLevels < -10e-12)
         maxcmd = np.min(self.Clamps.commandLevels)
         ineg = np.where(self.Clamps.commandLevels[icmdneg] < 0.0)
         if peak_time is not None and ineg != np.array([]):
@@ -181,7 +181,7 @@ class RmTauAnalysis():
         if len(list(self.taum_fitted.keys())) > 0 and self.dataPlot is not None:
             [self.taum_fitted[k].clear() for k in list(self.taum_fitted.keys())]
         self.taum_fitted = {}
-
+        whichdata = whichdata[-1:]
         for j, k in enumerate(whichdata):
             if self.dataPlot is not None:
                 n = 'w_%03d' % j

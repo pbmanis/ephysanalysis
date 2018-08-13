@@ -44,14 +44,15 @@ class IVSummary():
         self.RM = EP.RmTauAnalysis.RmTauAnalysis()
         self.plot = plot
 
-    def compute_iv(self):
+    def compute_iv(self, threshold=-0.010):
         """
         Simple plot of spikes, FI and subthreshold IV
         """
         #print('path: ', self.datapath)
         self.AR.setProtocol(self.datapath)  # define the protocol path where the data is
         if self.AR.getData():  # get that data.
-            self.SP.setup(clamps=self.AR, threshold=-0.010,  refractory=0.0001, peakwidth=0.001, interpolate=False, verify=False, mode='peak')
+            self.SP.setup(clamps=self.AR, threshold=threshold, 
+                    refractory=0.0001, peakwidth=0.001, interpolate=False, verify=False, mode='peak')
             self.SP.analyzeSpikes()
             self.SP.analyzeSpikeShape()
             self.RM.setup(self.AR, self.SP)
@@ -111,6 +112,8 @@ class IVSummary():
         P.axdict['D'].set_ylim((1.0, P.axdict['D'].get_ylim()[1]))
         P.axdict['D'].set_xlabel('Latency (ms)')
         P.axdict['D'].set_ylabel('ISI (ms)')
+        P.axdict['D'].text(0.05, 0.05, 'Adapt Ratio: {0:.3f}'.format(self.SP.analysis_summary['AdaptRatio']), fontsize=9,
+            transform=P.axdict['D'].transAxes, horizontalalignment='left', verticalalignment='bottom')
         self.IVFigure = P.figure_handle
     
         if self.plot:
