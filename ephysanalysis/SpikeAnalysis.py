@@ -176,6 +176,62 @@ class SpikeAnalysis():
         self.spikes_counted = True
 #        self.update_SpikePlots()
 
+    def analyzeSpikes_brief(self, mode='baseline'):
+        """
+        analyzeSpikes_brief: Using the threshold set in the control panel, count the
+        number of spikes in a window and fill out ana analysis summary dict with 
+        the spike latencies in that window (from 0 time)
+
+        Parameters
+        ----------
+        mode: str (default : baseline)
+            baseline: from 0 to self.Clamps.tstart
+            poststimulus : from self.Clamps.tend to end of trace
+            evoked : from self.Clamps.start to self.Clamps.end
+        
+        Returns:
+
+        -------
+        Nothing, but see the list of class variables that are modified
+        Class variable modified is the
+            self.analysis_summary : Dictionary of spike times. Key is
+                'spikes_baseline'
+                'spikes_poststimulus'
+                'spikes_evoked' 
+            according to the mode in the call
+        """
+
+        if mode == 'baseline':
+            twin = [0., self.Clamps.tstart]
+        elif mode == 'evoked':
+            twin = [self.Clamps.tstart,self.Clamps.tend] 
+        elif mode == 'poststimulus':
+            twin = [self.Clamps.tend, np.max(self.Clamps.time_base)]
+        else:
+            raise ValueError('analyzeSpikes_brief requires mode to be "baseline", "evoked", or "poststimulus"')
+
+        ntr = len(self.Clamps.traces)
+        allspikes = [[] for i in range(ntr)]
+        spikeIndices = [[] for i in range(ntr)]
+        U = Utility.Utility()
+        for i in range(ntr):
+            spikes = U.findspikes(self.Clamps.time_base, np.array(self.Clamps.traces[i]),
+                                              self.threshold, t0=twin[0],
+                                              t1=twin[1],
+                                              dt=self.Clamps.sample_interval,
+                                              mode=self.mode,  # mode to use for finding spikes
+                                              interpolate=self.interpolate,
+                                              refract=self.refractory,
+                                              peakwidth=self.peakwidth,
+                                              verify=self.verify,
+                                              debug=False)
+            if len(spikes) == 0:
+                #print 'no spikes found'
+                continue
+            allspikes[i] = spikes
+
+        self.analysis_summary[mode+'_spikes'] = allspikes
+
     def _timeindex(self, t):
         """
         Find the index into the time_base of the Clamps structure that 
@@ -230,7 +286,7 @@ class SpikeAnalysis():
         ntr = len(self.Clamps.traces)
 #        print 'analyzespikeshape, self.spk: ', self.spk
         self.spikeShape = OrderedDict()
-        rmp = np.zeros(ntr)
+        rmps = np.zeros(ntr)
         iHold = np.zeros(ntr)
         U = Utility.Utility()
         for i in range(ntr):
@@ -241,7 +297,7 @@ class SpikeAnalysis():
             if printSpikeInfo:
                 print((np.array(self.Clamps.values)))
                 print((len(self.Clamps.traces)))
-            (rmp[i], r2) = U.measure('mean', self.Clamps.time_base, self.Clamps.traces[i],
+            (rmps[i], r2) = U.measure('mean', self.Clamps.time_base, self.Clamps.traces[i],
                                            0.0, self.Clamps.tstart)            
             (iHold[i], r2) = U.measure('mean', self.Clamps.time_base, self.Clamps.cmd_wave[i],
                                               0.0, self.Clamps.tstart)
