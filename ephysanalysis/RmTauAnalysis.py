@@ -62,7 +62,8 @@ class RmTauAnalysis():
 
         
 
-    def setup(self, clamps=None, spikes=None, dataplot=None, baseline=[0, 0.001], taumbounds = [0.001, 0.050]):
+    def setup(self, clamps=None, spikes=None, dataplot=None, baseline=[0, 0.001],
+                taumbounds = [0.001, 0.050], tauhvoltage=-0.08):
         """
         Set up for the fitting
         
@@ -93,15 +94,21 @@ class RmTauAnalysis():
         self.taum_fitted = {}
         self.tauh_fitted = {}
         self.taum_bounds = taumbounds
+        self.tauh_voltage = tauhvoltage
+        self.analysis_summary['holding'] = self.Clamps.holding
+        self.analysis_summary['WCComp'] = self.Clamps.WCComp
+        self.analysis_summary['CCComp'] = self.Clamps.CCComp
+        
     
     def analyze(self, rmpregion=[0., 0.05], tauregion=[0.1, 0.125]):
         self.rmp_analysis(region=rmpregion)
         self.tau_membrane(region=tauregion)
-        r0 = self.Clamps.tstart + 0.9*(self.Clamps.tend-self.Clamps.tstart) # 
-        self.ivss_analysis(region=[r0, self.Clamps.tend])
-        self.ivpk_analysis(region=[self.Clamps.tstart, self.Clamps.tstart+0.4*(self.Clamps.tend-self.Clamps.tstart)])
-        
-           
+        r_ss = self.Clamps.tstart + 0.9*(self.Clamps.tend-self.Clamps.tstart) # steady-state region
+        r_pk = self.Clamps.tstart + 0.4*(self.Clamps.tend-self.Clamps.tstart)
+        self.ivss_analysis(region=[r_ss, self.Clamps.tend])
+        self.ivpk_analysis(region=[self.Clamps.tstart, r_pk])  # peak region
+        self.tau_h(self.tauh_voltage, peakRegion=[self.Clamps.tstart, r_pk], steadystateRegion=[r_ss, self.Clamps.tend], printWindow=False)
+
     def tau_membrane(self, peak_time=None, printWindow=False, whichTau=1, vrange=[-0.002, -0.050], region=[]):
         """
         Compute time constant (single exponential) from the onset of the response to a current step
@@ -258,7 +265,12 @@ class RmTauAnalysis():
         self.ivbaseline = data1.mean(axis=1)  # all traces
         self.ivbaseline_cmd = self.Clamps.commandLevels
         self.rmp = np.mean(self.ivbaseline) * 1e3  # convert to mV
+        data2 = self.Clamps.cmd_wave['Time': region[0]:region[1]]
+        self.irmp = data2.view(np.ndarray).mean(axis=1)
         self.analysis_summary['RMP'] = self.rmp
+        self.analysis_summary['RMPs'] = self.ivbaseline  # save raw baselines as well
+        self.analysis_summary['Irmp'] = self.irmp
+#        print('irmp: ', self.irmp, ' rmp: ', self.rmp)
 
     def ivss_analysis(self, region=None):
         """
@@ -391,7 +403,7 @@ class RmTauAnalysis():
         #         raise ValueError('IVCurve Leak subtraction: no valid points to correct')
         
     
-    def tau_h(self, current, rgn, pkRgn, ssRgn, printWindow=False):
+    def tau_h(self, v_steadystate, peakRegion, steadystateRegion, printWindow=False):
         """
         Measure the time constant associated with activation of the hyperpolarization-
         activated current, Ih. The tau is measured from the peak of the response to the
@@ -399,17 +411,15 @@ class RmTauAnalysis():
         
         Parameters
         ----------
-        current : float (current, pA; no default).
-             The current level that will be used as the target for measuring Ih. A single
-             current level is given; the closest one in the test set will be used.
-        
-        rgn : list of floats ([time, time], ms, no default)
-            time window over which data will be fit for the tau_h measure
-            
-        pkRgn : list of floats ([time, time], ms; no default)
+        v_steadystate : float (voltage, V; no default).
+             The steady-state voltage that will be used as the target for measuring Ih. A single
+             voltage level is given; the closest one in the test set that is negative to the
+             resting potential will be used.
+
+        peakRegion : list of floats ([time, time], ms; no default)
             The time window over which the peak voltage will be identified.
-        
-        ssRgn : list of floats ([time, time], ms; no default)
+
+        steadystateRegion : list of floats ([time, time], ms; no default)
             The time window over which the steady-state voltage will be identified.
         
         Return
@@ -420,43 +430,64 @@ class RmTauAnalysis():
         results of the measurements.
         
         """
+        # initialize result varibles
+        self.tauh_vpk = None  # peak voltage for the tau h meausure
+        self.tauh_neg_pk = None 
+        self.tauh_vss = None  # ss voltage for trace used for tauh 
+        self.tauh_neg_ss = None 
+        self.tauh_vrmp = None
+        self.tauh_xf = []
+        self.tauh_yf = []
+        self.tauh_fitted = {}
+        self.tauh_meantau = None
+        self.tauh_bovera = None
+        self.tauh_Gh = None
+        self.analysis_summary['tauh_tau'] = self.tauh_meantau
+        self.analysis_summary['tauh_bovera'] = self.tauh_bovera
+        self.analysis_summary['tauh_Gh'] = self.tauh_Gh
+        self.analysis_summary['tauh_vss'] = self.tauh_vss                
+        
+        if self.rmp/1000. < v_steadystate:  # rmp is in mV... 
+            return
+
         Func = 'exp1'  # single exponential fit to the whole region
         Fits = Fitting.Fitting()
 
-        initpars = [-80.0 * 1e-3, -10.0 * 1e-3, 50.0 * 1e-3]
+        # for our time windows, get the ss voltage to use
+        ss_voltages = self.Clamps.traces['Time': steadystateRegion[0]:steadystateRegion[1]].view(np.ndarray)
+        ss_voltages = ss_voltages.mean(axis=1)
+        itrace = np.argmin((ss_voltages[self.Spikes.nospk] - v_steadystate)**2)
 
-        # find the current level that is closest to the target current
-        itarget = self.Clamps.values[current]  # retrive actual value from commands
-        self.tauh_neg_cmd = itarget
-        idiff = np.abs(np.array(self.Clamps.commandLevels) - itarget)
-        amin = np.argmin(idiff)  # amin appears to be the same as s_target
-        # target trace (as selected in cmd drop-down list):
-        target = self.Clamps.traces[amin]
-        # get Vrmp -  # rmp approximation.
-        vrmp = np.median(target['Time': 0.0:self.Clamps.tstart - 0.005]) * 1000.
-        self.tauh_vrmp = vrmp
-        # get peak and steady-state voltages
-        vpk = target['Time': pkRgn[0]:pkRgn[1]].min() * 1000
-        self.tauh_vpk = vpk
-        self.tauh_neg_pk = (vpk - vrmp) / 1000.
-        vss = np.median(target['Time': ssRgn[0]:ssRgn[1]]) * 1000
-        self.tauh_vss = vss
-        self.tauh_neg_ss = (vss - vrmp) / 1000.
-        whichdata = [int(amin)]
-        itaucmd = [self.Clamps.commandLevels[amin]]
-        fd = self.Clamps.traces['Time': rgn[0]:rgn[1]][whichdata][0]
-        if len(list(self.tauh_fitted.keys())) > 0:
-            [self.tauh_fitted[k].clear() for k in list(self.tauh_fitted.keys())]
+        pk_voltages = self.Clamps.traces['Time': peakRegion[0]:peakRegion[1]].view(np.ndarray)
+        pk_voltages_tr = pk_voltages.min(axis=1)
+        ipk_start = pk_voltages[itrace].argmin() + int(peakRegion[0]*self.Clamps.sample_rate[itrace]) # get starting index as well
+        pk_time = self.Clamps.time_base[ipk_start] 
+
+        if not self.Spikes.spikes_counted:
+            self.analyzeSpikes()
+
+        # now find trace with voltage closest to target steady-state voltage
+        # from traces without spikes in the standard window
+        whichdata = [int(itrace)]
+        # prepare to fit
+        initpars = [-80.0 * 1e-3, -10.0 * 1e-3, 50.0 * 1e-3]
+        bounds = [(-0.1, 0.), (0., 0.1), ()]
+        v_rmp = self.ivbaseline[itrace]
+        itaucmd = self.Clamps.commandLevels[itrace]
         whichaxis = 0
         (fpar, xf, yf, names) = Fits.FitRegion(whichdata, whichaxis,
-                                               self.Clamps.traces.xvals('Time'),
+                                               self.Clamps.time_base,
                                                self.Clamps.traces.view(np.ndarray),
                                                dataType='2d',
-                                               t0=rgn[0], t1=rgn[1],
+                                               t0=pk_time, t1=steadystateRegion[1],
                                                fitFunc=Func,
-                                               fitPars=initpars)
+                                               fitPars=initpars,
+                                               method='SLSQP',
+                                               bounds=[(-0.120, 0.05), (-0.1, 0.1), 
+                                               (0.005, (steadystateRegion[1]-pk_time)*2.0)],
+                                               )
         if not fpar:
-            raise Exception('IVCurve::update_Tauh: tau_h fitting failed - see log')
+            raise Exception('IVCurve::update_Tauh: tau_h fitting failed')
         s = np.shape(fpar)
         taus = []
         for j in range(0, s[0]):
@@ -467,12 +498,27 @@ class RmTauAnalysis():
             if printWindow:
                 print(("Ih FIT(%d, %.1f pA): %s " %
                       (whichdata[j], itaucmd[j] * 1e12, outstr)))
+        self.taum_fitted[itrace] = [xf[0], yf[0]]
+        self.tauh_vrmp = self.ivbaseline[itrace]
+        self.tauh_vss = ss_voltages[itrace]
+        self.tauh_vpk = pk_voltages_tr[itrace]
+        self.tauh_neg_ss = (self.tauh_vss - self.tauh_vrmp) / 1e3
+        self.tauh_neg_pk = (self.tauh_vpk - self.tauh_vrmp) / 1e3
         self.tauh_xf = xf
         self.tauh_yf = yf
         self.tauh_meantau = np.mean(taus)
-        self.tauh_bovera = (vss - vrmp) / (vpk - vrmp)
-        Gpk = itarget / self.tauh_neg_pk
-        Gss = itarget / self.tauh_neg_ss
+        self.tauh_bovera = (self.tauh_vss - self.tauh_vrmp) / (self.tauh_vpk - self.tauh_vrmp)
+        if self.tauh_bovera > 1.0:
+            self.tauh_bovera = 1.0
+        Gpk = itaucmd / self.tauh_neg_pk
+        Gss = itaucmd / self.tauh_neg_ss
         self.tauh_Gh = Gss - Gpk
+        if self.tauh_Gh < 0:
+            self.tauh_Gh = 0.
         
+        self.analysis_summary['tauh_tau'] = self.tauh_meantau
+        self.analysis_summary['tauh_bovera'] = self.tauh_bovera
+        self.analysis_summary['tauh_Gh'] = self.tauh_Gh
+        self.analysis_summary['tauh_vss'] = self.tauh_vss
+
         
