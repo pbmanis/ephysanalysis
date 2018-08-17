@@ -39,6 +39,8 @@ colormap = 'snshelix'
 class IVSummary():
     def __init__(self, datapath, plot=True):
         self.datapath = datapath
+        self.IVFigure = None
+        
         self.AR = EP.acq4read.Acq4Read()  # make our own private cersion of the analysis and reader
         self.SP = EP.SpikeAnalysis.SpikeAnalysis()
         self.RM = EP.RmTauAnalysis.RmTauAnalysis()
@@ -55,6 +57,8 @@ class IVSummary():
                     refractory=0.0001, peakwidth=0.001, interpolate=False, verify=False, mode='peak')
             self.SP.analyzeSpikes()
             self.SP.analyzeSpikeShape()
+            self.SP.analyzeSpikes_brief(mode='baseline')
+            self.SP.analyzeSpikes_brief(mode='poststimulus')
             self.RM.setup(self.AR, self.SP)
             self.RM.analyze(rmpregion=[0., self.AR.tstart-0.001],
                             tauregion=[self.AR.tstart,
@@ -74,12 +78,25 @@ class IVSummary():
             P.axdict['A'].plot(self.AR.time_base*1e3, self.AR.traces[i,:]*1e3, '-', linewidth=0.5)
         for k in self.RM.taum_fitted.keys():
             P.axdict['A'].plot(self.RM.taum_fitted[k][0]*1e3, self.RM.taum_fitted[k][1]*1e3, '--k', linewidth=0.30)
+        for k in self.RM.tauh_fitted.keys():
+            P.axdict['A'].plot(self.RM.tauh_fitted[k][0]*1e3, self.RM.tauh_fitted[k][1]*1e3, '--r', linewidth=0.50)
             
         P.axdict['B'].plot(self.SP.analysis_summary['FI_Curve'][0]*1e9, self.SP.analysis_summary['FI_Curve'][1]/(self.AR.tend-self.AR.tstart), 'ko-', markersize=4, linewidth=0.5)
         P.axdict['C'].plot(self.RM.ivss_cmd*1e9, self.RM.ivss_v*1e3, 'ko-', markersize=4, linewidth=1.0)
-        P.axdict['C'].text(-0.05, 0.80, r'RMP: {0:.1f} mV {1:s}${{R_{{in}}}}$: {2:.1f} ${{M\Omega}}${3:s}${{\tau_{{m}}}}$: {4:.2f} ms'.format(
-                    self.RM.analysis_summary['RMP'], '\n', self.RM.analysis_summary['Rin'], '\n', self.RM.analysis_summary['taum']*1e3),
-                    transform=P.axdict['C'].transAxes, horizontalalignment='left', verticalalignment='top')
+        if self.RM.analysis_summary['CCComp']['CCBridgeEnable'] == 1:
+            enable = 'On'
+        else:
+            enable = 'Off'
+        P.axdict['C'].text(-0.05, 0.80, 
+            r'RMP: {0:.1f} mV {1:s}${{R_{{in}}}}$: {2:.1f} ${{M\Omega}}${3:s}${{\tau_{{m}}}}$: {4:.2f} ms{5:s}Holding: {6:.1f} pA{7:s}Bridge [{8:3s}]: {9:.1f} ${{M\Omega}}$ {10:s}Pipette: {11:.1f} mV'
+            .format(
+            self.RM.analysis_summary['RMP'], '\n', self.RM.analysis_summary['Rin'], '\n', 
+            self.RM.analysis_summary['taum']*1e3, '\n', np.mean(self.RM.analysis_summary['Irmp'])*1e12,
+            '\n', enable, 
+            np.mean(self.RM.analysis_summary['CCComp']['CCBridgeResistance']/1e6), '\n',
+            np.mean(self.RM.analysis_summary['CCComp']['CCPipetteOffset']*1e3),
+            ),
+            transform=P.axdict['C'].transAxes, horizontalalignment='left', verticalalignment='top', fontsize=7)
      #   P.axdict['C'].xyzero=([0., -0.060])
         PH.talbotTicks(P.axdict['A'], tickPlacesAdd={'x': 0, 'y': 0}, floatAdd={'x': 0, 'y': 0})
         P.axdict['A'].set_xlabel('T (ms)')
@@ -91,7 +108,6 @@ class IVSummary():
         ycross = np.around(maxv/5., decimals=0)*5.
         if ycross > maxv:
             ycross = maxv
-      #  print('ycross: ', ycross)
         PH.crossAxes(P.axdict['C'], xyzero=(0., ycross))
         PH.talbotTicks(P.axdict['C'], tickPlacesAdd={'x': 1, 'y': 0}, floatAdd={'x': 2, 'y': 0})
         P.axdict['C'].set_xlabel('I (nA)')
