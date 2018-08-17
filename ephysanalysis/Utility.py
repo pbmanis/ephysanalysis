@@ -481,7 +481,7 @@ class Utility():
                 else:
                     if len(x) > 1:
                         st = np.append(st, xx[1])
-                
+
         elif mode == 'peak':
             kpkw = int(peakwidth/dt)
             z = (np.array(np.where(np.diff(spv) > 1)[0])+1).tolist()
