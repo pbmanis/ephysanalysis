@@ -300,25 +300,27 @@ class DataSummary():
             if self.verbose:
                 self.pstring = 'Processing day[%3d/%3d]: %s ' % (nd, len(days), day)
             self.AR.setProtocol(os.path.join(self.basedir, day))
-            self.day_index = self.AR.readDirIndex(os.path.join(self.basedir, day))
+            self.day_index = self.AR.readDirIndex(os.path.join(self.basedir, day))['.']
             # print('ind: ', ind)
            #  self.day_index = self.AR.readDirIndex(ind)
-           #  print('day index: ', self.day_index)
+            # print('day index: ', self.day_index)
             self.day_index['date'] = day.strip()
-            #print('\nday index: ', self.day_index.keys())
+            # print('\nday index: ', self.day_index.keys())
+            # print('daydefs: ', self.day_defs)
             # now add the rest of the index information to the daystring
             for k in self.day_defs:
                 if k not in self.day_index.keys():
-                    #print('\nadded: ', k)
+                    # print('\nadded: ', k)
                     self.day_index[k] = ' '
+                # else:
+                #     print(' ? k in day index: ', k)
                 if isinstance(self.day_index[k], bool):
                     self.day_index[k] = str(self.day_index[k])
                 self.day_index[k].replace('\n', ' ')
                 if len(self.day_index[k]) == 0:
                     self.day_index[k] = ' '
-            # for k in self.day_defs:
-            #     print('{:>32s} : {:<40s}'.format(k, self.day_index[k]))
-
+            for k in self.day_defs:
+                print('{:>32s} : {:<40s}'.format(k, self.day_index[k]))
             self._doSlices(day)  # next level
             os.closerange(8, 65535)  # close all files in each iteration
             gc.collect()
@@ -354,7 +356,7 @@ class DataSummary():
             self.sstring = day + ' ' + self.pstring + ' %s' % slicen
             Printer(self.sstring)
             self.slicestring = '%s\t' % (slicen)
-            self.slice_index = self.AR.readDirIndex(os.path.join(self.basedir, day, slicen))
+            self.slice_index = self.AR.readDirIndex(os.path.join(self.basedir, day, slicen))['.']
             if self.slice_index is None:  # directory is not managed and probably empty
                 self.slice_index = {}
                 continue
@@ -402,14 +404,14 @@ class DataSummary():
             self.cstring = self.sstring + " %s" % cell
             Printer(self.cstring)
             try:
-                self.cell_index = self.AR.readDirIndex(os.path.join(thisslice, cell))  # possible that .index file is missing, so we cannot read
+                self.cell_index = self.AR.readDirIndex(os.path.join(thisslice, cell))['.']  # possible that .index file is missing, so we cannot read
             except:
                 self.cell_index={}  # unreadable...
                 continue
             if self.cell_index is None:
                 self.cell_index = {}  # directory is not managed, so skip
                 continue
-#            print('\nCell Index: ', self.cell_index)
+            # print('\nCell Index: ', self.cell_index)
             self.cell_index['cell'] = cell
             for k in self.cell_defs:
                 ks = k.replace('cell_', '')
@@ -472,7 +474,7 @@ class DataSummary():
             protocolpath = os.path.join(thiscell, protocol)
             dirs = self.AR.subDirs(protocolpath)  # get all sequence entries (directories) under the protocol
             modes = []
-            info = self.AR.readDirIndex(protocolpath)  # top level info dict
+            info = self.AR.readDirIndex(protocolpath)['.']  # top level info dict
             if 'devices' not in info.keys():  # just safety... 
                 continue
             devices = info['devices'].keys()

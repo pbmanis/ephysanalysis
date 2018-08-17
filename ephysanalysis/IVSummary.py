@@ -39,8 +39,8 @@ colormap = 'snshelix'
 class IVSummary():
     def __init__(self, datapath, plot=True):
         self.datapath = datapath
+
         self.IVFigure = None
-        
         self.AR = EP.acq4read.Acq4Read()  # make our own private cersion of the analysis and reader
         self.SP = EP.SpikeAnalysis.SpikeAnalysis()
         self.RM = EP.RmTauAnalysis.RmTauAnalysis()
