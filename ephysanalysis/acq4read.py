@@ -219,7 +219,7 @@ class Acq4Read():
         print('Index: \n', t)
         return
 
-    def getIndex(self, index):
+    def getIndex_text(self, index):
         """
         Generate a nice printout of the index, about as far down as we can go
         """
@@ -324,7 +324,22 @@ class Acq4Read():
         else:
             return {'WCCompValid': False, 'WCEnable': 0, 'WCResistance': 0., 'WholeCellCap': 0.,
                     'CompEnable': 0, 'CompCorrection': 0., 'CompBW': 50000. }
-                    
+
+    def parseClampCCCompSettings(self, info):
+        d = {}
+        if 'ClampState' in info[1].keys() and 'ClampParams' in info[1]['ClampState'].keys():
+            par = info[1]['ClampState']['ClampParams']
+            d['CCCompValid'] = True
+            d['CCBridgeEnable'] = par['BridgeBalEnable']
+            d['CCBridgeResistance'] = par['BridgeBalResist']
+            d['CCNeutralizationEnable'] = par['NeutralizationEnable']
+            d['CCNeutralizationCap'] = par['NeutralizationCap']
+            d['CCLPF'] = par['PrimarySignalLPF']
+            d['CCPipetteOffset'] = par['PipetteOffset']
+            return d
+        else:
+            return {'CCCompValid': False, 'CCBridgeEnable': 0, 'CCBridgeResistance': 0., 'CCNeutralizationEnable': 0.,
+                    'CCNeutralizationCap': 0, 'CCPipetteOffset': 0., 'CCLPF': 10000. }
     def parseClampHoldingLevel(self, info):
         """
         Given the .index file for a protocol dir, try to get
@@ -354,6 +369,14 @@ class Acq4Read():
         self.values = []
         self.trace_StartTimes = np.zeros(0)
         self.sample_rate = []
+        info = self.getIndex(self.protocol)
+        holdcheck = info['devices']['MultiClamp1']['holdingCheck']
+        holdvalue = info['devices']['MultiClamp1']['holdingSpin']
+        if holdcheck:
+            self.holding = holdvalue
+        else:
+            self.holding = 0.
+
         trx = []
         cmd = []
         sequence_values = None
@@ -388,6 +411,9 @@ class Acq4Read():
             tr = EM.MetaArray(file=fn)
             info = tr[0].infoCopy()
             self.parseClampInfo(info)
+            self.WCComp = self.parseClampWCCompSettings(info)
+            self.CCComp = self.parseClampCCCompSettings(info)
+            
             # if i == 0:
             #     pp.pprint(info)
             cmd = self.getClampCommand(tr)
@@ -420,6 +446,10 @@ class Acq4Read():
             info=[{'name': 'Command', 'units': cmd.axisUnits(-1),
              'values': np.array(self.values)},
              tr.infoCopy('Time'), tr.infoCopy(-1)])
+        self.cmd_wave = EM.MetaArray(self.cmd_wave,
+             info=[{'name': 'Command', 'units': cmd.axisUnits(-1),
+              'values': np.array(self.values)},
+              tr.infoCopy('Time'), tr.infoCopy(-1)])
         self.sample_interval = 1./self.sample_rate[0]
         self.data_array = np.array(self.data_array)
         self.time_base = np.array(self.time_base[0])
