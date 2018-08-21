@@ -186,13 +186,13 @@ class Utility():
         if debugFlag:
             print(("signalfilter: samplef: %f  wp: %f, %f  ws: %f, %f lpf: %f  hpf: %f" % (
                sf, wp[0], wp[1], ws[0], ws[1], flpf, fhpf)))
-        filter_b,filter_a=spSignal.iirdesign(wp, ws,
+        filter_b,filter_a=scipy.signal.iirdesign(wp, ws,
                 gpass=1.0,
                 gstop=60.0,
                 ftype="ellip")
         msig = np.mean(signal)
         signal = signal - msig
-        w = spSignal.lfilter(filter_b, filter_a, signal) # filter the incoming signal
+        w = scipy.signal.lfilter(filter_b, filter_a, signal) # filter the incoming signal
         signal = signal + msig
         if debugFlag:
             print(("sig: %f-%f w: %f-%f" % (np.amin(signal), np.amax(signal), np.amin(w), np.amax(w))))
@@ -203,25 +203,38 @@ class Utility():
         flpf = float(LPF)
         sf = float(samplefreq)
         wn = [flpf/(sf/2.0)]
-        b, a = spSignal.butter(NPole, wn, btype='low', output='ba')
-        zi = spSignal.lfilter_zi(b,a)
+        b, a = scipy.signal.butter(NPole, wn, btype='low', output='ba')
+        zi = scipy.signal.lfilter_zi(b,a)
         if bidir:
-            out, zo = spSignal.filtfilt(b, a, signal, zi=zi*signal[0])
+            out, zo = scipy.signal.filtfilt(b, a, signal, zi=zi*signal[0])
         else:
-            out, zo = spSignal.lfilter(b, a, signal, zi=zi*signal[0])
+            out, zo = scipy.signal.lfilter(b, a, signal, zi=zi*signal[0])
         return(np.array(out))
 
     # filter with Butterworth high pass, using time-causal lfilter 
-    def SignalFilter_HPFButter(self, signal, HPF, samplefreq, NPole = 8, bidir=False):
+    def SignalFilter_HPFButter(self, signal, HPF, samplefreq, NPole=8, bidir=False):
         flpf = float(HPF)
         sf = float(samplefreq)
         wn = [flpf/(sf/2.0)]
-        b, a = spSignal.butter(NPole, wn, btype='high', output='ba')
-        zi = spSignal.lfilter_zi(b,a)
+        b, a = scipy.signal.butter(NPole, wn, btype='high', output='ba')
+        zi = scipy.signal.lfilter_zi(b,a)
         if bidir:
-            out, zo = spSignal.filtfilt(b, a, signal, zi=zi*signal[0])
+            out = scipy.signal.filtfilt(b, a, signal) # , zi=zi*signal[0])
         else:
-            out, zo = spSignal.lfilter(b, a, signal, zi=zi*signal[0])
+            out = scipy.signal.lfilter(b, a, signal) #, zi=zi*signal[0])
+        return(np.array(out))
+
+    # filter with Bessel high pass, using time-causal lfilter 
+    def SignalFilter_HPFBessel(self, signal, HPF, samplefreq, NPole=8, bidir=False):
+        flpf = float(HPF)
+        sf = float(samplefreq)
+        wn = [flpf/(sf/2.0)]
+        b, a = scipy.signal.bessel(NPole, wn, btype='high', output='ba')
+        zi = scipy.signal.lfilter_zi(b,a)
+        if bidir:
+            out = scipy.signal.filtfilt(b, a, signal) # , zi=zi*signal[0])
+        else:
+            out = scipy.signal.lfilter(b, a, signal) #, zi=zi*signal[0])
         return(np.array(out))
         
     # filter signal with low-pass Bessel
@@ -246,7 +259,7 @@ class Utility():
         if debugFlag is True:
             print(("signalfilter: samplef: %f  wn: %f,  lpf: %f, NPoles: %d " % (
                sf, wn, flpf, NPole)))
-        filter_b,filter_a = spSignal.bessel(
+        filter_b,filter_a = scipy.signal.bessel(
                 NPole,
                 wn,
                 btype = 'low',
@@ -254,26 +267,26 @@ class Utility():
         if signal.ndim == 1:
             sm = np.mean(signal)
             if bidir:
-                w = spSignal.filtfilt(filter_b, filter_a, signal-sm) # filter the incoming signal
+                w = scipy.signal.filtfilt(filter_b, filter_a, signal-sm) # filter the incoming signal
             else:
-                w = spSignal.lfilter(filter_b, filter_a, signal-sm) # filter the incoming signal
+                w = scipy.signal.lfilter(filter_b, filter_a, signal-sm) # filter the incoming signal
 
             w = w + sm
             if reduction > 1:
-                w = spSignal.resample(w, reduction)
+                w = scipy.signal.resample(w, reduction)
             return(w)
         if signal.ndim == 2:
             sh = np.shape(signal)
             for i in range(0, np.shape(signal)[0]):
                 sm = np.mean(signal[i,:])
                 if bidir:
-                    w1 = spSignal.filtfilt(filter_b, filter_a, signal[i, :]-sm)
+                    w1 = scipy.signal.filtfilt(filter_b, filter_a, signal[i, :]-sm)
                 else:
-                    w1 = spSignal.lfilter(filter_b, filter_a, signal[i, :]-sm)
+                    w1 = scipy.signal.lfilter(filter_b, filter_a, signal[i, :]-sm)
 
                 w1 = w1 + sm
                 if reduction == 1:
-                    w1 = spSignal.resample(w1, reduction)
+                    w1 = scipy.signal.resample(w1, reduction)
                 if i == 0:
                     w = np.empty((sh[0], np.shape(w1)[0]))
                 w[i,:] = w1
@@ -284,12 +297,12 @@ class Utility():
                 for j in range(0, np.shape(signal)[1]):
                     sm = np.mean(signal[i,j,:])
                     if bidir:
-                        w1 = spSignal.filtfilt(filter_b, filter_a, signal[i,j,:]-sm)
+                        w1 = scipy.signal.filtfilt(filter_b, filter_a, signal[i,j,:]-sm)
                     else:
-                        w1 = spSignal.lfilter(filter_b, filter_a, signal[i,j,:]-sm)
+                        w1 = scipy.signal.lfilter(filter_b, filter_a, signal[i,j,:]-sm)
                     w1 = w1 + sm
                     if reduction == 1:
-                        w1 = spSignal.resample(w1, reduction)
+                        w1 = scipy.signal.resample(w1, reduction)
                     if i == 0 and j == 0:
                         w = np.empty((sh[0], sh[1], np.shape(w1)[0]))
                     w[i,j,:] = w1
