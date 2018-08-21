@@ -11,6 +11,8 @@ Requires pyqtgraph to read the .ma files and the .index file
 import os
 import re
 #from pyqtgraph import metaarray
+import matplotlib
+matplotlib.use('Agg')
 import ephysanalysis.metaarray as EM
 from pyqtgraph import configfile
 import numpy as np
@@ -471,6 +473,7 @@ class Acq4Read():
             self.repetitions = seqparams[protoreps][0] + 1
         else:
             protoreps = 1
+            self.repetitions = 1
         return True
 
     def getClampCommand(self, data, generateEmpty=True):    
@@ -544,6 +547,137 @@ class Acq4Read():
             return times
         else:
             raise ValueError('need to find keys for stimulus (might be empty): ' % stimuli)
+
+    def getDeviceData(self, device='Photodiode', devicename='Photodiode'):
+        """
+        Get the data from a device
+        
+        Parameters
+        ----------
+        device : str (default: 'Photodiode')
+            The base name of the file holding the data. '.ma' will be appended
+            to the name
+        devicename : str (default: 'Photodiode')
+            The name of the device as set in the config (might be 'pCell', etc)
+            This might or might not be the same as the device
+        
+        Returns
+        -------
+        Success : boolean
+        
+        The results are stored data for the current protocol
+        """ 
+        # non threaded
+        dirs = self.subDirs(self.protocol)
+        index = self._readIndex()
+        trx = []
+        cmd = []
+        sequence_values = None
+        if 'sequenceParams' in index['.'].keys():
+            self.sequence =  index['.']['sequenceParams']
+        else:
+            self.sequence = []
+        # building command voltages or currents - get amplitudes to clamp
+
+        reps = ('protocol', 'repetitions')
+        foundLaser = False
+        self.Device_data = []
+        self.Device_sample_rate = []
+        self.Device_time_base = []
+        for i, d in enumerate(dirs):
+            fn = os.path.join(d, device + '.ma')
+            if not os.path.isfile(fn):
+                print(' acq4read.getDeviceData: File not found: ', fn)
+                return None
+            lbr = EM.MetaArray(file=fn)
+            info = lbr[0].infoCopy()
+            self.Device_data.append(lbr.view(np.ndarray)[0])
+            self.Device_time_base.append(lbr.xvals('Time'))
+            sr = info[1]['DAQ'][devicename]['rate']
+            self.Device_sample_rate.append(sr)
+        self.Device_data = np.array(self.Device_data)
+        self.Device_sample_rate = np.array(self.Device_sample_rate)
+        self.Device_time_base = np.array(self.Device_time_base)
+        return {'data': self.Device_data, 'time_base': self.Device_time_base, 'sample_rate': self.Device_sample_rate}
+
+    def getLaserBlueCommand(self):
+        """
+        Get the command waveform for the blue laser
+        data for the current protocol
+        """ 
+        # non threaded
+        dirs = self.subDirs(self.protocol)
+        index = self._readIndex()
+        trx = []
+        cmd = []
+        sequence_values = None
+        if 'sequenceParams' in index['.'].keys():
+            self.sequence =  index['.']['sequenceParams']
+        else:
+            self.sequence = []
+        # building command voltages or currents - get amplitudes to clamp
+
+        reps = ('protocol', 'repetitions')
+        foundLaser = False
+        self.LaserBlueRaw = []
+        self.LBR_sample_rate = []
+        self.LBR_time_base = []
+        for i, d in enumerate(dirs):
+            fn = os.path.join(d, 'Laser-Blue-raw.ma')
+            if not os.path.isfile(fn):
+                print(' acq4read.getLaserBlueCommand: File not found: ', fn)
+                return False
+            lbr = EM.MetaArray(file=fn)
+            info = lbr[0].infoCopy()
+            self.LaserBlueRaw.append(lbr.view(np.ndarray)[0])
+            self.LBR_time_base.append(lbr.xvals('Time'))
+            try:
+                sr = info[1]['DAQ']['Shutter']['rate']
+            except:
+                print(info[1]['DAQ'].keys())
+                exit(1)
+            self.LBR_sample_rate.append(sr)
+        self.LaserBlueRaw = np.array(self.LaserBlueRaw)
+        self.LBR_sample_rate = np.array(self.LBR_sample_rate)
+        self.LBR_time_base = np.array(self.LBR_time_base)
+        return True
+
+    def getPhotodiode(self):
+        """
+        Get the command waveform for the blue laser
+        data for the current protocol
+        """ 
+        # non threaded
+        dirs = self.subDirs(self.protocol)
+        index = self._readIndex()
+        trx = []
+        cmd = []
+        sequence_values = None
+        if 'sequenceParams' in index['.'].keys():
+            self.sequence =  index['.']['sequenceParams']
+        else:
+            self.sequence = []
+        # building command voltages or currents - get amplitudes to clamp
+        reps = ('protocol', 'repetitions')
+        foundPhotodiode = False
+        self.Photodiode = []
+        self.Photodiode_time_base = []
+        self.Photodiode_sample_rate = []
+        for i, d in enumerate(dirs):
+            fn = os.path.join(d, 'Photodiode.ma')
+            if not os.path.isfile(fn):
+                print(' acq4read.getPhotodiode: File not found: ', fn)
+                return False
+            pdr = EM.MetaArray(file=fn)
+            info = pdr[0].infoCopy()
+            self.Photodiode.append(pdr.view(np.ndarray)[0])
+            self.Photodiode_time_base.append(pdr.xvals('Time'))
+            sr = info[1]['DAQ']['Photodiode']['rate']
+            self.Photodiode_sample_rate.append(sr)
+        self.Photodiode = np.array(self.Photodiode)
+        self.Photodiode_sample_rate = np.array(self.Photodiode_sample_rate)
+        self.Photodiode_time_base = np.array(self.Photodiode_time_base)
+        return True
 
     def getBlueLaserShutter(self):
         supindex = self._readIndex(self.protocol)
