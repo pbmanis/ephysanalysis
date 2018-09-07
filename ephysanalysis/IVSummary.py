@@ -41,25 +41,26 @@ class IVSummary():
         self.datapath = datapath
 
         self.IVFigure = None
-        self.AR = EP.acq4read.Acq4Read()  # make our own private cersion of the analysis and reader
+        self.AR = EP.acq4read.Acq4Read()  # make our own private version of the analysis and reader
         self.SP = EP.SpikeAnalysis.SpikeAnalysis()
         self.RM = EP.RmTauAnalysis.RmTauAnalysis()
         self.plot = plot
 
-    def compute_iv(self, threshold=-0.010):
+    def compute_iv(self, threshold=-0.010, bridge_offset=0.0):
         """
         Simple plot of spikes, FI and subthreshold IV
+        
         """
         #print('path: ', self.datapath)
         self.AR.setProtocol(self.datapath)  # define the protocol path where the data is
         if self.AR.getData():  # get that data.
+            self.RM.setup(self.AR, self.SP, bridge_offset=bridge_offset)
             self.SP.setup(clamps=self.AR, threshold=threshold, 
                     refractory=0.0001, peakwidth=0.001, interpolate=False, verify=False, mode='peak')
             self.SP.analyzeSpikes()
             self.SP.analyzeSpikeShape()
             self.SP.analyzeSpikes_brief(mode='baseline')
             self.SP.analyzeSpikes_brief(mode='poststimulus')
-            self.RM.setup(self.AR, self.SP)
             self.RM.analyze(rmpregion=[0., self.AR.tstart-0.001],
                             tauregion=[self.AR.tstart,
                                        self.AR.tstart + (self.AR.tend-self.AR.tstart)/5.])
@@ -87,15 +88,19 @@ class IVSummary():
             enable = 'On'
         else:
             enable = 'Off'
-        P.axdict['C'].text(-0.05, 0.80, 
-            r'RMP: {0:.1f} mV {1:s}${{R_{{in}}}}$: {2:.1f} ${{M\Omega}}${3:s}${{\tau_{{m}}}}$: {4:.2f} ms{5:s}Holding: {6:.1f} pA{7:s}Bridge [{8:3s}]: {9:.1f} ${{M\Omega}}$ {10:s}Pipette: {11:.1f} mV'
-            .format(
-            self.RM.analysis_summary['RMP'], '\n', self.RM.analysis_summary['Rin'], '\n', 
-            self.RM.analysis_summary['taum']*1e3, '\n', np.mean(self.RM.analysis_summary['Irmp'])*1e12,
-            '\n', enable, 
-            np.mean(self.RM.analysis_summary['CCComp']['CCBridgeResistance']/1e6), '\n',
-            np.mean(self.RM.analysis_summary['CCComp']['CCPipetteOffset']*1e3),
-            ),
+        tstr = (r'RMP: {0:.1f} mV {1:s}${{R_{{in}}}}$: {2:.1f} ${{M\Omega}}${3:s}${{\tau_{{m}}}}$: {4:.2f} ms'.
+                format(self.RM.analysis_summary['RMP'], '\n', 
+                       self.RM.analysis_summary['Rin'], '\n', 
+                       self.RM.analysis_summary['taum']*1e3))
+        tstr += (r'{0:s}Holding: {1:.1f} pA{2:s}Bridge [{3:3s}]: {4:.1f} ${{M\Omega}}$'.
+                 format('\n', np.mean(self.RM.analysis_summary['Irmp'])*1e12,
+                        '\n', enable, 
+                        np.mean(self.RM.analysis_summary['CCComp']['CCBridgeResistance']/1e6)))
+        tstr += (r'{0:s}Bridge Adjust: {1:.1f} ${{M\Omega}}$ {2:s}Pipette: {3:.1f} mV'.
+                format('\n', self.RM.analysis_summary['BridgeAdjust']/1e6,
+                       '\n', np.mean(self.RM.analysis_summary['CCComp']['CCPipetteOffset']*1e3)))
+
+        P.axdict['C'].text(-0.05, 0.80, tstr,
             transform=P.axdict['C'].transAxes, horizontalalignment='left', verticalalignment='top', fontsize=7)
      #   P.axdict['C'].xyzero=([0., -0.060])
         PH.talbotTicks(P.axdict['A'], tickPlacesAdd={'x': 0, 'y': 0}, floatAdd={'x': 0, 'y': 0})

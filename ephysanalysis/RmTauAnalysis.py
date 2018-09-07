@@ -62,7 +62,8 @@ class RmTauAnalysis():
 
         
 
-    def setup(self, clamps=None, spikes=None, dataplot=None, baseline=[0, 0.001],
+    def setup(self, clamps=None, spikes=None, dataplot=None,
+                baseline=[0, 0.001], bridge_offset=0,
                 taumbounds = [0.001, 0.050], tauhvoltage=-0.08):
         """
         Set up for the fitting
@@ -83,6 +84,9 @@ class RmTauAnalysis():
         
         taumbounds : list (2 elements)
             Lower and upper bounds of the allowable taum fitting range (in seconds).
+        
+        bridge_offset : float (default:  0.0 Ohms)
+            Bridge offset resistance (Ohms)
         """
         
         if clamps is None or spikes is None:
@@ -91,6 +95,7 @@ class RmTauAnalysis():
         self.Spikes = spikes
         self.dataPlot = dataplot
         self.baseline = baseline
+        self.bridge_offset = bridge_offset
         self.taum_fitted = {}
         self.tauh_fitted = {}
         self.taum_bounds = taumbounds
@@ -98,6 +103,16 @@ class RmTauAnalysis():
         self.analysis_summary['holding'] = self.Clamps.holding
         self.analysis_summary['WCComp'] = self.Clamps.WCComp
         self.analysis_summary['CCComp'] = self.Clamps.CCComp
+        if self.bridge_offset != 0.0:
+            self.bridge_adjust()
+        self.analysis_summary['BridgeAdjust'] = self.bridge_offset  # save the bridge offset value
+    
+    def bridge_adjust(self):
+        """
+        Adjust the voltage waveform according to the bridge offset value
+        """
+        print('RmTau adjusting bridge...')
+        self.Clamps.traces = self.Clamps.traces - self.Clamps.cmd_wave.view(np.ndarray)*self.bridge_offset
         
     
     def analyze(self, rmpregion=[0., 0.05], tauregion=[0.1, 0.125]):
