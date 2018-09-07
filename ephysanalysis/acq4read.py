@@ -342,6 +342,7 @@ class Acq4Read():
         else:
             return {'CCCompValid': False, 'CCBridgeEnable': 0, 'CCBridgeResistance': 0., 'CCNeutralizationEnable': 0.,
                     'CCNeutralizationCap': 0, 'CCPipetteOffset': 0., 'CCLPF': 10000. }
+    
     def parseClampHoldingLevel(self, info):
         """
         Given the .index file for a protocol dir, try to get

@@ -300,7 +300,12 @@ class DataSummary():
             if self.verbose:
                 self.pstring = 'Processing day[%3d/%3d]: %s ' % (nd, len(days), day)
             self.AR.setProtocol(os.path.join(self.basedir, day))
-            self.day_index = self.AR.readDirIndex(os.path.join(self.basedir, day))['.']
+            self.day_index = self.AR.readDirIndex(os.path.join(self.basedir, day))
+            if self.day_index is None:
+                print(f'Day {day:s} is not managed (no .index file found)')
+                self.day_index={}
+                continue
+            self.day_index = self.day_index['.']
             # print('ind: ', ind)
            #  self.day_index = self.AR.readDirIndex(ind)
             # print('day index: ', self.day_index)
@@ -356,10 +361,12 @@ class DataSummary():
             self.sstring = day + ' ' + self.pstring + ' %s' % slicen
             Printer(self.sstring)
             self.slicestring = '%s\t' % (slicen)
-            self.slice_index = self.AR.readDirIndex(os.path.join(self.basedir, day, slicen))['.']
+            self.slice_index = self.AR.readDirIndex(os.path.join(self.basedir, day, slicen))
             if self.slice_index is None:  # directory is not managed and probably empty
+                print(f'Slice {slicen:s} is not managed (no .index file found)')
                 self.slice_index = {}
                 continue
+            self.slice_index = self.slice_index['.']
             self.slice_index['slice'] = slicen
             for k in self.slice_defs:
                 ks = k.replace('slice_', '')
@@ -474,7 +481,11 @@ class DataSummary():
             protocolpath = os.path.join(thiscell, protocol)
             dirs = self.AR.subDirs(protocolpath)  # get all sequence entries (directories) under the protocol
             modes = []
-            info = self.AR.readDirIndex(protocolpath)['.']  # top level info dict
+            info = self.AR.readDirIndex(protocolpath) # top level info dict
+            if info is None:
+                print(f'Protocol is not managed (no .index file found): {protocolpath:s}')
+                continue
+            info = info['.']
             if 'devices' not in info.keys():  # just safety... 
                 continue
             devices = info['devices'].keys()
