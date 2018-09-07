@@ -66,6 +66,7 @@ class IVSummary():
             self.plot_iv()
             return True
         else:
+            print('getData did not return data')
             return False
 
     def plot_iv(self):
