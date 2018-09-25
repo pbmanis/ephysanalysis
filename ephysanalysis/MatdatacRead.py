@@ -130,15 +130,19 @@ class GetClamps():
         self.time_base = np.arange(points)*dt
         datac_traces = np.zeros((len(recs), nchannels+1, points))
         self.recs = recs
+        if len(recs) < 16:
+            return False
         for i in range(len(recs)):
             for j in range(nchannels+1):
-                if j == 2:
+                if j == 2:  # pull the stimulus only
                     # print len(recs[i][j])
                     # print len(np.arange(0, len(recs[i][j])))
                     cmd = np.interp(self.time_base, np.arange(0, len(recs[i][j]))/1000., recs[i][j])
                     datac_traces[i, j, :] = cmd
-                else:
+                else:  # channels 0 and 1
                     # print 'i,j', i, j
+                    if len(recs[i][j]) != datac_traces.shape[2]:
+                        return False # (cannot match, something is wrong... )
                     datac_traces[i, j, :] = recs[i][j]
                     if j == 1:
                         datac_traces[i, j, :] *= 1e-3 # convert to V from mV
@@ -454,7 +458,7 @@ class Block(object):
                 stim = stim['v2']
             
             if mode == 'V-Clamp':
-                x.append((pg.gaussianFilter(data[:, 1], sigma=(2,)), data[:, 0], stim))
+                x.append((data[:,1], data[:,0], stim))
             else:
                 x.append((data[:,0], data[:,1], stim))
                 # x.append((pg.gaussianFilter(data[:, 0], sigma=(2,)), data[:, 1], stim))

@@ -20,6 +20,7 @@ import ephysanalysis.dataSummary
 import ephysanalysis.IVSummary
 import ephysanalysis.VCSummary
 import ephysanalysis.boundrect
+import ephysanalysis.poisson_score
 
 import ephysanalysis.metaarray as MetaArray
 
