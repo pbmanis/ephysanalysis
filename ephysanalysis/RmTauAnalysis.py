@@ -471,8 +471,10 @@ class RmTauAnalysis():
         # for our time windows, get the ss voltage to use
         ss_voltages = self.Clamps.traces['Time': steadystateRegion[0]:steadystateRegion[1]].view(np.ndarray)
         ss_voltages = ss_voltages.mean(axis=1)
-        itrace = np.argmin((ss_voltages[self.Spikes.nospk] - v_steadystate)**2)
-
+        try:
+            itrace = np.argmin((ss_voltages[self.Spikes.nospk] - v_steadystate)**2)
+        except:
+            return
         pk_voltages = self.Clamps.traces['Time': peakRegion[0]:peakRegion[1]].view(np.ndarray)
         pk_voltages_tr = pk_voltages.min(axis=1)
         ipk_start = pk_voltages[itrace].argmin() + int(peakRegion[0]*self.Clamps.sample_rate[itrace]) # get starting index as well
