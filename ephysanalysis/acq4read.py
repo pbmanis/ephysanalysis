@@ -38,7 +38,7 @@ class Acq4Read():
         Parameters
         ----------
         pathtoprotocol str (default: None)
-            Path to the protocol directoryto set for this instance of the reader
+            Path to the protocol directory to set for this instance of the reader
         
         dataname: str (default: None)
             Name of the data file to read (for example, 'MultiClamp1.ma')
