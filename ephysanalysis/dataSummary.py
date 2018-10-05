@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 from __future__ import print_function
 
 __author__ = 'pbmanis'
@@ -25,6 +26,44 @@ Uses acq4read and is independent of acq4 itself.
 
 July 2018: 
 Major surgery - to output Pandas (pickled) files as well. UGH.
+
+----------------
+
+usage: dataSummary.py [-h] [-o {terminal,pandas,excel,tabfile}]
+                      [-f OUTPUTFILENAME] [-r] [-w] [-D] [--daylist DAYLIST]
+                      [-a AFTER] [-b BEFORE] [--dry-run] [-v] [--no-inspect]
+                      [-d {days,slices,cells,protocols,all}]
+                      basedir
+
+Generate Data Summaries from acq4 datasets
+
+positional arguments:
+  basedir               Base Directory
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -o {terminal,pandas,excel,tabfile}, --output {terminal,pandas,excel,tabfile}
+                        Specify output dataplan key for one entry to process
+  -f OUTPUTFILENAME, --filename OUTPUTFILENAME
+                        Specify output file name (including full path)
+  -r, --read            just read the summary table
+  -w, --write           Analyze and write the data summary
+  -D, --deep            perform deep inspection (very slow)
+  --daylist DAYLIST     Specify daylistfile
+  -a AFTER, --after AFTER
+                        only analyze dates on or after a date
+  -b BEFORE, --before BEFORE
+                        only analyze dates on or before a date
+  --dry-run             Do a dry run, reporting only directories
+  -v, --verbose         Verbose print out during run
+  --no-inspect          Do not inspect protocols, only report directories
+  -d {days,slices,cells,protocols,all}, --depth {days,slices,cells,protocols,all}
+                        Specify depth for --dry-run
+
+Example:
+python ephysanalysis/dataSummary.py   /Volumes/Pegasus/ManisLab_Data3/Kasten_Michael/NF107ai32Het/ -a 2017.04.16 -o pandas -f NF107_after_2018.04.16 -a 2018.04.16 -w -d all --dry-run
+
+Note: the -w is essential for the process to actually occur...
 
 """
 import sys
@@ -758,7 +797,7 @@ if __name__ == "__main__":
             after=args.after, before=args.before, dryrun=args.dryrun, depth=args.depth, inspect=args.noinspect,
             deep = args.deep,
             verbose=args.verbose)
- 
+
     if args.write:
         ds.getDay()
         if args.output in ['pandas']:
