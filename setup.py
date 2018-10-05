@@ -18,6 +18,7 @@ setup(name='ephysanalysis',
       entry_points={
           'console_scripts': [
                'dataSummary=ephysanalysis.dataSummary:main'
+               'ma2tiff=ephysanalysis.ma2tiff:main'
           ]
       },
       classifiers = [

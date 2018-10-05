@@ -761,7 +761,7 @@ class DataSummary():
         return (date, sliceid, cell, proto, p3)
 
 def main():
-    
+
     parser = argparse.ArgumentParser(description='Generate Data Summaries from acq4 datasets')
     parser.add_argument('basedir', type=str,
                         help='Base Directory')
@@ -801,7 +801,7 @@ def main():
         ds.getDay()
         if args.output in ['pandas']:
             ds.write_string()
-        
+    
     if args.read:
         print('args.read')
         print('reading: ', ds.outFilename)
@@ -820,7 +820,7 @@ def main():
             CCIV_types = []
             VCIV_types = []
             stdIV_types = []
-            
+        
 #       Only returns a dataframe if there is more than one entry
 #       Otherwise, it is like a series or dict
             date = df2.iloc[day]['date']
@@ -859,7 +859,7 @@ def main():
             print('    STANDARD IVs: ')
             for iv in stdIVs:
                 print('        {0:<32s}'.format(iv))
-            
+        
             print('\n------------')
             print('    Map types: ')
             for m in map_types:
@@ -873,7 +873,7 @@ def main():
             print('    STANDARD IVs types: ')
             for iv in stdIV_types:
                 print('       {0:<32s}'.format(iv))
-            
+        
             print('='*80)
             print('INCOMPLETE PROTOCOLS')
             print('='*80)
@@ -886,6 +886,7 @@ def main():
                 print(c)
             print('='*80)
 
-
+    
+    
 if __name__ == "__main__":
-    main()    
+    main()
