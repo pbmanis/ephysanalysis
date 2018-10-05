@@ -17,7 +17,7 @@ setup(name='ephysanalysis',
       zip_safe=False,
       entry_points={
           'console_scripts': [
-               'dataSummary=ephysanalysis.dataSummary:main'
+               'dataSummary=ephysanalysis.dataSummary:main',
                'ma2tiff=ephysanalysis.ma2tiff:convertfiles'
           ]
       },
