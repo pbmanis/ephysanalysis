@@ -341,7 +341,7 @@ class DataSummary():
             self.AR.setProtocol(os.path.join(self.basedir, day))
             self.day_index = self.AR.readDirIndex(os.path.join(self.basedir, day))
             if self.day_index is None:
-                print(f'Day {day:s} is not managed (no .index file found)')
+                print('Day {0:s} is not managed (no .index file found)'.format(day))
                 self.day_index={}
                 continue
             self.day_index = self.day_index['.']
@@ -402,7 +402,7 @@ class DataSummary():
             self.slicestring = '%s\t' % (slicen)
             self.slice_index = self.AR.readDirIndex(os.path.join(self.basedir, day, slicen))
             if self.slice_index is None:  # directory is not managed and probably empty
-                print(f'Slice {slicen:s} is not managed (no .index file found)')
+                print('Slice {0:s} is not managed (no .index file found)'.format(slicen))
                 self.slice_index = {}
                 continue
             self.slice_index = self.slice_index['.']
@@ -522,7 +522,7 @@ class DataSummary():
             modes = []
             info = self.AR.readDirIndex(protocolpath) # top level info dict
             if info is None:
-                print(f'Protocol is not managed (no .index file found): {protocolpath:s}')
+                print('Protocol is not managed (no .index file found): {0:s}'.format(protocolpath))
                 continue
             info = info['.']
             if 'devices' not in info.keys():  # just safety... 
@@ -760,8 +760,7 @@ class DataSummary():
         (p3, date) = os.path.split(p2)
         return (date, sliceid, cell, proto, p3)
 
-
-if __name__ == "__main__":
+def main():
     
     parser = argparse.ArgumentParser(description='Generate Data Summaries from acq4 datasets')
     parser.add_argument('basedir', type=str,
@@ -887,4 +886,6 @@ if __name__ == "__main__":
                 print(c)
             print('='*80)
 
-    
+
+if __name__ == "__main__":
+    main()    

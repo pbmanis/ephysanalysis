@@ -14,5 +14,21 @@ setup(name='ephysanalysis',
       author_email='pmanis@med.unc.edu',
       license='MIT',
       packages=find_packages(include=['ephysanalysis*']),
-      zip_safe=False)
+      zip_safe=False,
+      entry_points={
+          'console_scripts': [
+               'dataSummary=ephysanalysis.dataSummary:main'
+          ]
+      },
+      classifiers = [
+             "Programming Language :: Python :: 3.6",
+             "Development Status ::  Beta",
+             "Environment :: Other Environment",
+             "Intended Audience :: Developers",
+             "License :: MIT",
+             "Operating System :: OS Independent",
+             "Topic :: Software Development :: Libraries :: Python Modules",
+             "Topic :: Data Processing :: Neuroscience",
+             ],
+    )
       
