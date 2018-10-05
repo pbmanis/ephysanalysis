@@ -761,7 +761,6 @@ class DataSummary():
         return (date, sliceid, cell, proto, p3)
 
 def main():
-
     parser = argparse.ArgumentParser(description='Generate Data Summaries from acq4 datasets')
     parser.add_argument('basedir', type=str,
                         help='Base Directory')
