@@ -18,17 +18,18 @@ setup(name='ephysanalysis',
       entry_points={
           'console_scripts': [
                'dataSummary=ephysanalysis.dataSummary:main',
-               'ma2tiff=ephysanalysis.ma2tiff:convertfiles'
+               'ma2tiff=ephysanalysis.ma2tiff:convertfiles',
+               'bridge=ephysanalysis.bridge:main',
           ]
       },
       classifiers = [
-             "Programming Language :: Python :: 3.6",
+             "Programming Language :: Python :: 3.6+",
              "Development Status ::  Beta",
-             "Environment :: Other Environment",
-             "Intended Audience :: Developers",
+             "Environment :: Console",
+             "Intended Audience :: Neuroscientists",
              "License :: MIT",
              "Operating System :: OS Independent",
-             "Topic :: Software Development :: Libraries :: Python Modules",
+             "Topic :: Scientific Software :: Tools :: Python Modules",
              "Topic :: Data Processing :: Neuroscience",
              ],
     )
