@@ -110,7 +110,10 @@ class IVSummary():
         P.axdict['B'].set_xlabel('I (nA)')
         P.axdict['B'].set_ylabel('Spikes/s')
         PH.talbotTicks(P.axdict['B'], tickPlacesAdd={'x': 1, 'y': 0}, floatAdd={'x': 2, 'y': 0})
-        maxv = np.max(self.RM.ivss_v*1e3)
+        try:
+            maxv = np.max(self.RM.ivss_v*1e3)
+        except:
+            maxv = 0.  # sometimes IVs do not have negative voltages for an IVss to be available... 
         ycross = np.around(maxv/5., decimals=0)*5.
         if ycross > maxv:
             ycross = maxv

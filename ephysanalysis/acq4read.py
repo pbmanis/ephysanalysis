@@ -10,6 +10,7 @@ Requires pyqtgraph to read the .ma files and the .index file
 """
 import os
 import re
+from pathlib import Path
 #from pyqtgraph import metaarray
 import matplotlib
 matplotlib.use('Agg')
@@ -121,10 +122,13 @@ class Acq4Read():
 
     def _readIndex(self, currdir=''):
         self._index = None
-        indexFile = os.path.join(self.protocol, currdir, '.index')
-#        print self.protocol, currdir, indexFile
-        if not os.path.isfile(indexFile):
-           # print("Directory '%s' is not managed!" % (self.dataname))
+        # first try with currdir value, read current protocolSequence directory
+        if currdir == '':
+            indexFile = Path(self.protocol, '.index')  # use current
+        else:
+            indexFile = Path(currdir, '.index')
+        if not indexFile.is_file():
+            print("Directory '%s' is not managed! (missing .index file)" % (str(indexFile)))
             return self._index
         self._index = configfile.readConfigFile(indexFile)
         return self._index
@@ -372,7 +376,8 @@ class Acq4Read():
         self.values = []
         self.trace_StartTimes = np.zeros(0)
         self.sample_rate = []
-        info = self.getIndex(self.protocol)
+        info = self.getIndex() #self.protocol)
+#        print('Info: ', info, self.protocol)
         holdcheck = info['devices']['MultiClamp1']['holdingCheck']
         holdvalue = info['devices']['MultiClamp1']['holdingSpin']
         if holdcheck:
@@ -503,7 +508,11 @@ class Acq4Read():
         """
         Get laser pulse times  - handling multiple possible configurations (ugly)
         """
-        supindex = self._readIndex(self.protocol)
+        supindex = self._readIndex(currdir=self.protocol)
+        if supindex is None:
+            supindex = self._readIndex()
+            if supindex is None:
+                raise ValueError('Cannot read index....')
         #print(supindex['.']['devices']['PockelCell']['channels']['Switch'].keys())
         try:
             stimuli = supindex['.']['devices']['Laser-Blue-raw']['channels']['pCell']
@@ -513,6 +522,9 @@ class Acq4Read():
                 stimuli = supindex['.']['devices']['PockelCell']['channels']['Switch']
                 # print('GOT POCKEL CELL/Switch')
             except:
+                print(supindex['.'].keys())
+                print(supindex['.']['devices'].keys())
+                print(supindex['.']['devices']['PockelCell'])
                 print(supindex['.']['devices']['PockelCell']['channels'].keys())
                 raise
         # print('skeys: ', stimuli.keys())
@@ -681,7 +693,7 @@ class Acq4Read():
         return True
 
     def getBlueLaserShutter(self):
-        supindex = self._readIndex(self.protocol)
+        supindex = self._readIndex()
         stimuli = supindex['.']['devices']['Laser-Blue-raw']['channels']['Shutter']['waveGeneratorWidget']['stimuli']
         times = []
         shutter = {}
@@ -697,18 +709,21 @@ class Acq4Read():
         self.spotsize = 0.
         rep = 0
         tar = 0
-        supindex = self._readIndex(self.protocol)
-        if not 'sequenceParams' in supindex['.'].keys():
+        supindex = self._readIndex()  # get protocol index (top level, dirType=ProtocolSequence)
+      #  print('supindex in getScannerPositions: ', supindex, self.protocol)
+        if not 'sequenceParams' in supindex['.'].keys():  # should have this key, along with (scanner, targets)
+            print('no sequenceParams key in top level protocol directory; in getScannerPosition')
             return(False)
         try:
             ntargets = len(supindex['.']['sequenceParams'][('Scanner', 'targets')])
         except:
+            print('Cannot access (Scanner, targets) in getScannerPosition')
             return(False)
         pars={}
         pars['sequence1'] = {}
         pars['sequence2'] = {}
         try:
-            reps = supindex['.']['sequenceParams'][('protocol', 'repetitions')]
+            reps = supindex['.']['sequenceParams'][('protocol', 'repetitions')]  # should have this key also
         except:
             reps = [0]  # just fill in one rep. SOme files may be missing the protocol/repetitions entry for some reason
         pars['sequence1']['index'] = reps
@@ -716,24 +731,26 @@ class Acq4Read():
         self.sequenceparams = pars
         self.scannerCamera = {}
         self.scannerinfo = {}
-        for i, d in enumerate(dirs):
-            index = self._readIndex(d)
+        for i, d in enumerate(dirs):  # now run through the subdirectories : all of dirType 'Protocol'
+            index = self._readIndex(currdir=Path(self.protocol, Path(d).name))  # subdirectories _nnn or _nnn_mmm or ... 
             if 'Scanner' in index['.'].keys():
                 self.scannerpositions[i] = index['.']['Scanner']['position']
                 self.targets[i] = index['.'][('Scanner', 'targets')]
                 self.spotsize = index['.']['Scanner']['spotSize']
                 self.scannerinfo[(rep, tar)] = {'directory': d, 'rep': rep, 'pos': self.scannerpositions[i]}
             # elif ('Scanner', 'targets') in index['.']:
-            #         print ('scanner targets: ', index['.'][('Scanner', 'targets')])
-            #         self.scannerpositions[i] = index['.'][('Scanner', 'targets')]['position']
-            #         self.targets[i] = index['.'][('Scanner', 'targets')]
-            #         self.spotsize = index['.']['Scanner']['spotSize']
+            #     print('found "(Scanner, targets)" in index')
+            #     #print ('scanner targets: ', index['.'][('Scanner', 'targets')])
+            #     self.scannerpositions[i] = index['.'][('Scanner', 'targets')]['position']
+            #     self.targets[i] = index['.'][('Scanner', 'targets')]
+            #     self.spotsize = index['.']['Scanner']['spotSize']
+            #     self.scannerinfo[(rep, tar)] = {'directory': d, 'rep': rep, 'pos': self.scannerpositions[i]}
             else:
-#                print('Scanner information not found in index: ', d, '\n', index['.'].keys())
+                print('Scanner information not found in index: ', d, '\n', index['.'].keys())
                 return False # protocol is short... 
 #                self.scannerinfo[(rep, tar)] = {'directory': d, 'rep': rep, 'pos': self.scannerpositions[i]}
             if 'Camera' in supindex['.']['devices'].keys() and len(self.scannerCamera) == 0:  # read the camera outline
-                cindex = self._readIndex(os.path.join(d, 'Camera'))
+                cindex = self._readIndex(currdir=Path(self.protocol, Path(d).name, 'Camera'))
                 self.scannerCamera = cindex
             else:
                 pass
@@ -783,7 +800,7 @@ class Acq4Read():
 
         rep = 0
         tar = 0
-        supindex = self._readIndex(self.protocol)
+        supindex = self._readIndex()
         ntargets = len(supindex['.']['sequenceParams'][('Scanner', 'targets')])
         pars={}
         pars['sequence1'] = {}
