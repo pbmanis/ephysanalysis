@@ -436,7 +436,7 @@ class Acq4Read():
             self.sample_rate.append(self.samp_rate)
             #print ('i: %d   cmd: %f' % (i, sequence_values[i]*1e12))
         if self.mode is None:
-            print ('no files processed...')
+            print ('   >> No directories processed for this protocol')
             return False
         if 'v' in self.mode.lower():
             units = 'V'
@@ -465,7 +465,8 @@ class Acq4Read():
         mclamppulses = ('MultiClamp1', 'Pulse_amplitude')
         seqparams = index['.']['sequenceParams']
         #self.printIndex(index)
-
+        self.tstart = np.max(self.time_base)  # set to end of time base... 
+        self.tend = self.tstart
         if mclamppulses in seqparams.keys():
             self.repetitions = len(seqparams[mclamppulses])
             self.commandLevels = np.array(seqparams[mclamppulses])
@@ -516,27 +517,49 @@ class Acq4Read():
         #print(supindex['.']['devices']['PockelCell']['channels']['Switch'].keys())
         try:
             stimuli = supindex['.']['devices']['Laser-Blue-raw']['channels']['pCell']
-            # print('GOT PCELL')
         except:
             try: 
                 stimuli = supindex['.']['devices']['PockelCell']['channels']['Switch']
-                # print('GOT POCKEL CELL/Switch')
             except:
                 print(supindex['.'].keys())
                 print(supindex['.']['devices'].keys())
                 print(supindex['.']['devices']['PockelCell'])
                 print(supindex['.']['devices']['PockelCell']['channels'].keys())
-                raise
-        # print('skeys: ', stimuli.keys())
+                raise ValueError('Unable to parse devices PockeCell')
         stimuli = stimuli['waveGeneratorWidget']['stimuli']
-        # print ('skeys2: ', stimuli.keys())
-        if 'Pulse' in stimuli.keys():
+        if 'PulseTrain' in stimuli.keys():
             times = {}
-            times['start'] = [stimuli['Pulse']['start']['value']]
-            times['duration'] = stimuli['Pulse']['length']['value']
-            times['amplitude'] = stimuli['Pulse']['amplitude']['value']
-            times['type'] = stimuli['Pulse']['type']
+            times['start'] = []
+            tstart = [stimuli['PulseTrain']['start']['value']]
+            times['duration'] = []
+            times['amplitude'] = []
+            times['npulses'] = [stimuli['PulseTrain']['pulse_number']['value']]
+            times['period'] = [stimuli['PulseTrain']['period']['value']]
+            times['type'] = [stimuli['PulseTrain']['type']]
+            for n in range(times['npulses'][0]):
+                times['start'].append(tstart[0] + n*times['period'][0])
+                times['duration'].append(stimuli['PulseTrain']['length']['value'])
+                times['amplitude'].append(stimuli['PulseTrain']['amplitude']['value'])
             return times
+        
+        elif 'Pulse' in stimuli.keys():
+            times = {}
+            times['start'] = []
+            times['duration'] = []
+            times['amplitude'] = []
+            times['period'] = []
+            times['type'] = stimuli['Pulse']['type']
+            times['npulses'] = [len(list(stimuli.keys()))]
+            laststarttime = 0.
+            for n, key in enumerate(stimuli.keys()):  # extract each "pulse" - keys will vary... 
+                starttime = stimuli[key]['start']['value']
+                times['start'].append(stimuli[key]['start']['value'])
+                times['duration'].append(stimuli[key]['length']['value'])
+                times['amplitude'].append(stimuli[key]['amplitude']['value'])
+                times['period'].append(starttime -laststarttime)
+                laststarttime = starttime
+            return times
+
         elif 'Pulse3' in stimuli.keys():
             times = {}
             times['start'] = [stimuli['Pulse3']['start']['value']]
@@ -544,20 +567,7 @@ class Acq4Read():
             times['amplitude'] = stimuli['Pulse3']['amplitude']['value']
             times['type'] = stimuli['Pulse3']['type']
             return times
-        elif 'PulseTrain' in stimuli.keys():
-#            print('PTR: ', stimuli['PulseTrain'])
-            times = {}
-            times['start'] = []
-            tstart = [stimuli['PulseTrain']['start']['value']]
-            times['duration'] = stimuli['PulseTrain']['length']['value']
-            times['amplitude'] = stimuli['PulseTrain']['amplitude']['value']
-            times['npulses'] = stimuli['PulseTrain']['pulse_number']['value']
-            times['period'] = stimuli['PulseTrain']['period']['value']
-            times['type'] = stimuli['PulseTrain']['type']
-#            print('times: ', times)
-            for n in range(times['npulses']):
-                times['start'].append(tstart[0] + n*times['period'])
-            return times
+
         else:
             raise ValueError('need to find keys for stimulus (might be empty): ' % stimuli)
 
