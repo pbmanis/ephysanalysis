@@ -465,17 +465,13 @@ class Acq4Read():
         mclamppulses = ('MultiClamp1', 'Pulse_amplitude')
         seqparams = index['.']['sequenceParams']
         #self.printIndex(index)
-        self.tstart = np.max(self.time_base)  # set to end of time base... 
-        self.tend = self.tstart
+        stimuli = index['.']['devices']['MultiClamp1']['waveGeneratorWidget']['stimuli']
+        self.tstart = stimuli['Pulse']['start']['value']
+        self.tend = self.tstart + stimuli['Pulse']['length']['value']
         if mclamppulses in seqparams.keys():
             self.repetitions = len(seqparams[mclamppulses])
             self.commandLevels = np.array(seqparams[mclamppulses])
             function = index['.']['devices']['MultiClamp1']['waveGeneratorWidget']['function']
-            stimuli = index['.']['devices']['MultiClamp1']['waveGeneratorWidget']['stimuli']
-            self.tstart = stimuli['Pulse']['start']['value']
-            self.tend = self.tstart + stimuli['Pulse']['length']['value']
-            
-            # print 'commandlevels: ', self.commandLevels
         elif protoreps in seqparams.keys():
             self.repetitions = seqparams[protoreps][0] + 1
         else:
