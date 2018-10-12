@@ -61,6 +61,7 @@ class IVSummary():
             self.SP.analyzeSpikeShape()
             self.SP.analyzeSpikes_brief(mode='baseline')
             self.SP.analyzeSpikes_brief(mode='poststimulus')
+            self.SP.fitOne()
             self.RM.analyze(rmpregion=[0., self.AR.tstart-0.001],
                             tauregion=[self.AR.tstart,
                                        self.AR.tstart + (self.AR.tend-self.AR.tstart)/5.])
@@ -84,6 +85,10 @@ class IVSummary():
             P.axdict['A'].plot(self.RM.tauh_fitted[k][0]*1e3, self.RM.tauh_fitted[k][1]*1e3, '--r', linewidth=0.50)
             
         P.axdict['B'].plot(self.SP.analysis_summary['FI_Curve'][0]*1e9, self.SP.analysis_summary['FI_Curve'][1]/(self.AR.tend-self.AR.tstart), 'ko-', markersize=4, linewidth=0.5)
+        if self.SP.analysis_summary['FI_Growth'] is not None:
+            P.axdict['B'].plot(EPIV.SP.analysis_summary['FI_Growth']['fit'][0][0], EPIV.SP.analysis_summary['FI_Growth']['fit'][1][0](self.AR.tend-self.AR.tstart),
+                'r--', linewidth=0.5)
+
         P.axdict['C'].plot(self.RM.ivss_cmd*1e9, self.RM.ivss_v*1e3, 'ko-', markersize=4, linewidth=1.0)
         if self.RM.analysis_summary['CCComp']['CCBridgeEnable'] == 1:
             enable = 'On'
