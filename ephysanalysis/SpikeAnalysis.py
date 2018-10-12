@@ -575,10 +575,9 @@ class SpikeAnalysis():
             x1 = fbr+3
         else:
             x1 = len(x)-1
-        
         if self.FIGrowth == 1:
             print('exponential model fit')
-            bounds = ((0., yp[0]+5), np.sort([x[x0], x[x1]]),
+            bounds = ((0., yp[0]+5), np.sort([x[x0]*1e9, x[x1]*1e9]),
                  (0., 2.0), (0., ymax*5.0), (-1, 1))
         # # parameters for FIGrowth 1: ['Fzero', 'Ibreak', 'F1amp', 'F2amp', 'Irate']
             fitbreak0 = ibreak0
@@ -598,7 +597,7 @@ class SpikeAnalysis():
             f = Fitting.Fitting().fitfuncmap[func]
             # now fit the full data set
             print('breaks/max: ', fitbreak0, np.max(x[fpnt]))
-            (fpar, xf, yf, names) = Fitting.Fitting().FitRegion(np.array([1]), 0, x*1e12, yd, t0=fitbreak0, t1=np.max(x[fpnt]*1e12),
+            (fpar, xf, yf, names) = Fitting.Fitting().FitRegion(np.array([1]), 0, x*1e9, yd, t0=fitbreak0, t1=np.max(x[fpnt]*1e9),
                                     fitFunc=func, fitPars=initpars, bounds=bounds, constraints=cons, weights=None, #np.sqrt,
                                     fixedPars=None, method=testMethod)
             error = Fitting.Fitting().getFitErr()
@@ -687,6 +686,6 @@ class SpikeAnalysis():
         else:
             raise ValueError('SpikeAnalysis: FIGrowth value %d ot known' % self.FIGrowth)
         self.analysis_summary['FI_Growth'] = {'Type': self.FIGrowth, 'function': func,
-                'names': names, 'error': error, 'parameters': fpar, 'fit': [np.array(xf)*1e-12, yf]}
+                'names': names, 'error': error, 'parameters': fpar, 'fit': [np.array(xf)*1e-9, yf]}
         #return (fpar, xf, yf, names, error, f, func)
 
