@@ -2,12 +2,13 @@
 _pycache__/
 *.py[cod]
 *$py.class
-pylibrary/*.pyc
 
 # pycharm
 .idea
-# R (not sure why it is even in there)
-pylibrary/.Rhistory
+
+#editors
+*.bak
+*.tmp
 
 # C extensions
 *.so
