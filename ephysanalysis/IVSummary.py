@@ -61,7 +61,8 @@ class IVSummary():
             self.SP.analyzeSpikeShape()
             self.SP.analyzeSpikes_brief(mode='baseline')
             self.SP.analyzeSpikes_brief(mode='poststimulus')
-            self.SP.fitOne()
+            self.SP.fitOne(function='FIGrowthExpBreak')
+            self.SP.fitOne(function='FIGrowthExp')
             self.RM.analyze(rmpregion=[0., self.AR.tstart-0.001],
                             tauregion=[self.AR.tstart,
                                        self.AR.tstart + (self.AR.tend-self.AR.tstart)/5.])
@@ -85,10 +86,12 @@ class IVSummary():
             P.axdict['A'].plot(self.RM.tauh_fitted[k][0]*1e3, self.RM.tauh_fitted[k][1]*1e3, '--r', linewidth=0.50)
             
         P.axdict['B'].plot(self.SP.analysis_summary['FI_Curve'][0]*1e9, self.SP.analysis_summary['FI_Curve'][1]/(self.AR.tend-self.AR.tstart), 'ko-', markersize=4, linewidth=0.5)
-        if self.SP.analysis_summary['FI_Growth'] is not None:
-            P.axdict['B'].plot(self.SP.analysis_summary['FI_Growth']['fit'][0][0]*1e9, self.SP.analysis_summary['FI_Growth']['fit'][1][0]/(self.AR.tend-self.AR.tstart),
-                'r--', linewidth=0.5)
-
+        clist = ['r', 'b', 'g', 'c', 'm']  # only 5 possiblities
+        linestyle = ['-', '--', '-.', '-', '--']
+        for i, figrowth in enumerate(self.SP.analysis_summary['FI_Growth']):
+            P.axdict['B'].plot(figrowth['fit'][0][0]*1e9, figrowth['fit'][1][0]/(self.AR.tend-self.AR.tstart),
+                linestyle=linestyle[i], color=clist[i], linewidth=0.5, label=figrowth['FunctionName'])
+        P.axdict['B'].legend()
         P.axdict['C'].plot(self.RM.ivss_cmd*1e9, self.RM.ivss_v*1e3, 'ko-', markersize=4, linewidth=1.0)
         if self.RM.analysis_summary['CCComp']['CCBridgeEnable'] == 1:
             enable = 'On'

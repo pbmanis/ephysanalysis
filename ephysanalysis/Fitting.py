@@ -92,22 +92,22 @@ class Fitting():
         'taucurve' : (self.taucurve,  [50., 300.0, 60.0, 10.0, 8.0, 65.0, 10.0], 50000, 'r',
                     [-150., 50., 1.], [0.0, 237.0, 60.0, 12.0, 17.0, 60.0, 14.0],  
                     ['DC', 'a1', 'v1', 'k1', 'a2', 'v2', 'k2'],  None, self.taucurveder),
-        'FIGrowth1': (self.FIGrowth1, [0.0, 100., 1.0, 40., 200.], 2000, 'k', [0, 1000, 50],  # [Fzero, Ibreak, F1amp, F2amp, Irate]
+        'FIGrowthExpBreak': (self.FIGrowth1, [0.0, 100., 1.0, 40., 200.], 2000, 'k', [0, 1000, 50],  # [Fzero, Ibreak, F1amp, F2amp, Irate]
                       [0.0, 0., 0., 10., 100.], ['Fzero', 'Ibreak', 'F1amp', 'F2amp', 'Irate'], 
                       None, None),
-        'FIGrowth2': (self.FIGrowth2, [100., 40., 200.], 2000, 'k', [0, 1000, 50],  # [FIbreak, F2amp, Irate]
+        'FIGrowthExp': (self.FIGrowth2, [100., 40., 200.], 2000, 'k', [0, 1000, 50],  # [FIbreak, F2amp, Irate]
                       [00., 10., 100.], ['Ibreak', 'F2amp', 'Irate'], 
                       None, None),
-        'FIPower': (self.FIPower, [100., 0.2, 0.5], 2000, 'k', [0, 1000, 50],  # [c, s, d]
+        'FIGrowthPower': (self.FIPower, [100., 0.2, 0.5], 2000, 'k', [0, 1000, 50],  # [c, s, d]
                       [0., 10., 100.], ['Ibreak', 'Irate', 'IPower'], 
                       None, None),
 
-        'pwl2': (self.pwl2, [100., 5., 0.05, 0.02], 2000, 'k', [40., 120, 1., 3.],  # def f(x,x0,y0,k1,k2):
+        'piecewiselinear2': (self.pwl2, [100., 5., 0.05, 0.02], 2000, 'k', [40., 120, 1., 3.],  # def f(x,x0,y0,k1,k2):
                                                                                 # x0,y0 : first breakpoint
                                                                                 # k1,k2 : 2 slopes.
                       [0., 100., 0.5, 5.], ['Ibreak', 'Rate0', 'Irate1', 'Irate2'], 
                       None, None),
-        'pwl3': (self.pwl3, [100., 0., 200., 0., 0.05, 0.02], 2000, 'k', [40, 0, 120, 0., 1., 3.],  # def f(x,x0,y0,x1,k1,k2,k3):
+        'piecewiselinear3': (self.pwl3, [100., 0., 200., 0., 0.05, 0.02], 2000, 'k', [40, 0, 120, 0., 1., 3.],  # def f(x,x0,y0,x1,k1,k2,k3):
                                                                                 # x0,y0 : first breakpoint
                                                                                 # x1 : second breakpoint
                                                                                 # k1,k2,k3 : 3 slopes.

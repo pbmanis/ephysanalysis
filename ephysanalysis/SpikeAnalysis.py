@@ -47,6 +47,7 @@ class SpikeAnalysis():
         self.analysis_summary = {}
         self.verbose = False
         self.FIGrowth = 1  # use function FIGrowth1 (can use simpler version FIGrowth 2 also)
+        self.analysis_summary['FI_Growth'] = []   # permit analysis of multiple growth functions.
 
     def setup(self, clamps=None, threshold=None, refractory=0.7, peakwidth=1.0,
                     verify=False, interpolate=False, verbose=False, mode='peak'):
@@ -172,7 +173,6 @@ class SpikeAnalysis():
         self.spk = np.where(self.spikecount > 0)[0]
         self.analysis_summary['FI_Curve'] = np.array([self.Clamps.values, self.spikecount])
         self.analysis_summary['FiringRate'] = np.max(self.spikecount)/(self.Clamps.tend - self.Clamps.tstart)
-        self.fitOne()
 #        print self.analysis_summary['FI_Curve']
         self.spikes_counted = True
 #        self.update_SpikePlots()
@@ -501,7 +501,7 @@ class SpikeAnalysis():
         # except:
         #     raise ValueError ('Failed Classification for cell: %s' % self.filename)
 
-    def fitOne(self, x=None, yd=None, info='', fixNonMonotonic=True, excludeNonMonotonic=False):
+    def fitOne(self, x=None, yd=None, info='', function=None, fixNonMonotonic=True, excludeNonMonotonic=False):
         """Fit the FI plot to an equation that is piecewise linear up to the threshold
             called Ibreak, then (1-exp(F/Frate)) for higher currents
         
@@ -532,13 +532,14 @@ class SpikeAnalysis():
             These are the fit parameters
         """
 #        print('fitone called')
+        if function is not None:
+            self.FIGrowth = function
         if x is None: # use class data
-            x = self.analysis_summary['FI_Curve'][0]
+            x = self.analysis_summary['FI_Curve'][0]*1e9
             yd = self.analysis_summary['FI_Curve'][1]
-        
+        print('yd: ', yd, x)
         ymax = np.max(yd)
         if ymax == 0:
-            self.analysis_summary['FI_Growth'] = None
             return
         if fixNonMonotonic and ymax > yd[-1]:  # clip at max firing rate
             imaxs = [i for i, y in enumerate(yd) if y == ymax]  # handle duplicate firing rates
@@ -575,14 +576,9 @@ class SpikeAnalysis():
             x1 = fbr+3
         else:
             x1 = len(x)-1
-        if self.FIGrowth == 1:
-            print('exponential model fit')
-            bounds = ((0., yp[0]+5), np.sort([x[x0]*1e9, x[x1]*1e9]),
-                 (0., 2.0), (0., ymax*5.0), (-1, 1))
-        # # parameters for FIGrowth 1: ['Fzero', 'Ibreak', 'F1amp', 'F2amp', 'Irate']
-            fitbreak0 = ibreak0
-            if fitbreak0 > 0.:
-                fitbreak0 = 0.
+        
+        if self.FIGrowth == 'FIGrowthExpBreak':
+            print('Exponential model fit')
             ixb = np.argwhere(yd > 0)[0][0]
             cons = ( {'type': 'eq', 'fun': lambda xc:  xc[0]},  # lock F0 at >= 0
                      {'type': 'ineq', 'fun': lambda xc: xc[1] - x[ixb-1]},  #  ibreak between last no spike and first spiking level
@@ -591,27 +587,36 @@ class SpikeAnalysis():
                      {'type': 'ineq', 'fun': lambda xc: xc[3] - xc[2]}, # F2amp > F1amp (must be!)
                      {'type': 'ineq', 'fun': lambda xc: xc[4]},
                 )
-            initpars = [0., ibreak0, 0., ymax/2., 0.001]
-            print('initpars: ', initpars)
-            func = 'FIGrowth1'
-            f = Fitting.Fitting().fitfuncmap[func]
-            # now fit the full data set
-            print('breaks/max: ', fitbreak0, np.max(x[fpnt]))
-            (fpar, xf, yf, names) = Fitting.Fitting().FitRegion(np.array([1]), 0, x*1e9, yd, t0=fitbreak0, t1=np.max(x[fpnt]*1e9),
-                                    fitFunc=func, fitPars=initpars, bounds=bounds, constraints=cons, weights=None, #np.sqrt,
-                                    fixedPars=None, method=testMethod)
-            error = Fitting.Fitting().getFitErr()
-            self.FIKeys = f[6]
-
-        elif self.FIGrowth == 2:  # FIGrowth is 2, so use simpler fit
-            bounds = (np.sort([x[x0], x[x1]]),
-                  (0., ymax*5.0), (0.0001, 100.))
-        # # parameters for FIGrowth 2: ['Fzero', 'Ibreak', 'F1amp', 'F2amp', 'Irate']
+            bounds = ((0., yp[0]+5), np.sort([x[x0], x[x1]]),
+                 (0., 2.0), (0., ymax*5.0), (-1e9, 1e9))
+        # # parameters for FIGrowth 1: ['Fzero', 'Ibreak', 'F1amp', 'F2amp', 'Irate']
             fitbreak0 = ibreak0
             if fitbreak0 > 0.:
                 fitbreak0 = 0.
-            initpars = [ibreak0, ymax/2., 0.001]
-            func = 'FIGrowth2'
+            initpars = [0., ibreak0*1e9, 0., ymax/2., ymax]
+            func = 'FIGrowthExpBreak'
+            f = Fitting.Fitting().fitfuncmap[func]
+            # now fit the full data set
+            print('breaks/max: ', fitbreak0, np.max(x[fpnt]))
+            (fpar, xf, yf, names) = Fitting.Fitting().FitRegion(np.array([1]), 0, x, yd, t0=fitbreak0, t1=np.max(x[fpnt]),
+                                    fitFunc=func, fitPars=initpars, bounds=bounds, constraints=cons, weights=None, #np.sqrt,
+                                    fixedPars=None, method=testMethod)
+            print('names: ', names)
+            print('initpars: ', initpars)
+            print('\n Bounds: ', bounds)
+            print('results: ', fpar)
+            error = Fitting.Fitting().getFitErr()
+            self.FIKeys = f[6]
+
+        elif self.FIGrowth == 'FIGrowthExp':  # FIGrowth is 2, Exponential from 0 rate
+            bounds = (np.sort([x[x0], x[x1]]),
+                  (0., ymax*5.0), (0.0001, 1000.))
+        # # parameters for FIGrowth 2: [''Ibreak', 'F2amp', 'Irate']
+            fitbreak0 = ibreak0
+            if fitbreak0 > 0.:
+                fitbreak0 = 0.
+            initpars = [ibreak0*1e9, ymax/2., 0.001]
+            func = 'FIGrowthExp'
             f = Fitting.Fitting().fitfuncmap[func]
             # now fit the full data set
             (fpar, xf, yf, names) = Fitting.Fitting().FitRegion(np.array([1]), 0, x, yd, t0=fitbreak0, t1=np.max(x[fpnt]),
@@ -621,17 +626,17 @@ class SpikeAnalysis():
             self.FIKeys = f[6]
             imap = [-1, 0, -1, 1, 2]
 
-        elif self.FIGrowth == 3: # use piecewise linear, 3 segment fit
+        elif self.FIGrowth == 'piecewiselinear3': # use piecewise linear, 3 segment fit
 #            print ('Fitting with 3 segment line')
          # parameters for pwl3 (piecewise linear...): ['Ibreak', 'Rate0', 'Ibreak1', 'Irate1', 'Irate2', 'Irate3']
             fitbreak0 = ibreak0
             if fitbreak0 > 0.:
                 fitbreak0 = 0.
             x1 = np.argwhere(yd > 0.)
-            initpars = (x[x1[0]-1], 0. ,x[x1[0]], 0., 0.01, 0.2)
-            bounds = ((0., np.max(x)), # Ibreak forced to first spike level almost
+            initpars = (x[x1[0]-1]*1e9, 0. ,x[x1[0]]*1e9, 0., 0.01, 0.2)
+            bounds = ((0., np.max(x)*1e9), # Ibreak forced to first spike level almost
                        (0., 0.),  # Rate0 (y0)
-                       (0., np.max(x)),  # Ibreak1 (x1)  # spread it out?
+                       (0., np.max(x)*1e9),  # Ibreak1 (x1)  # spread it out?
                        (0., 0.), # IRate1  (k1, k2, k3)
                        (0., 1), #IRate2
                        (0., 1), # Irate3
@@ -644,27 +649,28 @@ class SpikeAnalysis():
                      {'type': 'ineq', 'fun': lambda x: x[4]*0.5 - x[5]},
                 )
                      
-            func = 'pwl3'
+            func = 'piecewiselinear3'
             f = Fitting.Fitting().fitfuncmap[func]
             # now fit the full data set
-            (fpar, xf, yf, names) = Fitting.Fitting().FitRegion(np.array([1]), 0, x, yd, t0=fitbreak0, t1=np.max(x[fpnt]),
+            (fpar, xf, yf, names) = Fitting.Fitting().FitRegion(np.array([1]), 0, x*1e9, yd, t0=fitbreak0*1e9, t1=np.max(x[fpnt]*1e9),
                                     fitFunc=func, fitPars=initpars, bounds=bounds, constraints=cons,
                                     fixedPars=None, method=testMethod)
             error = Fitting.Fitting().getFitErr()
             self.FIKeys = f[6]
 
-        elif self.FIGrowth == 5:
+        elif self.FIGrowth == 'FIGrowthPower':
 #            print ('Fitting with sublinear power function FI')
         # # parameters for power (piecewise linear...): [c, s, 'd']
         # data are only fit for the range over which the cell fires
         # 
-            fitbreak0 = ibreak0
+            fitbreak0 = ibreak0*1e9
             if fitbreak0 > 0.:
                 fitbreak0 = 0.
             ix1 = np.argwhere(yd > 0.)  # find first point with spikes
-            x1 = x[ix1[0]][0]
+            xna = x*1e9
+            x1 = xna[ix1[0]][0]
             initpars = (x1, 3., 0.5)  # 
-            bds = [(0., 500.), (0.01, 100.), (0.01, 1.)]
+            bds = [(0., 500.), (0.01, 100.), (0.01, 100)]
 
             # cons = ( {'type': 'ineq', 'fun': lambda x:  x[0]},
            #           {'type': 'ineq', 'fun': lambda x: x[1]},
@@ -674,18 +680,18 @@ class SpikeAnalysis():
            #           {'type': 'ineq', 'fun': lambda x: x[4]*0.5 - x[5]},
            #      )
            #                    
-            func = 'FIPower'
+            func = 'FIGrowthPower'
             f = Fitting.Fitting().fitfuncmap[func]
             # now fit the full data set
-            (fpar, xf, yf, names) = Fitting.Fitting().FitRegion(np.array([1]), 0, x, yd, t0=fitbreak0, t1=np.max(x[fpnt]),
+            (fpar, xf, yf, names) = Fitting.Fitting().FitRegion(np.array([1]), 0, xna, yd, t0=fitbreak0, t1=np.max(xna[fpnt]),
                                     fitFunc=func, fitPars=initpars, bounds=bds, constraints=None,
                                     fixedPars=None, method=testMethod)
             error = Fitting.Fitting().getFitErr()
             self.FIKeys = f[6]
 
         else:
-            raise ValueError('SpikeAnalysis: FIGrowth value %d ot known' % self.FIGrowth)
-        self.analysis_summary['FI_Growth'] = {'Type': self.FIGrowth, 'function': func,
-                'names': names, 'error': error, 'parameters': fpar, 'fit': [np.array(xf)*1e-9, yf]}
+            raise ValueError('SpikeAnalysis: FIGrowth function %s is not known' % self.FIGrowth)
+        self.analysis_summary['FI_Growth'].append({'FunctionName': self.FIGrowth, 'function': func,
+                'names': names, 'error': error, 'parameters': fpar, 'fit': [np.array(xf)*1e-9, yf]})
         #return (fpar, xf, yf, names, error, f, func)
 
