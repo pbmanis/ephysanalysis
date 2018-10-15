@@ -536,13 +536,12 @@ class SpikeAnalysis():
             self.FIGrowth = function
         if x is None: # use class data
             x = self.analysis_summary['FI_Curve'][0]*1e9
-            yd = self.analysis_summary['FI_Curve'][1]
-        print('yd: ', yd, x)
-        ymax = np.max(yd)
+            yd = self.analysis_summary['FI_Curve'][1]/self.analysis_summary['pulseDuration']  # convert to rate in spikes/second
+        ymax = 0.8*np.max(yd)
         if ymax == 0:
             return
         if fixNonMonotonic and ymax > yd[-1]:  # clip at max firing rate
-            imaxs = [i for i, y in enumerate(yd) if y == ymax]  # handle duplicate firing rates
+            imaxs = [i for i, y in enumerate(yd) if y >= ymax]  # handle duplicate firing rates
             imax = max(imaxs)  # find highest index
             dypos = list(range(0, imax+1))
             x = x[dypos]
@@ -556,29 +555,27 @@ class SpikeAnalysis():
         if ymax > yd[-1] and excludeNonMonotonic:
             nonmono += 1
             return(None)
-        fpnt = np.where(yd > 0)  # find first point where cell fires
-        if len(fpnt[0]) == 0:
-            fbr = np.where(x>0)[0][0]
-        else:
-            fbr = fpnt[0][0]-1
+        # find first point where cell fires and next step also has cell firing
+        fpnt = np.where((yd > 0.) & (x >= 0))[0]  # limit to positive current injections
+        fbr = fpnt[0]
         ibreak0 = x[fbr]  # use point before first spike as the initial break point
         # check first to see if x is empty:
         dx = np.abs(np.mean(np.diff(x)))  # get current steps
         xp = x[fpnt]
-        xp = xp-ibreak0-dx
+        xp = xp - ibreak0 - dx
         yp = yd[fpnt]  # save data with responses
         testMethod = 'SLSQP'  #  'SLSQP'  # L-BFGS-B simplex, SLSQP, 'TNC', 'COBYLA'
-        if fbr-3 >= 0:  # set start and end of fit
+        if fbr - 3 >= 0:  # set start and end of fit
             x0 = fbr-3
         else:
             x0 = 0
-        if fbr+3 < len(x):
-            x1 = fbr+3
+        if fbr + 3 < len(x):
+            x1 = fbr + 3
         else:
-            x1 = len(x)-1
+            x1 = len(x) - 1
         
         if self.FIGrowth == 'FIGrowthExpBreak':
-            print('Exponential model fit')
+            # print('Exponential model fit')
             ixb = np.argwhere(yd > 0)[0][0]
             cons = ( {'type': 'eq', 'fun': lambda xc:  xc[0]},  # lock F0 at >= 0
                      {'type': 'ineq', 'fun': lambda xc: xc[1] - x[ixb-1]},  #  ibreak between last no spike and first spiking level
@@ -597,14 +594,14 @@ class SpikeAnalysis():
             func = 'FIGrowthExpBreak'
             f = Fitting.Fitting().fitfuncmap[func]
             # now fit the full data set
-            print('breaks/max: ', fitbreak0, np.max(x[fpnt]))
+            # print('breaks/max: ', fitbreak0, np.max(x[fpnt]))
             (fpar, xf, yf, names) = Fitting.Fitting().FitRegion(np.array([1]), 0, x, yd, t0=fitbreak0, t1=np.max(x[fpnt]),
                                     fitFunc=func, fitPars=initpars, bounds=bounds, constraints=cons, weights=None, #np.sqrt,
                                     fixedPars=None, method=testMethod)
-            print('names: ', names)
-            print('initpars: ', initpars)
-            print('\n Bounds: ', bounds)
-            print('results: ', fpar)
+            # print('names: ', names)
+            # print('initpars: ', initpars)
+            # print('\n Bounds: ', bounds)
+            # print('results: ', fpar)
             error = Fitting.Fitting().getFitErr()
             self.FIKeys = f[6]
 
@@ -693,5 +690,4 @@ class SpikeAnalysis():
             raise ValueError('SpikeAnalysis: FIGrowth function %s is not known' % self.FIGrowth)
         self.analysis_summary['FI_Growth'].append({'FunctionName': self.FIGrowth, 'function': func,
                 'names': names, 'error': error, 'parameters': fpar, 'fit': [np.array(xf)*1e-9, yf]})
-        #return (fpar, xf, yf, names, error, f, func)
 

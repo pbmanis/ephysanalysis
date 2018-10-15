@@ -89,9 +89,16 @@ class IVSummary():
         clist = ['r', 'b', 'g', 'c', 'm']  # only 5 possiblities
         linestyle = ['-', '--', '-.', '-', '--']
         for i, figrowth in enumerate(self.SP.analysis_summary['FI_Growth']):
-            P.axdict['B'].plot(figrowth['fit'][0][0]*1e9, figrowth['fit'][1][0]/(self.AR.tend-self.AR.tstart),
-                linestyle=linestyle[i], color=clist[i], linewidth=0.5, label=figrowth['FunctionName'])
-        P.axdict['B'].legend()
+            legstr = '{0:s}\n'.format(figrowth['FunctionName'])
+            for j, fna in enumerate(figrowth['names'][0]):
+                legstr += '{0:s}: {1:.3f} '.format(fna, figrowth['parameters'][0][j])
+                if j in [2, 5, 8]:
+                    legstr += '\n' 
+            P.axdict['B'].plot(figrowth['fit'][0][0]*1e9, figrowth['fit'][1][0],
+                linestyle=linestyle[i], color=clist[i], linewidth=0.5,
+                label=legstr)
+        P.axdict['B'].legend(fontsize=6)
+        
         P.axdict['C'].plot(self.RM.ivss_cmd*1e9, self.RM.ivss_v*1e3, 'ko-', markersize=4, linewidth=1.0)
         if self.RM.analysis_summary['CCComp']['CCBridgeEnable'] == 1:
             enable = 'On'
