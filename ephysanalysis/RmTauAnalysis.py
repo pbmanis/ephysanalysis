@@ -338,10 +338,14 @@ class RmTauAnalysis():
                 #print('fit V: ', self.rss_fit['V'])
                 #slope = slope[[slope > 0 ] and [self.ivss_cmd[:-1] > -0.8] ] # only consider positive slope points
                 l = int(len(slope)/2)
-                maxloc = np.argmax(slope[l:]) + l
+                if len(slope) > 1:
+                    maxloc = np.argmax(slope[l:]) + l
+                    minloc = np.argmin(slope[:l])
+                else:
+                    maxloc = 0
+                    minloc = 0
                 self.r_in = slope[maxloc]
                 self.r_in_loc = [self.ivss_cmd[maxloc], self.ivss_v[maxloc], maxloc]  # where it was found
-                minloc = np.argmin(slope[:l])
                 self.r_in_min = slope[minloc]
                 self.r_in_minloc = [self.ivss_cmd[minloc], self.ivss_v[minloc], minloc]  # where it was found
                 self.analysis_summary['Rin'] = self.r_in*1.0e-6
@@ -389,13 +393,16 @@ class RmTauAnalysis():
                 imids = np.array((self.ivpk_cmd[1:] + self.ivpk_cmd[:-1]) / 2.)
                 self.rpk_fit ={'I': imids, 'V': np.polyval(pf, imids)}
                 l = int(len(slope)/2)
-                maxloc = np.argmax(slope[l:]) + l
+                if len(slope) > 1:
+                    maxloc = np.argmax(slope[l:]) + l
+                    minloc = np.argmin(slope[:l])
+                else:
+                    maxloc = 0
+                    minloc = 0
                 self.r_in_peak = slope[maxloc]
                 self.r_in_peak_loc = [self.ivpk_cmd[maxloc], self.ivpk_v[maxloc], maxloc]  # where it was found
-                minloc = np.argmin(slope[:l])
                 self.r_in_minpeak = slope[minloc]
                 self.r_in_minpeak_loc = [self.ivpk_cmd[minloc], self.ivpk_v[minloc], minloc]  # where it was found
-
                 self.analysis_summary['Rin_peak'] = self.r_in_peak*1.0e-6
 
     def leak_subtract(self):

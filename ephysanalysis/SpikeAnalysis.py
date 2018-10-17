@@ -279,6 +279,7 @@ class SpikeAnalysis():
         # be sure that the arrays are built.
         self.analysis_summary['AP1_Latency'] = np.inf
         self.analysis_summary['AP1_HalfWidth'] = np.inf
+        self.analysis_summary['AP1_HalfWidth_interp'] = np.inf
         self.analysis_summary['AP2_Latency'] = np.inf
         self.analysis_summary['AP2_HalfWidth'] = np.inf
         self.analysis_summary['FiringRate_1p5T'] = 0.
@@ -305,8 +306,8 @@ class SpikeAnalysis():
             for j in range(len(self.spikes[i])):
                 thisspike = {'trace': i, 'AP_number': j, 'AP_beginIndex': None, 'AP_endIndex': None, 
                              'AP_peakIndex': None, 'peak_T': None, 'peak_V': None, 'AP_Latency': None,
-                             'AP_beginV': None, 'halfwidth': None, 'trough_T': None,
-                             'trough_V': None, 'peaktotroughT': None,
+                             'AP_beginV': None, 'halfwidth': None, 'halfwidth_interpolated': None,
+                             'trough_T': None, 'trough_V': None, 'peaktotrough': None,
                              'current': None, 'iHold': None,
                              'pulseDuration': None, 'tstart': self.Clamps.tstart}  # initialize the structure
                 thisspike['current'] = self.Clamps.values[i] - iHold[i]
@@ -384,6 +385,36 @@ class SpikeAnalysis():
                         thisspike['hw_up'] = self.Clamps.time_base[kup]
                         thisspike['hw_down'] = self.Clamps.time_base[kdown]
                         thisspike['hw_v'] = halfv
+                        # interpolated spike hwup, down and width
+                        tr = np.array(self.Clamps.traces[i])
+                        xr = self.Clamps.time_base
+                        pkt = self.Clamps.time_base[thisspike['AP_peakIndex']]
+                        if self.Clamps.traces[i][kup] <= halfv:
+                            vi = tr[kup:kup+2]
+                            xi = xr[kup:kup+2]
+                        else:
+                            vi = tr[kup-1:kup+1]
+                            xi = xr[kup-1:kup+1]
+                        m = (vi[1]-vi[0])/(xi[1]-xi[0])
+                        b = vi[1] - m*xi[1]
+                        t_hwup = (halfv-b)/m
+#                        print('up: xi[0] {0:.6f} th: {1:.6f}  xi[1]: {2:.6f}'.format(xi[0], t_hwup, xi[1]))
+                        if self.Clamps.traces[i][kdown] <= halfv:
+                            vi = tr[kdown-1:kdown+1]
+                            xi = xr[kdown-1:kdown+1]
+                            u='a'
+                        else:
+                            vi = tr[kdown:kdown+2]
+                            xi = xr[kdown:kdown+2]
+                            u='b'
+                        m = (vi[1]-vi[0])/(xi[1]-xi[0])
+                        b = vi[1] - m*xi[1]
+                        t_hwdown = (halfv-b)/m
+                        thisspike['halfwidth_interpolated'] = t_hwup+t_hwdown
+#                        print(halfv, t_hwup, t_hwdown, thisspike['halfwidth_interpolated'])
+                        # t_hwdown = np.interp(halfv, xp=vi, fp=xi)
+                        # print('down: xi[0] {0:.6f} th: {1:.6f}  xi[1]: {2:.6f}'.format(xi[0], t_hwdown, xi[1]))
+                        # print('interp hw: {0:.6f}  notinterp:  {1:.6f}'.format(t_hwdown-t_hwup, thisspike['halfwidth']))
                 trspikes[j] = thisspike
             self.spikeShape[i] = trspikes
           #  print('i: ', i, trspikes)
@@ -478,15 +509,19 @@ class SpikeAnalysis():
         if len(self.spikeShape[j150]) >= 1 and self.spikeShape[j150][0]['halfwidth'] is not None:
             self.analysis_summary['AP1_Latency'] = (self.spikeShape[j150][0]['AP_Latency'] - self.spikeShape[j150][0]['tstart'])*1e3
             self.analysis_summary['AP1_HalfWidth'] = self.spikeShape[j150][0]['halfwidth']*1e3
+            self.analysis_summary['AP1_HalfWidth_interpolated'] = self.spikeShape[j150][0]['halfwidth_interpolated']*1e3
         else:
             self.analysis_summary['AP1_Latency'] = np.inf
             self.analysis_summary['AP1_HalfWidth'] = np.inf
+            self.analysis_summary['AP1_HalfWidth_interpolated'] = np.inf
         if len(self.spikeShape[j150]) >= 2 and 1 in list(self.spikeShape[j150].keys()) and self.spikeShape[j150][1]['halfwidth'] is not None:
             self.analysis_summary['AP2_Latency'] = (self.spikeShape[j150][1]['AP_Latency'] - self.spikeShape[j150][1]['tstart'])*1e3
             self.analysis_summary['AP2_HalfWidth'] = self.spikeShape[j150][1]['halfwidth']*1e3
+            self.analysis_summary['AP2_HalfWidth_interpolated'] = self.spikeShape[j150][1]['halfwidth_interpolated']*1e3
         else:
             self.analysis_summary['AP2_Latency'] = np.inf
             self.analysis_summary['AP2_HalfWidth'] = np.inf
+            self.analysis_summary['AP2_HalfWidth_interpolated'] = np.inf
         
         # print(self.spikeShape[j150].keys())
         rate = len(self.spikeShape[j150])/self.spikeShape[j150][0]['pulseDuration']  # spikes per second, normalized for pulse duration
@@ -547,14 +582,14 @@ class SpikeAnalysis():
             nonmono = 0
             if fixNonMonotonic: # and ymax > yd[-1]:  # clip at max firing rate
                 imaxs = [i for i, y in enumerate(yd) if y >= ymax_a]  # handle duplicate firing rates
-                print('imaxs: ', imaxs)
+                # print('imaxs: ', imaxs)
                 imax = max(imaxs)  # find highest index
-                print('imax: ', imax)
+                # print('imax: ', imax)
                 dypos = range(0, imax+1)
                 x = x[dypos]
-                print('yd: ', yd)
+                # print('yd: ', yd)
                 yd = yd[dypos]
-                print('yd[dypos]: ', yd)
+                # print('yd[dypos]: ', yd)
                 ymax = np.max(yd)
             if np.max(x) < 0.:  # skip if max rate is < 0 current
                 return(None)
@@ -619,10 +654,10 @@ class SpikeAnalysis():
                            # print 'xf: ', np.min(xf), np.max(xf)
                     res.append({'fpar': fpar, 'xf': xf, 'yf': yf, 'names': names, 'error': error})
                     err.append(error)
-                    print('xr: ', np.sort([x[x0], x[x1]]), ' err: %f' % error)
-            print('err: ', err)
+                    # print('xr: ', np.sort([x[x0], x[x1]]), ' err: %f' % error)
+            # print('err: ', err)
             minerr = np.argmin(err)
-            print('minerr: ', minerr)
+            # print('minerr: ', minerr)
             fpar = res[minerr]['fpar']
             xf = res[minerr]['xf']
             yf = res[minerr]['yf']
