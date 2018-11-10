@@ -28,6 +28,7 @@ import pandas as pd
 
 class Bridge(pg.QtGui.QWidget):
     def __init__(self, args):
+        self.datadir = Path(args.datadir) 
         self.dbFilename = Path(args.dbfile)
         self.day = args.day
         self.df = pd.read_pickle(str(self.dbFilename))
@@ -54,7 +55,7 @@ class Bridge(pg.QtGui.QWidget):
         if isinstance(cellno, int):
             self.cell = 'cell_{0:03d}'.format(cellno)
         self.protocolName = protocolName
-        self.protocolPath = Path(args.datadir, self.date, self.slice, self.cell, self.protocolName)
+        self.protocolPath = Path(self.datadir, self.date, self.slice, self.cell, self.protocolName)
         self.protocolKey = Path(self.date, self.slice, self.cell, self.protocolName)
         if not self.protocolPath.is_dir():
             print('dir not found: ', str(self.protocolPath))
@@ -207,24 +208,26 @@ class Bridge(pg.QtGui.QWidget):
         self.w1 = Slider(-20., 40., scalar=1.)
         
         self.buttons = pg.QtGui.QVBoxLayout(self)
-        self.b1 = pg.QtGui.QPushButton("Save Database")
-        self.buttons.addWidget(self.b1, stretch=10)
-        self.b1.clicked.connect(self.save_database)
 
         self.b3 = pg.QtGui.QPushButton("Do All Valid IVs")
-        self.buttons.addWidget(self.b3, stretch=10)
+        self.buttons.addWidget(self.b3, stretch=2)
         self.b3.clicked.connect(self.runAllValidIVs)
 
+        self.b1 = pg.QtGui.QPushButton("Save Database")
+        self.buttons.addWidget(self.b1, stretch=2)
+        self.b1.clicked.connect(self.save_database)
+
+
         self.b5 = pg.QtGui.QPushButton("Save and load Next")
-        self.buttons.addWidget(self.b5, stretch=10)
+        self.buttons.addWidget(self.b5, stretch=2)
         self.b5.clicked.connect(self.save)
 
         self.b4 = pg.QtGui.QPushButton("Skip")
-        self.buttons.addWidget(self.b4, stretch=10)
+        self.buttons.addWidget(self.b4, stretch=2)
         self.b4.clicked.connect(self.skip)
 
         self.bzero = pg.QtGui.QPushButton("Zero Bridge")
-        self.buttons.addWidget(self.bzero, stretch=10)
+        self.buttons.addWidget(self.bzero, stretch=2)
         self.bzero.clicked.connect(self.zero_bridge)
 
         self.b6 = pg.QtGui.QPushButton("Zoom/unzoom")
@@ -232,25 +235,31 @@ class Bridge(pg.QtGui.QWidget):
         self.b6.setChecked(False)
         self.buttons.addWidget(self.b6, stretch=10)
         self.b6.clicked.connect(self.zoom)
+
+        spacerItem1 = pg.QtGui.QSpacerItem(0, 400, pg.QtGui.QSizePolicy.Expanding, pg.QtGui.QSizePolicy.Minimum)
+        self.buttons.addItem(spacerItem1)
         
         self.b2 = pg.QtGui.QPushButton("Quit")
         self.buttons.addWidget(self.b2, stretch=10)
         self.b2.clicked.connect(self.quit)
 
-        spacerItem = pg.QtGui.QSpacerItem(0, 20, pg.QtGui.QSizePolicy.Expanding, pg.QtGui.QSizePolicy.Minimum)
+        spacerItem = pg.QtGui.QSpacerItem(0, 10, pg.QtGui.QSizePolicy.Expanding, pg.QtGui.QSizePolicy.Minimum)
         self.buttons.addItem(spacerItem)
-        self.buttons.addWidget(self.w1)
+        
+        self.sliderpane = pg.QtGui.QVBoxLayout(self)
+        self.sliderpane.addWidget(self.w1)
 
         self.win = pg.GraphicsWindow(title="Bridge Correction Tool")
-        self.buttons.addWidget(self.w1, stretch=-100)
+       # self.buttons.addWidget(self.w1, stretch=-100)
         self.horizontalLayout.addLayout(self.buttons)
+        self.horizontalLayout.addLayout(self.sliderpane)
         self.horizontalLayout.addWidget(self.win)
         self.dataplot = self.win.addPlot(title="Data")
         self.w1.slider.valueChanged.connect(self.update_data)
         
     def update_traces(self):
         print('Update traces, br: {0:f}'.format(self.protocolBridge))
-        self.dataplot.setTitle('{0:s}'.format(str(self.protocolKey)))
+        self.dataplot.setTitle('{0:s} {1:.2f}'.format(str(self.protocolKey), self.protocolBridge))
         self.newbr = self.protocolBridge/1e6  # convert to megaohms
         self.w1.slider.setValue(self.newbr)
         cmdindxs = np.unique(self.AR.commandLevels)  # find the unique voltages
