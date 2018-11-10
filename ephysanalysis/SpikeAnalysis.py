@@ -601,6 +601,8 @@ class SpikeAnalysis():
                 return(None)
 #            fpnt = np.where(yd > 0)  # find first point where cell fires
             fire_points = np.where((yd[:-1] > 0) & (yd[1:] > 0))[0]  # limit to positive current injections with successive spikes
+            if len(fire_points) == 0:
+                return(None)
             fbr = fire_points[0]
             # print('fpnt: ', fire_points)
             # print('yd: ', yd)
@@ -663,7 +665,7 @@ class SpikeAnalysis():
             yf = res[minerr]['yf']
             names = res[minerr]['names']
             error = res[minerr]['error']
-            print ('fpar: ', fpar)
+            # print ('fpar: ', fpar)
 
         else:  # recompute some stuff
         
@@ -716,17 +718,17 @@ class SpikeAnalysis():
                 )
             bounds = ((0., yd[fbr-1]+5), np.sort([x[x0], x[x1]]),
                  (0., 2*yd[fbr]), (0., ymax*10.0), (0, 1e5))
-            print(x, yd)
-            print('fbr: ', fbr)  # first spike
-            print('ymax: ', ymax)
-            print('x0, x1: ', x0, x1)
-            print('xfbr: ', x[fbr])
-            print('ydfbr: ', yd[fbr-1], yd[fbr])
-            print('bounds: ', bounds)  # *(yd[fbr]-yd[fbr-1])/(x[fbr]-x[fbr-1])
-            print(yd[fbr-1], yd[fbr], x[fbr-1], x[fbr])
+            # print(x, yd)
+            # print('fbr: ', fbr)  # first spike
+            # print('ymax: ', ymax)
+            # print('x0, x1: ', x0, x1)
+            # print('xfbr: ', x[fbr])
+            # print('ydfbr: ', yd[fbr-1], yd[fbr])
+            # print('bounds: ', bounds)  # *(yd[fbr]-yd[fbr-1])/(x[fbr]-x[fbr-1])
+            # print(yd[fbr-1], yd[fbr], x[fbr-1], x[fbr])
         # # parameters for FIGrowth 1: ['Fzero', 'Ibreak', 'F1amp', 'F2amp', 'Irate']
             initpars = [0., ibreak0, yd[fbr], ymax*2, 0.01*np.max(np.diff(yd)/np.diff(x))]
-            print('initpars: ', initpars)
+            # print('initpars: ', initpars)
             func = 'FIGrowthExpBreak'
             fitbreak0 = x[fbr]
             f = Fitting.Fitting().fitfuncmap[func]
@@ -736,10 +738,10 @@ class SpikeAnalysis():
                                     fitFunc=func, fitPars=initpars, bounds=bounds, constraints=cons, weights=None, #np.sqrt,
                                     fixedPars=None, method=testMethod)
             # print('names: ', names)
-            print('initpars: ', initpars)
-            print('fitbreak0', fitbreak0)
+            # print('initpars: ', initpars)
+            #print('fitbreak0', fitbreak0)
             # print('\n Bounds: ', bounds)
-            print('results: ', fpar)
+            #print('results: ', fpar)
             error = Fitting.Fitting().getFitErr()
             self.FIKeys = f[6]
 
