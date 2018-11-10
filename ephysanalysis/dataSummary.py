@@ -111,7 +111,7 @@ class DataSummary():
 
     def __init__(self, basedir, outputMode='terminal', outputFile=None, daylistfile=None,
                  after=None, before=None, dryrun=False, depth='all', inspect=True,
-                 deep=False, verbose=False):
+                 deep=False, append=False, verbose=False):
         """
         Note that the init is just setup - you have to call getDay the object to do anything
     
@@ -160,8 +160,10 @@ class DataSummary():
         
         deep: bool (default: False)
             do a "deep" inspection of the data files, actually reading the .ma files
-                 to confirm the data existence. This is slow... 
-
+                 to confirm the data existence. This is slow...
+        append: bool (default: False)
+            Add new entries to the output file if they are not in the
+                 database by appending them at the end
         verbose: bool (default: False)
             Provide extra print out during analysis for debugging.
     
@@ -180,6 +182,7 @@ class DataSummary():
         self.depth = depth
         self.verbose = verbose
         self.deep_check = deep
+        self.append = append
  
         self.daylist = None
         self.index = 0
@@ -199,14 +202,14 @@ class DataSummary():
                          'sex', 'weight', 'solution', 'internal', 'temperature', 'important', 'expUnit']
         self.slice_defs = ['slice_slice', 'slice_notes', 'slice_location', 'slice_orientation', 'important']
         self.cell_defs =  ['cell_cell',   'cell_notes',  'cell_type', 'cell_location', 'cell_important']
-        self.data_defs = ['data_incomplete', 'data_complete', 'data_images']
+        self.data_defs = ['data_incomplete', 'data_complete', 'data_images', 'annotated']
         
         # expected keys in various structural levels: days, slices, cells
         self.day_keys = ['description', 'notes', 'species', 'strain', 'genotype', 'age', 'sex', 'weight', 'solution', 'animal identification', '__timestamp__', 
                         'internal', 'temperature', 'expUnit', 'dirType', 'important', 'time']
         self.slice_keys = ['notes', 'location', 'orientation', 'important', '__timestamp__']
         self.cell_keys = [ 'notes', 'type', 'location', 'important', '__timestamp__']
-        self.data_dkeys = ['incomplete', 'complete', 'data_images']
+        self.data_dkeys = ['incomplete', 'complete', 'data_images', 'annotated']
         
         self.day_template = (
             OrderedDict([('species', '{:>s}'), ('strain', '{:>s}'),('genotype', '{:>12s}'), ('age', '{:>5s}'), ('sex', '{:>1s}'), ('weight', '{:>5s}'),
@@ -220,7 +223,7 @@ class DataSummary():
             OrderedDict([('type', '{:>s}'), ('location', '{:>12s}'), ('important', '{:>s}')])
                         )        
         self.data_template = (
-            OrderedDict([('incomplete', '{0:s}'), ('complete', '{1:s}'), ('images', '{2:s}')])
+            OrderedDict([('incomplete', '{0:s}'), ('complete', '{1:s}'), ('images', '{2:s}'), ('annotated', '{3:s}')])
                         )        
         self.AR = acq4read.Acq4Read()  # instance of the reader
 
@@ -265,6 +268,7 @@ class DataSummary():
             except:
                 raise ValueError('Date for BEFORE cannot be parsed : {0:s}'.format(self.before))
         print(self.after, self.before, mindayx, maxdayx)
+        print(self.daylistfile)
         if self.daylistfile is None:  # get from command line
             self.minday = mindayx[0]*1e4+mindayx[1]*1e2+mindayx[2]
             self.maxday = maxdayx[0]*1e4+maxdayx[1]*1e2+maxdayx[2]
@@ -312,9 +316,13 @@ class DataSummary():
         
         """
         allfiles = os.listdir(self.basedir)
+        if self.append:
+            print('reading for append: ', self.outFilename)
+            self.pddata = pd.read_pickle(self.outFilename)  # get the current file
+        print('alldays: ', allfiles)
         self.pstring = ''
         days = []
-        print('allfiles: ', allfiles)
+        #print('allfiles: ', allfiles)
         for thisfile in allfiles:
             m = self.daytype.match(thisfile)
             if m in ['.DS_Store']:
@@ -332,10 +340,18 @@ class DataSummary():
                 else:
                     if thisfile[0:10] in self.daylist:
                         days.append(thisfile)
-        print('days: ', days)
+        #print('days: ', days)
         if self.verbose:
             print ('Days reported: ', days)
+            if self.append:
+                print('Days in pands frame: ', self.pddata['date'].tolist())
+
         for nd, day in enumerate(days):
+            if self.append and (day in self.pddata['date'].tolist()):
+                print('Append mode: day already in list: {0:s}'.format(day))
+                continue  # skip
+            else:
+                print('Day to do: ', day)
             if self.verbose:
                 self.pstring = 'Processing day[%3d/%3d]: %s ' % (nd, len(days), day)
             self.AR.setProtocol(os.path.join(self.basedir, day))
@@ -598,8 +614,6 @@ class DataSummary():
             self.completeprotocols = ' '
         else:
             self.compprotstring = ', '.join([str(cp) for cp in self.completeprotocols])
-        # print('\n: ', self.completeprotocols)
-        # exit(1)
         self.allprotocols = ', '.join(self.allprotocols)
         for thisfile in nonprotocols:
             x = self.img_re.match(thisfile)  # look for image files
@@ -626,7 +640,10 @@ class DataSummary():
         if len(images) + len(stacks2p) + len(images2p) + len(videos) == 0:
             self.imagestring = 'No Images or Videos'
 
-        ostring = OrderedDict([('incomplete', self.incompleteprotocolstring.rstrip(', ')),  ('complete', self.compprotstring.rstrip(', ')), ('images', self.imagestring)])
+        ostring = OrderedDict([('incomplete', self.incompleteprotocolstring.rstrip(', ')),
+                               ('complete', self.compprotstring.rstrip(', ')),
+                               ('images', self.imagestring),
+                               ('annotated', False)])
         self.outputString(ostring)
 
     def getClampDeviceMode(self, info, clampDevice, modes):
@@ -713,13 +730,22 @@ class DataSummary():
         """
         Write an output string using pandas dataframe
         """
-        if self.outputMode == 'pandas':
-            print('\nOUTPUTTING VIA PANDAS')
+        if self.dryrun:
+            return
+        if self.outputMode == 'pandas' and not self.append:
+            print('\nOUTPUTTING DIRECTLY VIA PANDAS')
           #  self.colprint()
             df = pd.read_csv(pandas.compat.StringIO(self.panda_string), delimiter='\t')
            # print('Head write: \n', df.head(5), '\n')
             df.to_pickle(self.outFilename)
-            print('Wrote pandas dataframe to pickled file: {0:s}'.format(self.outFilename))
+        if self.outputMode == 'pandas' and self.append:
+            print('\nAPPENDING to EXISTING PANDAS DATAFRAME')
+            df = pd.read_csv(pandas.compat.StringIO(self.panda_string), delimiter='\t')
+            maindf = pd.read_pickle(self.outFilename)
+            maindf = maindf.append(df)
+            maindf = maindf.reset_index()  # redo the indices so all in sequenc
+            maindf.to_pickle(self.outFilename)
+        print('Wrote pandas dataframe to pickled file: {0:s}'.format(self.outFilename))
 
     def get_file_information(self, dh=None):
         """
@@ -790,10 +816,12 @@ def main():
     parser.add_argument('-d', '--depth', type=str, default='all', dest='depth',
                         choices = ['days', 'slices', 'cells', 'protocols', 'all'],
                         help='Specify depth for --dry-run')
+    parser.add_argument('-A', '--append', action='store_true', dest='append',
+                        help='update new/missing entries to specified output file')
     args = parser.parse_args()
     ds = DataSummary(basedir=args.basedir, daylistfile=args.daylist, outputMode=args.output, outputFile=args.outputFilename,
             after=args.after, before=args.before, dryrun=args.dryrun, depth=args.depth, inspect=args.noinspect,
-            deep = args.deep,
+            deep=args.deep, append=args.append,
             verbose=args.verbose)
 
     if args.write:
