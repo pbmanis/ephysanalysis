@@ -442,7 +442,15 @@ class Acq4Read():
             units = 'V'
         else:
             units = 'A'
-        self.traces = np.array(trx)
+        try:
+            self.traces = np.array(trx)
+        except:
+            print('?data does not have consistent shape in the dataset')
+            print(len(trx))
+            for i in range(len(trx)):
+                print(trx[i].shape)
+            return False
+
         if len(self.values) == 0:
             ntr = len(self.traces)
             self.traces = self.traces[:ntr]
