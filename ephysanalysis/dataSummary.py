@@ -149,7 +149,7 @@ class DataSummary():
             The format is the same as for the starting date
     
         dryrun : bool (default False)
-            Causes the output ti be limited and protocols are not fully investigated
+            Causes the output to be limited and protocols are not fully investigated
     
         depth : str (default: 'all')
             Causes output with dry-run to go to the depth specified
