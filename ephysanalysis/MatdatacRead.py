@@ -11,7 +11,6 @@ import pprint
 import ephysanalysis.metaarray as EM
 import ephysanalysis.IVSummary as IVS
 
-
 """
 Helper functions
 """
@@ -471,9 +470,14 @@ class Block(object):
 
 if __name__ == '__main__':
     import sys
+    import matplotlib
+    import matplotlib.pyplot as mpl
+    import matplotlib.mlab as mlab
+    matplotlib.use('TkAgg',warn=False, force=True)
     path = ''
     datasummary = '../DataSummaries'
-    fn = '/Users/pbmanis/Documents/data/RX_CCdata/13jul09a.mat'
+#    fn = '/Users/pbmanis/Documents/data/RX_CCdata/13jul09a.mat'
+    fn = '/Volumes/Pegasus/ManisLab_Data3/Rich_Alex/Rich_Acq3/01may09c.mat'
 
     df = DatacFile(os.path.join(fn))  # get the matdatac file
     # for it in df.items:
@@ -481,13 +485,23 @@ if __name__ == '__main__':
     #         print(it.summary())
     #
     blocksel = 2
-    GC = GetClamps(df)  # make an instnce of the clamp converter
+    GC = GetClamps(df)  # make an instance of the clamp converter
     GC.setProtocol(blocksel)
     GC.getData()  # convert the data to acq4 Clamp object
-    print(GC.tstart, GC.tend)
-    IV = IVS.IVSummary(2)
-    IV.AR = GC
-    IV.compute_iv()
+    print(dir(GC))
+    print(dir(GC.datac))
+    print(GC.datac.data.keys())
+    V = GC.datac.data['db_2'][0][0]['d_2_0009']['data']
+    T = GC.time_base
+    mpl.ion()
+    mpl.figure()
+    mpl.plot(T, V, 'k-', linewidth=0.5)
+    mpl.draw()
+    mpl.show()
+    print('aaa')# print(GC.tstart, GC.tend)
+    # IV = IVS.IVSummary(2)
+    # IV.AR = GC
+    # IV.compute_iv()
     
     
     
