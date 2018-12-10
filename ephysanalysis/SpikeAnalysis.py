@@ -508,32 +508,30 @@ class SpikeAnalysis():
             print(' >> Threshold current: %8.3f   1.5T current: %8.3f, next up: %8.3f' % (self.spikeShape[jthr][0]['current']*1e12,
                         self.spikeShape[j150][0]['current']*1e12, self.spikeShape[j150+1][0]['current']*1e12))
             j150 = jthr + 1
-        if len(self.spikeShape[j150]) >= 1 and self.spikeShape[j150][0]['halfwidth'] is not None:
+        self.analysis_summary['AP1_Latency'] = np.inf
+        self.analysis_summary['AP1_HalfWidth'] = np.inf
+        self.analysis_summary['AP1_HalfWidth_interpolated'] = np.inf
+        self.analysis_summary['AP2_Latency'] = np.inf
+        self.analysis_summary['AP2_HalfWidth'] = np.inf
+        self.analysis_summary['AP2_HalfWidth_interpolated'] = np.inf
+        spikeshapeindex = -1
+        if len(self.spikeShape[j150]) >= 1 and (0 in list(self.spikeShape[j150].keys())) and self.spikeShape[j150][0]['halfwidth'] is not None:
             self.analysis_summary['AP1_Latency'] = (self.spikeShape[j150][0]['AP_Latency'] - self.spikeShape[j150][0]['tstart'])*1e3
             self.analysis_summary['AP1_HalfWidth'] = self.spikeShape[j150][0]['halfwidth']*1e3
             self.analysis_summary['AP1_HalfWidth_interpolated'] = self.spikeShape[j150][0]['halfwidth_interpolated']*1e3
-        else:
-            self.analysis_summary['AP1_Latency'] = np.inf
-            self.analysis_summary['AP1_HalfWidth'] = np.inf
-            self.analysis_summary['AP1_HalfWidth_interpolated'] = np.inf
-        if len(self.spikeShape[j150]) >= 2 and 1 in list(self.spikeShape[j150].keys()) and self.spikeShape[j150][1]['halfwidth'] is not None:
+            spikeshapeindex = 0
+        if len(self.spikeShape[j150]) >= 2 and (1 in list(self.spikeShape[j150].keys())) and self.spikeShape[j150][1]['halfwidth'] is not None:
             self.analysis_summary['AP2_Latency'] = (self.spikeShape[j150][1]['AP_Latency'] - self.spikeShape[j150][1]['tstart'])*1e3
             self.analysis_summary['AP2_HalfWidth'] = self.spikeShape[j150][1]['halfwidth']*1e3
             self.analysis_summary['AP2_HalfWidth_interpolated'] = self.spikeShape[j150][1]['halfwidth_interpolated']*1e3
-        else:
-            self.analysis_summary['AP2_Latency'] = np.inf
-            self.analysis_summary['AP2_HalfWidth'] = np.inf
-            self.analysis_summary['AP2_HalfWidth_interpolated'] = np.inf
-        
-        # print(self.spikeShape[j150].keys())
-        rate = len(self.spikeShape[j150])/self.spikeShape[j150][0]['pulseDuration']  # spikes per second, normalized for pulse duration
-        # first AHP depth
-        # print 'j150: ', j150
-        # print self.spikeShape[j150][0].keys()
-        # print self.spikeShape[j150]
-        AHPDepth = self.spikeShape[j150][0]['AP_beginV'] - self.spikeShape[j150][0]['trough_V']
-        self.analysis_summary['FiringRate_1p5T'] = rate
-        self.analysis_summary['AHP_Depth'] = AHPDepth*1e3  # convert to mV
+            spikeshapeindex = 1
+
+        if spikeshapeindex >= 0:
+            rate = len(self.spikeShape[j150])/self.spikeShape[j150][0]['pulseDuration']  # spikes per second, normalized for pulse duration
+            # first AHP depth
+            AHPDepth = self.spikeShape[j150][0]['AP_beginV'] - self.spikeShape[j150][0]['trough_V']
+            self.analysis_summary['FiringRate_1p5T'] = rate
+            self.analysis_summary['AHP_Depth'] = AHPDepth*1e3  # convert to mV
         # pprint.pprint(self.analysis_summary)
         # except:
         #     raise ValueError ('Failed Classification for cell: %s' % self.filename)
