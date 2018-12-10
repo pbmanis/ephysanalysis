@@ -354,6 +354,8 @@ class SpikeAnalysis():
                # print('dv, kbegin, k, j: ', kbegin, k, j)
                 if k <= kbegin:
                     k = kbegin + 2
+                if k > len(dv):  # end of block of data, so can not measure
+                    continue
                 km = np.argmax(dv[kbegin:k]) + kbegin
                 if ((km - kbegin) < 1):
                     km = kbegin + int((k - kbegin)/2.) + 1
