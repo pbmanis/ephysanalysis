@@ -56,7 +56,7 @@ class IVSummary():
         if self.AR.getData():  # get that data.
             self.RM.setup(self.AR, self.SP, bridge_offset=bridge_offset)
             self.SP.setup(clamps=self.AR, threshold=threshold, 
-                    refractory=0.0001, peakwidth=0.001, interpolate=False, verify=False, mode='peak')
+                    refractory=0.0001, peakwidth=0.001, interpolate=True, verify=False, mode='peak')
             self.SP.analyzeSpikes()
             self.SP.analyzeSpikeShape()
             self.SP.analyzeSpikes_brief(mode='baseline')
