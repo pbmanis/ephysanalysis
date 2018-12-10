@@ -50,7 +50,7 @@ class SpikeAnalysis():
         self.analysis_summary['FI_Growth'] = []   # permit analysis of multiple growth functions.
 
     def setup(self, clamps=None, threshold=None, refractory=0.7, peakwidth=1.0,
-                    verify=False, interpolate=False, verbose=False, mode='peak'):
+                    verify=False, interpolate=True, verbose=False, mode='peak'):
         """
         configure the inputs to the SpikeAnalysis class
         
