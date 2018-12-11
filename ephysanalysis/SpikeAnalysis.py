@@ -18,7 +18,7 @@ as class variables, or through the class variable analysis_summary,
 a dictionary with key analysis results. 
 IVCurve uses the analysis_summary to post results to an sql database.
 
-Paul B. Manis, Ph.D. 2016-2017
+Paul B. Manis, Ph.D. 2016-2018
 for Acq4.
 
 """
@@ -134,7 +134,7 @@ class SpikeAnalysis():
                                               debug=False)
             # print ntr, i, self.Clamps.values[i], len(spikes)
             if len(spikes) == 0:
-                print ('no spikes found')
+              #  print ('no spikes found')
                 continue
             self.spikes[i] = spikes
            # print 'found %d spikes in trace %d' % (len(spikes), i)
@@ -430,8 +430,8 @@ class SpikeAnalysis():
                         pkvI = tr[thisspike['AP_peakIndex']]
                         pkvM = np.max(tr[thisspike['AP_beginIndex']:thisspike['AP_endIndex']])
                         pkvMa = np.argmax(tr[thisspike['AP_beginIndex']:thisspike['AP_endIndex']])
-                        print('Peak by index: ', ' peakV: ', pkvI, thisspike['AP_peakIndex'], 
-                             '  peak by max: ', pkvM, pkvMa+thisspike['AP_beginIndex'])
+                        # print('Peak by index: ', ' peakV: ', pkvI, thisspike['AP_peakIndex'],
+                        #      '  peak by max: ', pkvM, pkvMa+thisspike['AP_beginIndex'])
                         if pkvI != pkvM:
                             pktrap = True
 
@@ -440,7 +440,7 @@ class SpikeAnalysis():
                         # print('halfv: ', halfv, '  tup, down: ', t_hwup, t_hwdown,
                         #     '  HW interp: ', thisspike['halfwidth_interpolated'], ' peakV: ', tr[thisspike['AP_peakIndex']])
                         if thisspike['halfwidth_interpolated'] is not None and thisspike['halfwidth_interpolated'] > 5.:
-                            exit()
+                            continue
                         # t_hwdown = np.interp(halfv, xp=vi, fp=xi)
                         # print('down: xi[0] {0:.6f} th: {1:.6f}  xi[1]: {2:.6f}'.format(xi[0], t_hwdown, xi[1]))
                         # print('interp hw: {0:.6f}  notinterp:  {1:.6f}'.format(t_hwdown-t_hwup, thisspike['halfwidth']))
@@ -574,9 +574,9 @@ class SpikeAnalysis():
         if spikeshapeindex >= 0:
             # print('HALFWIDTH               ', self.spikeShape[j150][0]['halfwidth'])
             # print('HALFWIDTH INTERPOLATED: ', self.spikeShape[j150][0]['halfwidth_interpolated'])
-            rate = len(self.spikeShape[j150])/self.spikeShape[j150][0]['pulseDuration']  # spikes per second, normalized for pulse duration
+            rate = len(self.spikeShape[j150])/self.spikeShape[j150][spikeshapeindex]['pulseDuration']  # spikes per second, normalized for pulse duration
             # first AHP depth
-            AHPDepth = self.spikeShape[j150][0]['AP_beginV'] - self.spikeShape[j150][0]['trough_V']
+            AHPDepth = self.spikeShape[j150][spikeshapeindex]['AP_beginV'] - self.spikeShape[j150][spikeshapeindex]['trough_V']
             self.analysis_summary['FiringRate_1p5T'] = rate
             self.analysis_summary['AHP_Depth'] = AHPDepth*1e3  # convert to mV
         else:

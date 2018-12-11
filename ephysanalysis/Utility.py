@@ -443,7 +443,6 @@ class Utility():
         else:
             return rn
 
-
     def findspikes(self, x, v, thresh, t0=None, t1=None, dt=0.001, mode='schmitt', 
                     refract=0.0007, interpolate=False, peakwidth=0.001, debug=False, verify=False):
         """
@@ -475,19 +474,13 @@ class Utility():
         dv = np.diff(vma)/dt # compute slope
         st = np.array([])
         spv = np.where(vma > thresh)[0].tolist() # find points above threshold
-        sps = np.where(dv > 0.0)[0].tolist() # find points where slope is positive
-        sp = list(set(spv).intersection(set(sps))) # intersection defines putative spike start times
-#        print('sp: ', sp)
-        if len(sp) == 0:
+        sps = (np.where(dv > 0.0)[0]+1).tolist() # find points where slope is positive
+        sp = list(set(spv) & set(sps)) # intersection defines putative spike start times
+        sp.sort() # make sure all detected events are in order (sets is unordered)
+        spl = sp
+        sp = tuple(sp) # convert to tuple
+        if sp is ():
             return(st) # nothing detected
-        fspk = sp[0]
-        #print('fspk: ', fspk, fspk*dt)
-        spd = np.where(np.diff(sp) > 1)[0].tolist()  # find transistions
-        spd.insert(0, fspk)
- 
-        spd.sort() # make sure all detected events are in order (sets is unordered)
-        sp = spd
-#        sp = list(sp) # convert to tlist
 
         if mode in  ['schmitt', 'Schmitt', 'threshold']: # normal operating mode is fixed voltage threshold
             for k in sp:
@@ -502,56 +495,156 @@ class Utility():
                         st = np.append(st, xx[1])
 
         elif mode == 'peak':
-            kpkw = int(peakwidth/dt)+1
-#            print('vma shape: ', vma.shape[0], v.shape[0])
-            it0 = int(t0/dt)
- #           print('peakwidth', kpkw, peakwidth, dt)
-#            z = (np.array(np.where(np.diff(spv) > 1)[0])+1).tolist()
+            kpkw = int(peakwidth/dt)
+            z = (np.array(np.where(np.diff(spv) > 1)[0])+1).tolist()
 #            print('z: ', z)
-            #sp.insert(0, 0) # first element in spv is needed to get starting AP
-            for k in sp:
-                k_end = k + kpkw + 1
-                if k_end > vma.shape[0] or k-1 < 0:
-                    continue
-                #zk = vma[k]
-                # print('k:: ', k)
-                # print('k: ', k-1, k_end, vma[k-1], np.max(vma[k-1:k_end]))
-                spk = np.argmax(vma[k-1:k_end])+k-1 # find the peak position
-                # print('spk, max: ', spk, vma[spk])
+            z.insert(0, 0) # first element in spv is needed to get starting AP
+            for k in z:
+                zk = spv[k]
+                spk = np.argmax(vma[zk:zk+kpkw])+zk # find the peak position
                 xx = xt[spk-1:spk+2]
                 y = vma[spk-1:spk+2]
-                st = np.append(st, xt[spk])
-                # if interpolate:
-                #     try:
-                #         # mimic Igor FindPeak routine with B = 1
-                #         m1 = (y[1]-y[0])/dt # local slope to left of peak
-                #         b1 = y[0]-(xx[0]*m1)
-                #         m2 = (y[2]-y[1])/dt # local slope to right of peak
-                #         b2 = y[1]-(xx[1]*m2)
-                #         mprime = (m2-m1)/dt # find where slope goes to 0 by getting the line
-                #         bprime = m2-((dt/2.0)*mprime)
-                #         st = np.append(st, -bprime/mprime+xx[1])
-                #     except:
-                #         continue
-                # else:
-                #     #print('utility: yere', x)
-                #     if len(xx) > 1:
-                #         st = np.append(st, xx[1]) # always save the first one
+                if interpolate:
+                    try:
+                        # mimic Igor FindPeak routine with B = 1
+                        m1 = (y[1]-y[0])/dt # local slope to left of peak
+                        b1 = y[0]-(xx[0]*m1)
+                        m2 = (y[2]-y[1])/dt # local slope to right of peak
+                        b2 = y[1]-(xx[1]*m2)
+                        mprime = (m2-m1)/dt # find where slope goes to 0 by getting the line
+                        bprime = m2-((dt/2.0)*mprime)
+                        st = np.append(st, -bprime/mprime+xx[1])
+                    except:
+                        continue
+                else:
+                    #print('utility: yere', x)
+                    if len(xx) > 1:
+                        st = np.append(st, xx[1]) # always save the first one
+
 
         # clean spike times
         #st = clean_spiketimes(st, mindT=refract)
-        # if verify:
-        #     import matplotlib.pyplot as mpl
-        #     print(('nspikes detected: ', len(st)))
-        #     mpl.figure()
-        #     mpl.plot(x, v, 'k-', linewidth=0.5)
-        #     mpl.plot(st, thresh*np.ones_like(st), 'ro')
-        #     mpl.plot(xt[spv], v[spv], 'r-')
-        #     mpl.plot(xt[sps], v[sps], 'm-', linewidth=1)
-        #     mpl.show()
+        if verify:
+            import matplotlib.pyplot as mpl
+            print(('nspikes detected: ', len(st)))
+            mpl.figure()
+            mpl.plot(x, v, 'k-', linewidth=0.5)
+            mpl.plot(st, thresh*np.ones_like(st), 'ro')
+            mpl.plot(xt[spv], v[spv], 'r-')
+            mpl.plot(xt[sps], v[sps], 'm-', linewidth=1)
+            mpl.show()
        # exit(1)
 
-        return st
+        return(st)
+
+#     def findspikes(self, x, v, thresh, t0=None, t1=None, dt=0.001, mode='schmitt',
+#                     refract=0.0007, interpolate=False, peakwidth=0.001, debug=False, verify=False):
+#         """
+#         findspikes identifies the times of action potential in the trace v, with the
+#         times in t. An action potential is simply timed at the first point that exceeds
+#         the threshold... or is the peak.
+#         4/1/11 - added peak mode
+#         if mode is none or schmitt, we work as in the past.
+#         if mode is peak, we return the time of the peak of the AP instead
+#         7/15/11 - added interpolation flag
+#         if True, the returned time is interpolated, based on a spline fit
+#         if False, the returned time is just taken as the data time.
+#
+#         Note: TIME UNITS MUST MATCH.
+#         Units are set up for SECONDS in time base (acq4 standard)
+#
+#         """
+#         if mode not in ['schmitt', 'threshold', 'peak']:
+#             raise ValueError('pylibrary.utility.findspikes: mode must be one of "schmitt", "peak" : got %s' % mode)
+#         if t1 is not None and t0 is not None:
+#             xt = ma.masked_outside(x, t0, t1)
+#             vma = ma.array(v, mask = ma.getmask(xt))
+#             xt = ma.compressed(xt) # convert back to usual numpy arrays then
+#             vma = ma.compressed(vma)
+#         else:
+#             xt = np.array(x)
+#             vma = np.array(vma)
+#
+#         dv = np.diff(vma)/dt # compute slope
+#         st = np.array([])
+#         spv = np.where(vma > thresh)[0].tolist() # find points above threshold
+#         sps = np.where(dv > 0.0)[0].tolist() # find points where slope is positive
+#         sp = list(set(spv).intersection(set(sps))) # intersection defines putative spike start times
+# #        print('sp: ', sp)
+#         if len(sp) == 0:
+#             return(st) # nothing detected
+#         fspk = sp[0]
+#         #print('fspk: ', fspk, fspk*dt)
+#         spd = np.where(np.diff(sp) > 1)[0].tolist()  # find transistions
+#         spd.insert(0, fspk)
+#
+#         spd.sort() # make sure all detected events are in order (sets is unordered)
+#         sp = spd
+# #        sp = list(sp) # convert to tlist
+#
+#         if mode in  ['schmitt', 'Schmitt', 'threshold']: # normal operating mode is fixed voltage threshold
+#             for k in sp:
+#                 xx = xt[k-1:k+1]
+#                 y = vma[k-1:k+1]
+#                 if interpolate:
+#                     m = (y[1]-y[0])/dt # local slope
+#                     b = y[0]-(xx[0]*m)
+#                     st  = np.append(st, xx[1]+(thresh-b)/m)
+#                 else:
+#                     if len(x) > 1:
+#                         st = np.append(st, xx[1])
+#
+#         elif mode == 'peak':
+#             kpkw = int(peakwidth/dt)+1
+# #            print('vma shape: ', vma.shape[0], v.shape[0])
+#             it0 = int(t0/dt)
+#  #           print('peakwidth', kpkw, peakwidth, dt)
+# #            z = (np.array(np.where(np.diff(spv) > 1)[0])+1).tolist()
+# #            print('z: ', z)
+#             #sp.insert(0, 0) # first element in spv is needed to get starting AP
+#             for k in sp:
+#                 k_end = k + kpkw + 1
+#                 if k_end > vma.shape[0] or k-1 < 0:
+#                     continue
+#                 #zk = vma[k]
+#                 # print('k:: ', k)
+#                 # print('k: ', k-1, k_end, vma[k-1], np.max(vma[k-1:k_end]))
+#                 spk = np.argmax(vma[k-1:k_end])+k-1 # find the peak position
+#                 # print('spk, max: ', spk, vma[spk])
+#                 xx = xt[spk-1:spk+2]
+#                 y = vma[spk-1:spk+2]
+#                 st = np.append(st, xt[spk])
+#                 # if interpolate:
+#                 #     try:
+#                 #         # mimic Igor FindPeak routine with B = 1
+#                 #         m1 = (y[1]-y[0])/dt # local slope to left of peak
+#                 #         b1 = y[0]-(xx[0]*m1)
+#                 #         m2 = (y[2]-y[1])/dt # local slope to right of peak
+#                 #         b2 = y[1]-(xx[1]*m2)
+#                 #         mprime = (m2-m1)/dt # find where slope goes to 0 by getting the line
+#                 #         bprime = m2-((dt/2.0)*mprime)
+#                 #         st = np.append(st, -bprime/mprime+xx[1])
+#                 #     except:
+#                 #         continue
+#                 # else:
+#                 #     #print('utility: yere', x)
+#                 #     if len(xx) > 1:
+#                 #         st = np.append(st, xx[1]) # always save the first one
+#
+#         # clean spike times
+#         #st = clean_spiketimes(st, mindT=refract)
+#         # if verify:
+#         #     import matplotlib.pyplot as mpl
+#         #     print(('nspikes detected: ', len(st)))
+#         #     mpl.figure()
+#         #     mpl.plot(x, v, 'k-', linewidth=0.5)
+#         #     mpl.plot(st, thresh*np.ones_like(st), 'ro')
+#         #     mpl.plot(xt[spv], v[spv], 'r-')
+#         #     mpl.plot(xt[sps], v[sps], 'm-', linewidth=1)
+#         #     mpl.show()
+#        # exit(1)
+#
+#         return st
     
     def findspikes2(self, xin, vin, thresh, t0=None, t1= None, dt=1.0, mode=None, interpolate=False, debug=False):
         """ findspikes identifies the times of action potential in the trace v, with the
