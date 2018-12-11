@@ -12,6 +12,8 @@ import numpy as np
 
 import os.path
 import ephysanalysis as EP
+import matplotlib
+matplotlib.use('MacOSX')
 import matplotlib.pyplot as mpl
 import matplotlib.colors
 import matplotlib

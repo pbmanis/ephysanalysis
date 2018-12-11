@@ -477,7 +477,8 @@ if __name__ == '__main__':
     path = ''
     datasummary = '../DataSummaries'
 #    fn = '/Users/pbmanis/Documents/data/RX_CCdata/13jul09a.mat'
-    fn = '/Volumes/Pegasus/ManisLab_Data3/Rich_Alex/Rich_Acq3/01may09c.mat'
+  #  fn = '/Volumes/Pegasus/ManisLab_Data3/Rich_Alex/Rich_Acq3/01may09c.mat'
+    fn = '/Volumes/Samsung_T5/data/Rich_Alex/Acq3Files/10dec08a.mat'
 
     df = DatacFile(os.path.join(fn))  # get the matdatac file
     # for it in df.items:
@@ -488,14 +489,28 @@ if __name__ == '__main__':
     GC = GetClamps(df)  # make an instance of the clamp converter
     GC.setProtocol(blocksel)
     GC.getData()  # convert the data to acq4 Clamp object
-    print(dir(GC))
-    print(dir(GC.datac))
-    print(GC.datac.data.keys())
-    V = GC.datac.data['db_2'][0][0]['d_2_0009']['data']
+    # print(dir(GC))
+    # print(dir(GC.datac))
+    # print(GC.datac.data.keys())
+    block = 2
+    dfn = 'df%d' % block
+   # print('dfn: ', GC.datac.data[dfn][0][0])
+    print(len(GC.datac.data[dfn]))
+    dbn = 'db_%d' % block
+    kx = list(GC.datac.data[dbn][0][0].keys())[0]
+    print('kx: ', kx)
+    V = GC.datac.data[dbn][0][0][kx]['data']
+    print(GC.datac.data[dbn][0][0][kx].keys())
     T = GC.time_base
-    mpl.ion()
-    mpl.figure()
-    mpl.plot(T, V, 'k-', linewidth=0.5)
+    print(GC.protocol)
+    sf = GC.datac.data['sf2']
+   # print(sf[0][0])
+    #mpl.ion()
+    f, ax = mpl.subplots(1,1)
+    print(V.shape)
+    print(T.shape)
+    for i in range(int(V[:, 0].shape[0]/T.shape[0])):
+        ax.plot(T, V[i*len(T):i*len(T)+len(T)], 'k-', linewidth=0.5)
     mpl.draw()
     mpl.show()
     print('aaa')# print(GC.tstart, GC.tend)
