@@ -496,13 +496,13 @@ class Utility():
                         st = np.append(st, xx[1])
 
         elif mode == 'peak':
-            kpkw = int(peakwidth/dt)
+            kpkw = int(peakwidth/dt)+1
             z = (np.array(np.where(np.diff(spv) > 1)[0])+1).tolist()
 #            print('z: ', z)
             z.insert(0, 0) # first element in spv is needed to get starting AP
             for k in z:
                 zk = spv[k]
-                spk = np.argmax(vma[zk:zk+kpkw])+zk # find the peak position
+                spk = np.argmax(vma[zk-1:zk+kpkw+1])+zk-1 # find the peak position
                 xx = xt[spk-1:spk+2]
                 y = vma[spk-1:spk+2]
                 if interpolate:
