@@ -31,8 +31,6 @@ import functools
 import numpy as np
 import scipy
 from . import Utility # pbm's utilities...
-# import pylibrary.Utility as Utility
-# import pylibrary.Fitting as Fitting
 from . import Fitting # pbm's fitting stuff...
 import pprint
 import time
@@ -136,7 +134,7 @@ class SpikeAnalysis():
                                               debug=False)
             # print ntr, i, self.Clamps.values[i], len(spikes)
             if len(spikes) == 0:
-                #print 'no spikes found'
+                print ('no spikes found')
                 continue
             self.spikes[i] = spikes
            # print 'found %d spikes in trace %d' % (len(spikes), i)
@@ -303,6 +301,8 @@ class SpikeAnalysis():
                                            0.0, self.Clamps.tstart)            
             (iHold[i], r2) = U.measure('mean', self.Clamps.time_base, self.Clamps.cmd_wave[i],
                                               0.0, self.Clamps.tstart)
+            pktrap = False  # peak error trap flag
+            
             for j in range(len(self.spikes[i])):
                 thisspike = {'trace': i, 'AP_number': j, 'AP_beginIndex': None, 'AP_endIndex': None, 
                              'AP_peakIndex': None, 'peak_T': None, 'peak_V': None, 'AP_Latency': None,
@@ -433,7 +433,9 @@ class SpikeAnalysis():
                         print('Peak by index: ', ' peakV: ', pkvI, thisspike['AP_peakIndex'], 
                              '  peak by max: ', pkvM, pkvMa+thisspike['AP_beginIndex'])
                         if pkvI != pkvM:
-                            exit()
+                            pktrap = True
+
+
                         # print('direct hw: ', thisspike['halfwidth'], '  peakv: ', np.max(tr[thisspike['AP_beginIndex']:thisspike['AP_endIndex']]))
                         # print('halfv: ', halfv, '  tup, down: ', t_hwup, t_hwdown,
                         #     '  HW interp: ', thisspike['halfwidth_interpolated'], ' peakV: ', tr[thisspike['AP_peakIndex']])
@@ -445,6 +447,21 @@ class SpikeAnalysis():
                 trspikes[j] = thisspike
             self.spikeShape[i] = trspikes
           #  print('i: ', i, trspikes)
+            # if pktrap:
+           #      import matplotlib.pyplot as mpl
+           #      f, ax = mpl.subplots(1,1)
+           #      for j in trspikes.keys():
+           #          ax.plot(xr, tr, 'k-', linewidth=0.5)
+           #          # print(trspikes[i])
+           #          ipk = trspikes[j]['AP_peakIndex']
+           #          ib = trspikes[j]['AP_beginIndex']
+           #          ie = trspikes[j]['AP_endIndex']
+           #          ax.plot(xr[ipk], tr[ipk], 'bo', markersize=2)
+           #          ax.plot(xr[ib], tr[ib], 'go', markersize=2)
+           #          ax.plot(xr[ie], tr[ie], 'ro', markersize=2)
+           #      f.savefig('appk.pdf')
+
+
         if printSpikeInfo:
             pp = pprint.PrettyPrinter(indent=4)
             for m in sorted(self.spikeShape.keys()):

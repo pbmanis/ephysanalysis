@@ -475,13 +475,19 @@ class Utility():
         dv = np.diff(vma)/dt # compute slope
         st = np.array([])
         spv = np.where(vma > thresh)[0].tolist() # find points above threshold
-        sps = (np.where(dv > 0.0)[0]+1).tolist() # find points where slope is positive
-        sp = list(set(spv) & set(sps)) # intersection defines putative spike start times
-        sp.sort() # make sure all detected events are in order (sets is unordered)
-        spl = sp
-        sp = tuple(sp) # convert to tuple
-        if sp is ():
+        sps = np.where(dv > 0.0)[0].tolist() # find points where slope is positive
+        sp = list(set(spv).intersection(set(sps))) # intersection defines putative spike start times
+#        print('sp: ', sp)
+        if len(sp) == 0:
             return(st) # nothing detected
+        fspk = sp[0]
+        #print('fspk: ', fspk, fspk*dt)
+        spd = np.where(np.diff(sp) > 1)[0].tolist()  # find transistions
+        spd.insert(0, fspk)
+ 
+        spd.sort() # make sure all detected events are in order (sets is unordered)
+        sp = spd
+#        sp = list(sp) # convert to tlist
 
         if mode in  ['schmitt', 'Schmitt', 'threshold']: # normal operating mode is fixed voltage threshold
             for k in sp:
@@ -497,46 +503,55 @@ class Utility():
 
         elif mode == 'peak':
             kpkw = int(peakwidth/dt)+1
-            z = (np.array(np.where(np.diff(spv) > 1)[0])+1).tolist()
+#            print('vma shape: ', vma.shape[0], v.shape[0])
+            it0 = int(t0/dt)
+ #           print('peakwidth', kpkw, peakwidth, dt)
+#            z = (np.array(np.where(np.diff(spv) > 1)[0])+1).tolist()
 #            print('z: ', z)
-            z.insert(0, 0) # first element in spv is needed to get starting AP
-            for k in z:
-                zk = spv[k]
-                spk = np.argmax(vma[zk-1:zk+kpkw+1])+zk-1 # find the peak position
+            #sp.insert(0, 0) # first element in spv is needed to get starting AP
+            for k in sp:
+                k_end = k + kpkw + 1
+                if k_end > vma.shape[0] or k-1 < 0:
+                    continue
+                #zk = vma[k]
+                # print('k:: ', k)
+                # print('k: ', k-1, k_end, vma[k-1], np.max(vma[k-1:k_end]))
+                spk = np.argmax(vma[k-1:k_end])+k-1 # find the peak position
+                # print('spk, max: ', spk, vma[spk])
                 xx = xt[spk-1:spk+2]
                 y = vma[spk-1:spk+2]
-                if interpolate:
-                    try:
-                        # mimic Igor FindPeak routine with B = 1
-                        m1 = (y[1]-y[0])/dt # local slope to left of peak
-                        b1 = y[0]-(xx[0]*m1)
-                        m2 = (y[2]-y[1])/dt # local slope to right of peak
-                        b2 = y[1]-(xx[1]*m2)
-                        mprime = (m2-m1)/dt # find where slope goes to 0 by getting the line
-                        bprime = m2-((dt/2.0)*mprime)
-                        st = np.append(st, -bprime/mprime+xx[1])
-                    except:
-                        continue
-                else:
-                    #print('utility: yere', x)
-                    if len(xx) > 1:
-                        st = np.append(st, xx[1]) # always save the first one
-
+                st = np.append(st, xt[spk])
+                # if interpolate:
+                #     try:
+                #         # mimic Igor FindPeak routine with B = 1
+                #         m1 = (y[1]-y[0])/dt # local slope to left of peak
+                #         b1 = y[0]-(xx[0]*m1)
+                #         m2 = (y[2]-y[1])/dt # local slope to right of peak
+                #         b2 = y[1]-(xx[1]*m2)
+                #         mprime = (m2-m1)/dt # find where slope goes to 0 by getting the line
+                #         bprime = m2-((dt/2.0)*mprime)
+                #         st = np.append(st, -bprime/mprime+xx[1])
+                #     except:
+                #         continue
+                # else:
+                #     #print('utility: yere', x)
+                #     if len(xx) > 1:
+                #         st = np.append(st, xx[1]) # always save the first one
 
         # clean spike times
         #st = clean_spiketimes(st, mindT=refract)
-        if verify:
-            import matplotlib.pyplot as mpl
-            print(('nspikes detected: ', len(st)))
-            mpl.figure()
-            mpl.plot(x, v, 'k-', linewidth=0.5)
-            mpl.plot(st, thresh*np.ones_like(st), 'ro')
-            mpl.plot(xt[spv], v[spv], 'r-')
-            mpl.plot(xt[sps], v[sps], 'm-', linewidth=1)
-            mpl.show()
+        # if verify:
+        #     import matplotlib.pyplot as mpl
+        #     print(('nspikes detected: ', len(st)))
+        #     mpl.figure()
+        #     mpl.plot(x, v, 'k-', linewidth=0.5)
+        #     mpl.plot(st, thresh*np.ones_like(st), 'ro')
+        #     mpl.plot(xt[spv], v[spv], 'r-')
+        #     mpl.plot(xt[sps], v[sps], 'm-', linewidth=1)
+        #     mpl.show()
        # exit(1)
 
-        return(st)
+        return st
     
     def findspikes2(self, xin, vin, thresh, t0=None, t1= None, dt=1.0, mode=None, interpolate=False, debug=False):
         """ findspikes identifies the times of action potential in the trace v, with the
@@ -1059,101 +1074,103 @@ class Utility():
 
 # If this file is called direcl.y, then provide tests of some of the routines.
 if __name__ == "__main__":
-    from optparse import OptionParser
-    import matplotlib.pylab as MP
-    MP.rcParams['interactive'] = False
-    U = Utility()
+    pass
     
-    parser=OptionParser() # command line options
-    parser.add_option("-d", action="store_true", dest="dictionary", default=False)
-    parser.add_option("-s", action="store_true", dest="sinefit", default=False)
-    parser.add_option("-f", action="store_true", dest="findspikes", default=False)
-    parser.add_option("-c", action="store_true", dest="cb", default=False)
-
-    argsin = sys.argv[1:]
-    if argsin is not None:
-        (options, args) = parser.parse_args(argsin)
-    else:
-        (options, args) = parser.parse_args()
-    
-    print (options)
-    if options.dictionary:
-        d="{'CN_Dur': 100.0, 'PP_LP': 16000.0, 'ST_Dur': 50.0, 'Trials': 24.0, 'PP_HP': 8000.0, 'CN_Mode': 0, 'ITI_Var': 5.0, 'PP_GapFlag': False, 'PS_Dur': 50.0, 'ST_Level': 80.0, 'PP_Mode': 2, 'WavePlot': True, 'PP_Dur': 50.0, 'Analysis_LPF': 500.0, 'CN_Level': 70.0, 'NHabTrials': 2.0, 'PP_Notch_F2': 14000.0, 'PP_Notch_F1': 12000.0, 'StimEnable': True, 'PP_OffLevel': 0.0, 'Analysis_HPF': 75.0, 'CN_Var': 10.0, 'Analysis_Start': -100.0, 'ITI': 20.0, 'PP_Level': 90.0, 'Analysis_End': 100.0, 'PP_Freq': 4000.0, 'PP_MultiFreq': 'linspace(2.0,32.0,4.0)'} "
-        di = U.long_Eval(d)
-        print(('The dictionary is: ',))
-        print (di)
-
-    if options.cb: # test clements bekkers
-        # first generate some events
-        t = np.arange(0, 1000.0, 0.1)
-        ta = np.arange(0, 50.0, 0.1)
-        events = np.zeros(t.shape)
-        events[[50,100,250,350, 475, 525, 900, 1500, 2800, 5000, 5200, 7000, 7500],] = 1
-        tau1 = 3
-        alpha = 1.0 * (ta/tau1) * np.exp(1 - ta/tau1)
-        sig = scipy.signal.fftconvolve(events, alpha, mode='full')
-        sig = sig[0:len(t)]+np.random.normal(0, 0.25, len(t))
-        f = MP.figure()
-        MP.plot(t, sig, 'r-')
-        MP.plot(t, events, 'k-')
-        # now call the finding routine, using the exact template (!)
-        (t_start, d_start) = U.clementsBekkers(sig, alpha, threshold=0.5, minpeakdist=15) 
-        MP.plot(t_start, d_start, 'bs')
-        MP.show()
-
-    if options.findspikes: # test the findspikes routine
-        dt = 0.1
-        t = np.arange(0, 100, dt)
-        v = np.zeros_like(t)-60.0
-        p = list(range(20, 900, 50))
-        p1 = list(range(19,899,50))
-        p2 = list(range(21,901,50))
-        v[p] = 20.0
-        v[p1] = 15.0
-        v[p2] = -20.0
-        sp = U.findspikes(t, v, 0.0, dt = dt, mode = 'schmitt', interpolate = False)
-        # print 'findSpikes'
-        # print 'sp: ', sp
-        f = MP.figure(1)
-        MP.plot(t, v, 'ro-')
-        spr = np.array(sp).ravel()[0]
-        si = np.floor(np.array(spr).ravel()/dt).astype('int16')
-        spk = []
-        for k in si:
-            spk.append(np.argmax(v[k-1:k+1])+k)
-        MP.plot(spr, v[spk], 'bs')
-        MP.ylim((0, 25))
-        MP.draw()
-        MP.show()
-        
-        exit()
-        y=[]*5
-        for j in range(0,1):
-            d = np.zeros((5,1,len(v)))
-            for k in range(0, 5):
-                p = list(range(20*k, 500, 50 + int(50.0*(k/2.0))))
-                vn = v.copy()
-                vn[p] = 20.0
-                d[k, 0, :] = np.array(vn) # load up the "spike" array
-            y.append(d)
-        tpts = list(range(0, len(t))) # np.arange(0, len(t)).astype(int).tolist()
-        #def findspikes(x, v, thresh, t0=None, t1= None, dt=1.0, mode=None, interpolate=False):
-        for k in range(0, len(y)):
-            sp = getSpikes(t, y[k], 0, tpts, tdel=0, thresh=0, selection = None, interpolate = True)
-            print(('r: %d' % k, 'sp: ', sp))
-    
-    # test the sine fitting routine
-    if options.sinefit:
-        from np.random import normal
-        F = 1.0/8.0
-        phi = 0.2
-        A = 2.0
-        t = np.arange(0.0, 60.0, 1.0/7.5)
-        # check over a range of values (is phase correct?)
-        for phi in np.arange(-2.0*np.pi, 2.0*np.pi, np.pi/8.0):
-            y = A * np.sin(2.*np.pi*t*F+phi) + normal(0.0, 0.5, len(t))
-            (a, p) = U.sinefit(t, y, F)
-            print(("A: %f a: %f  phi: %f p: %f" % (A, a, phi, p)))
+    # from optparse import OptionParser
+    # import matplotlib.pylab as MP
+    # MP.rcParams['interactive'] = False
+    # U = Utility()
+    #
+    # parser=OptionParser() # command line options
+    # parser.add_option("-d", action="store_true", dest="dictionary", default=False)
+    # parser.add_option("-s", action="store_true", dest="sinefit", default=False)
+    # parser.add_option("-f", action="store_true", dest="findspikes", default=False)
+    # parser.add_option("-c", action="store_true", dest="cb", default=False)
+    #
+    # argsin = sys.argv[1:]
+    # if argsin is not None:
+    #     (options, args) = parser.parse_args(argsin)
+    # else:
+    #     (options, args) = parser.parse_args()
+    #
+    # print (options)
+    # if options.dictionary:
+    #     d="{'CN_Dur': 100.0, 'PP_LP': 16000.0, 'ST_Dur': 50.0, 'Trials': 24.0, 'PP_HP': 8000.0, 'CN_Mode': 0, 'ITI_Var': 5.0, 'PP_GapFlag': False, 'PS_Dur': 50.0, 'ST_Level': 80.0, 'PP_Mode': 2, 'WavePlot': True, 'PP_Dur': 50.0, 'Analysis_LPF': 500.0, 'CN_Level': 70.0, 'NHabTrials': 2.0, 'PP_Notch_F2': 14000.0, 'PP_Notch_F1': 12000.0, 'StimEnable': True, 'PP_OffLevel': 0.0, 'Analysis_HPF': 75.0, 'CN_Var': 10.0, 'Analysis_Start': -100.0, 'ITI': 20.0, 'PP_Level': 90.0, 'Analysis_End': 100.0, 'PP_Freq': 4000.0, 'PP_MultiFreq': 'linspace(2.0,32.0,4.0)'} "
+    #     di = U.long_Eval(d)
+    #     print(('The dictionary is: ',))
+    #     print (di)
+    #
+    # if options.cb: # test clements bekkers
+    #     # first generate some events
+    #     t = np.arange(0, 1000.0, 0.1)
+    #     ta = np.arange(0, 50.0, 0.1)
+    #     events = np.zeros(t.shape)
+    #     events[[50,100,250,350, 475, 525, 900, 1500, 2800, 5000, 5200, 7000, 7500],] = 1
+    #     tau1 = 3
+    #     alpha = 1.0 * (ta/tau1) * np.exp(1 - ta/tau1)
+    #     sig = scipy.signal.fftconvolve(events, alpha, mode='full')
+    #     sig = sig[0:len(t)]+np.random.normal(0, 0.25, len(t))
+    #     f = MP.figure()
+    #     MP.plot(t, sig, 'r-')
+    #     MP.plot(t, events, 'k-')
+    #     # now call the finding routine, using the exact template (!)
+    #     (t_start, d_start) = U.clementsBekkers(sig, alpha, threshold=0.5, minpeakdist=15)
+    #     MP.plot(t_start, d_start, 'bs')
+    #     MP.show()
+    #
+    # if options.findspikes: # test the findspikes routine
+    #     dt = 0.1
+    #     t = np.arange(0, 100, dt)
+    #     v = np.zeros_like(t)-60.0
+    #     p = list(range(20, 900, 50))
+    #     p1 = list(range(19,899,50))
+    #     p2 = list(range(21,901,50))
+    #     v[p] = 20.0
+    #     v[p1] = 15.0
+    #     v[p2] = -20.0
+    #     sp = U.findspikes(t, v, 0.0, dt = dt, mode = 'schmitt', interpolate = False)
+    #     # print 'findSpikes'
+    #     # print 'sp: ', sp
+    #     f = MP.figure(1)
+    #     MP.plot(t, v, 'ro-')
+    #     spr = np.array(sp).ravel()[0]
+    #     si = np.floor(np.array(spr).ravel()/dt).astype('int16')
+    #     spk = []
+    #     for k in si:
+    #         spk.append(np.argmax(v[k-1:k+1])+k)
+    #     MP.plot(spr, v[spk], 'bs')
+    #     MP.ylim((0, 25))
+    #     MP.draw()
+    #     MP.show()
+    #
+    #     exit()
+    #     y=[]*5
+    #     for j in range(0,1):
+    #         d = np.zeros((5,1,len(v)))
+    #         for k in range(0, 5):
+    #             p = list(range(20*k, 500, 50 + int(50.0*(k/2.0))))
+    #             vn = v.copy()
+    #             vn[p] = 20.0
+    #             d[k, 0, :] = np.array(vn) # load up the "spike" array
+    #         y.append(d)
+    #     tpts = list(range(0, len(t))) # np.arange(0, len(t)).astype(int).tolist()
+    #     #def findspikes(x, v, thresh, t0=None, t1= None, dt=1.0, mode=None, interpolate=False):
+    #     for k in range(0, len(y)):
+    #         sp = getSpikes(t, y[k], 0, tpts, tdel=0, thresh=0, selection = None, interpolate = True)
+    #         print(('r: %d' % k, 'sp: ', sp))
+    #
+    # # test the sine fitting routine
+    # if options.sinefit:
+    #     from np.random import normal
+    #     F = 1.0/8.0
+    #     phi = 0.2
+    #     A = 2.0
+    #     t = np.arange(0.0, 60.0, 1.0/7.5)
+    #     # check over a range of values (is phase correct?)
+    #     for phi in np.arange(-2.0*np.pi, 2.0*np.pi, np.pi/8.0):
+    #         y = A * np.sin(2.*np.pi*t*F+phi) + normal(0.0, 0.5, len(t))
+    #         (a, p) = U.sinefit(t, y, F)
+    #         print(("A: %f a: %f  phi: %f p: %f" % (A, a, phi, p)))
 
 
     
