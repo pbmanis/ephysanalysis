@@ -647,6 +647,7 @@ class Acq4Read():
         reps = ('protocol', 'repetitions')
         foundLaser = False
         self.LaserBlueRaw = []
+        self.LaserBlue_pCell = []
         self.LBR_sample_rate = []
         self.LBR_time_base = []
         for i, d in enumerate(dirs):
@@ -656,7 +657,8 @@ class Acq4Read():
                 return False
             lbr = EM.MetaArray(file=fn)
             info = lbr[0].infoCopy()
-            self.LaserBlueRaw.append(lbr.view(np.ndarray)[0])
+            self.LaserBlueRaw.append(lbr.view(np.ndarray)[0])  # shutter
+            self.LaserBlue_pCell.append(lbr.view(np.ndarray)[1]) # pCell
             self.LBR_time_base.append(lbr.xvals('Time'))
             try:
                 sr = info[1]['DAQ']['Shutter']['rate']
@@ -665,6 +667,7 @@ class Acq4Read():
                 exit(1)
             self.LBR_sample_rate.append(sr)
         self.LaserBlueRaw = np.array(self.LaserBlueRaw)
+        self.LaserBlue_pCell = np.array(self.LaserBlue_pCell)
         self.LBR_sample_rate = np.array(self.LBR_sample_rate)
         self.LBR_time_base = np.array(self.LBR_time_base)
         return True
@@ -690,6 +693,7 @@ class Acq4Read():
         self.Photodiode = []
         self.Photodiode_time_base = []
         self.Photodiode_sample_rate = []
+        self.Photodiode_command = []
         for i, d in enumerate(dirs):
             fn = os.path.join(d, 'Photodiode.ma')
             if not os.path.isfile(fn):
