@@ -11,6 +11,7 @@ import matplotlib
 import numpy as np
 
 import os.path
+from collections import OrderedDict
 import ephysanalysis as EP
 import matplotlib
 matplotlib.use('MacOSX')
@@ -75,13 +76,44 @@ class IVSummary():
             return False
 
     def plot_iv(self):
-        P = PH.regular_grid(2 , 2, order='columns', figsize=(8., 6.), showgrid=False,
-                        verticalspacing=0.1, horizontalspacing=0.12,
-                        margins={'leftmargin': 0.12, 'rightmargin': 0.12, 'topmargin': 0.08, 'bottommargin': 0.1},
-                        labelposition=(-0.12, 0.95))
+        x=-0.05
+        y = 1.05
+        sizer = {'A': {'pos': [0.05, 0.50, 0.05, 0.85], 'labelpos': (x,y), 'noaxes': False},
+                 'B': {'pos': [0.60, 0.30, 0.65, 0.25], 'labelpos': (x,y), 'noaxes': False},
+                 'C': {'pos': [0.60, 0.30, 0.35, 0.25], 'labelpos': (x,y)},
+                 'D': {'pos': [0.60, 0.30, 0.05, 0.25], 'labelpos': (x,y)}, 
+                }
+
+        # dict pos elements are [left, width, bottom, height] for the axes in the plot.
+        gr = [(a, a+1, 0, 1) for a in range(0, 4)]   # just generate subplots - shape does not matter
+        axmap = OrderedDict(zip(sizer.keys(), gr))
+        P = PH.Plotter((4, 1), axmap=axmap, label=True, figsize=(8., 6.))
+        # PH.show_figure_grid(P.figure_handle)
+        P.resize(sizer)  # perform positioning magic
+
+
+        # P = PH.regular_grid(2 , 2, order='columns', figsize=(8., 6.), showgrid=False,
+        #                 verticalspacing=0.1, horizontalspacing=0.12,
+        #                 margins={'leftmargin': 0.12, 'rightmargin': 0.12, 'topmargin': 0.08, 'bottommargin': 0.1},
+        #                 labelposition=(-0.12, 0.95))
         P.figure_handle.suptitle(self.datapath, fontsize=8)
+        dv = 50.
+        jsp = 0
         for i in range(self.AR.traces.shape[0]):
-            P.axdict['A'].plot(self.AR.time_base*1e3, self.AR.traces[i,:]*1e3, '-', linewidth=0.5)
+            if i in list(self.SP.spikeShape.keys()):
+                idv = float(jsp)*dv
+                jsp += 1
+            else:
+                idv = 0.
+            P.axdict['A'].plot(self.AR.time_base*1e3, idv + self.AR.traces[i,:].view(np.ndarray)*1e3, '-', linewidth=0.5)
+            ptps = np.array([])
+            paps = np.array([])
+            if i not in list(self.SP.spikeShape.keys()):
+                continue
+            for j in list(self.SP.spikeShape[i].keys()):
+                paps = np.append(paps, self.SP.spikeShape[i][j]['peak_V']*1e3)
+                ptps = np.append(ptps, self.SP.spikeShape[i][j]['peak_T']*1e3)
+            P.axdict['A'].plot(ptps, idv+paps, 'ro', markersize=1.0)
         for k in self.RM.taum_fitted.keys():
             P.axdict['A'].plot(self.RM.taum_fitted[k][0]*1e3, self.RM.taum_fitted[k][1]*1e3, '--k', linewidth=0.30)
         for k in self.RM.tauh_fitted.keys():
