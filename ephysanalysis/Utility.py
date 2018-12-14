@@ -443,8 +443,9 @@ class Utility():
         else:
             return rn
 
-    def findspikes(self, x, v, thresh, t0=None, t1=None, dt=0.001, mode='schmitt', 
-                    refract=0.0007, interpolate=False, peakwidth=0.001, debug=False, verify=False):
+    def findspikes(self, x, v, thresh, t0=None, t1=None, dt=0.001, mode='schmitt', detector='threshold', 
+                    refract=0.0007,
+                    interpolate=False, peakwidth=0.001, mindip=0.01, debug=False, verify=False):
         """
         findspikes identifies the times of action potential in the trace v, with the
         times in t. An action potential is simply timed at the first point that exceeds
@@ -472,11 +473,53 @@ class Utility():
             vma = np.array(vma)
 
         dv = np.diff(vma)/dt # compute slope
+        dv2 = np.diff(dv)/dt
         st = np.array([])
-        spv = np.where(vma > thresh)[0].tolist() # find points above threshold
-        sps = (np.where(dv > 0.0)[0]+1).tolist() # find points where slope is positive
-        sp = list(set(spv) & set(sps)) # intersection defines putative spike start times
+        if detector == 'threshold':
+            spv = np.where(vma > thresh)[0].tolist() # find points above threshold
+            sps = (np.where(dv > 0.0)[0]+1).tolist() # find points where slope is positive
+            sp = list(set(spv) & set(sps)) # intersection defines putative spike start times
+        
+        elif detector == 'cwt':
+          #  spks = scipy.signal.find_peaks_cwt(vma[spv], np.arange(2, int(peakwidth/dt)), noise_perc=0.1)
+            spks = scipy.signal.argrelmax(vma, order=11)[0]
+            spks = spks[np.where(vma[spks] >= thresh)[0]]
+            pk_search = int(0.0015/dt)
+            if debug:
+                print('pksearch: ', pk_search, 'thresh: ', thresh)
+                print('spks: ', spks)
+            stn = []
+            for i, s in enumerate(spks):
+                stn.append(s)
+            
+            if len(stn) > 0:
+                stn2 = [stn[0]+int(t0/dt)]
+            else:
+                stn2 = []
+            removed = []
+            for i in range(len(stn)-1):
+                if i in removed:
+                    continue
+                for j in range(i+1,len(stn)):
+                    if j in removed:
+                        continue
+                    p2pv = (vma[stn[j]+1]+vma[stn[i]])/2.0 # use half height difference between peaks
+                    minv = np.min(vma[stn[i]:stn[j]])
+                    if p2pv-minv > mindip:
+                        stn2.append(stn[j]+int(t0/dt))
+                        break
+                    else:
+                        removed.append(j)
+            stn = sorted(list(set(stn2)))
+#            print(' stn: ', stn)
+
+            if debug:
+                print('stn: ', stn)
+                print(vma[stn])
+            return(x[stn])
+            
         sp.sort() # make sure all detected events are in order (sets is unordered)
+    
         spl = sp
         sp = tuple(sp) # convert to tuple
         if sp is ():
@@ -521,7 +564,7 @@ class Utility():
                     if len(xx) > 1:
                         st = np.append(st, xx[1]) # always save the first one
 
-
+            
         # clean spike times
         #st = clean_spiketimes(st, mindT=refract)
         if verify:
