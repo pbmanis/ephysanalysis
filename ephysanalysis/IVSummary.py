@@ -105,15 +105,24 @@ class IVSummary():
                 jsp += 1
             else:
                 idv = 0.
-            P.axdict['A'].plot(self.AR.time_base*1e3, idv + self.AR.traces[i,:].view(np.ndarray)*1e3, '-', linewidth=0.5)
+            P.axdict['A'].plot(self.AR.time_base*1e3, idv + self.AR.traces[i,:].view(np.ndarray)*1e3, '-', linewidth=0.35)
             ptps = np.array([])
             paps = np.array([])
-            if i not in list(self.SP.spikeShape.keys()):
-                continue
-            for j in list(self.SP.spikeShape[i].keys()):
-                paps = np.append(paps, self.SP.spikeShape[i][j]['peak_V']*1e3)
-                ptps = np.append(ptps, self.SP.spikeShape[i][j]['peak_T']*1e3)
-            P.axdict['A'].plot(ptps, idv+paps, 'ro', markersize=1.0)
+            if i in list(self.SP.spikeShape.keys()):
+                for j in list(self.SP.spikeShape[i].keys()):
+                    paps = np.append(paps, self.SP.spikeShape[i][j]['peak_V']*1e3)
+                    ptps = np.append(ptps, self.SP.spikeShape[i][j]['peak_T']*1e3)
+                P.axdict['A'].plot(ptps, idv+paps, 'ro', markersize=0.5)
+            
+            # mark spikes outside the stimlulus window
+            ptps = np.array([])
+            paps = np.array([])
+            for window in ['baseline', 'poststimulus']:
+                ptps = np.array(self.SP.analysis_summary[window+'_spikes'][i])
+                uindx = [int(u/self.AR.sample_interval)+1 for u in ptps]
+                paps = np.array(self.AR.traces[i, uindx])
+                P.axdict['A'].plot(ptps*1e3, idv+paps*1e3, 'bo', markersize=0.5)
+                    
         for k in self.RM.taum_fitted.keys():
             P.axdict['A'].plot(self.RM.taum_fitted[k][0]*1e3, self.RM.taum_fitted[k][1]*1e3, '--k', linewidth=0.30)
         for k in self.RM.tauh_fitted.keys():

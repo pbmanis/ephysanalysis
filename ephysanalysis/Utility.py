@@ -443,6 +443,34 @@ class Utility():
         else:
             return rn
 
+    def clean_spiketimes(self, spikeTimes, mindT=0.7):
+        """
+        Clean up spike time array, removing all less than mindT
+        Parameters
+        ----------
+        spikeTimes : list or numpy array (1-D)
+            array of the spike times
+        
+        mindT : float (default : 0.7)
+            minimum time between spikes, in the same units as spikeTimes
+            (normally this will be in milliseconds or seconds)
+        
+        Return
+        ------
+        spikeTimes : list or numpy array (1-D_
+            A cleaned list of the spike times where the events are at least
+            mindT appart.
+            Note: If no spikes or just one spike in the input array, just return the array
+        """
+        
+        if len(spikeTimes) > 1:
+            dst = np.diff(spikeTimes)
+            st = np.array(spikeTimes[0])  # get first spike
+            sok = np.where(dst > mindT)
+            st = np.append(st, [spikeTimes[s+1] for s in sok])
+            spikeTimes = st
+        return spikeTimes
+        
     def findspikes(self, x, v, thresh, t0=None, t1=None, dt=0.001, mode='schmitt', detector='threshold', 
                     refract=0.0007,
                     interpolate=False, peakwidth=0.001, mindip=0.01, debug=False, verify=False):
@@ -460,9 +488,33 @@ class Utility():
         Note: TIME UNITS MUST MATCH.
         Units are set up for SECONDS in time base (acq4 standard)
         
+        Parameters
+        ----------
+            x : numpy array (no default)
+                time base, in seconds
+            v : numpy array
+                voltage array to search for spikes (Volts)
+            thresh : float (no default)
+                voltage for threshold detection (Volts)
+            t0, t1 : float (default: None)
+                time for start end end of spike search (seconds)
+                if None, whole trace is used
+            dt : float (default: 0.001)
+                sample rate, in seconds
+            mode : string (default: 'schmitt')
+                trigger mode for most detection algorithms
+            detector : string (default: 'threshold')
+                detector mode (choices are 'threshold' and 'argrelmax')
+                Argrelmax works well to find spikes, and algorithm cleans up
+                event list
+            refract : float (default: 0.0007)
+                minimum refractory period for spike inclusion, in seconds (or units of time base)
         """
+                    
         if mode not in ['schmitt', 'threshold', 'peak']:
-            raise ValueError('pylibrary.utility.findspikes: mode must be one of "schmitt", "peak" : got %s' % mode)
+            raise ValueError('pylibrary.utility.findspikes: mode must be one of "schmitt", "threshold", "peak" : got %s' % mode)
+        if detector not in ['threshold', 'argrelmax']:
+            raise ValueError('pylibrary.utility.findspikes: mode must be one of "argrelmax", "threshold" : got %s' % detector)
         if t1 is not None and t0 is not None:
             xt = ma.masked_outside(x, t0, t1)
             vma = ma.array(v, mask = ma.getmask(xt))
@@ -475,12 +527,14 @@ class Utility():
         dv = np.diff(vma)/dt # compute slope
         dv2 = np.diff(dv)/dt
         st = np.array([])
+        it0 = int(t0/dt)
         if detector == 'threshold':
             spv = np.where(vma > thresh)[0].tolist() # find points above threshold
             sps = (np.where(dv > 0.0)[0]+1).tolist() # find points where slope is positive
             sp = list(set(spv) & set(sps)) # intersection defines putative spike start times
-        
-        elif detector == 'cwt':
+            # then go on to mode... 
+
+        elif detector == 'argrelmax':
           #  spks = scipy.signal.find_peaks_cwt(vma[spv], np.arange(2, int(peakwidth/dt)), noise_perc=0.1)
             spks = scipy.signal.argrelmax(vma, order=11)[0]
             spks = spks[np.where(vma[spks] >= thresh)[0]]
@@ -493,14 +547,25 @@ class Utility():
                 stn.append(s)
             
             if len(stn) > 0:
-                stn2 = [stn[0]+int(t0/dt)]
+                stn2 = [stn[0]+it0]
             else:
                 stn2 = []
+            # filter peaks by checking that valleys between pairs
+            # are sufficiently deep
             removed = []
-            for i in range(len(stn)-1):
-                if i in removed:
+            t_forward = int(0.010/dt)  # use 10 msec forward for drop
+            for i in range(len(stn)-1):  # for all putative peaks
+                if i in removed:  # this can happen if event was removed in j loop
                     continue
-                for j in range(i+1,len(stn)):
+                test_end = stn[i]+t_forward
+                if test_end > vma.shape[0]:
+                    test_end = vma.shape[0]
+                if np.fabs(vma[stn[i]] - np.min(vma[stn[i]:test_end])) < mindip:
+                    if i == 0:  # special case: if first event fails, remove it from output list
+                        stn2 = []
+                    removed.append(i)
+                    continue
+                for j in range(i+1,len(stn)):  # and for subsequent peaks
                     if j in removed:
                         continue
                     p2pv = (vma[stn[j]+1]+vma[stn[i]])/2.0 # use half height difference between peaks
@@ -516,8 +581,10 @@ class Utility():
             if debug:
                 print('stn: ', stn)
                 print(vma[stn])
-            return(x[stn])
-            
+            return(self.clean_spiketimes(x[stn], mindT=refract))  # done here.
+        else:
+            raise ValueError('Utility:findspikes: invalid detector')
+
         sp.sort() # make sure all detected events are in order (sets is unordered)
     
         spl = sp
@@ -578,7 +645,7 @@ class Utility():
             mpl.show()
        # exit(1)
 
-        return(st)
+        return(self.clean_spiketimes(st, mindT=refract))
 
 #     def findspikes(self, x, v, thresh, t0=None, t1=None, dt=0.001, mode='schmitt',
 #                     refract=0.0007, interpolate=False, peakwidth=0.001, debug=False, verify=False):
