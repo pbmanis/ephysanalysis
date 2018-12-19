@@ -658,7 +658,10 @@ class Acq4Read():
             lbr = EM.MetaArray(file=fn)
             info = lbr[0].infoCopy()
             self.LaserBlueRaw.append(lbr.view(np.ndarray)[0])  # shutter
-            self.LaserBlue_pCell.append(lbr.view(np.ndarray)[1]) # pCell
+            try:
+                self.LaserBlue_pCell.append(lbr.view(np.ndarray)[1]) # pCell
+            except:
+                self.LaserBlue_pCell.append(None)
             self.LBR_time_base.append(lbr.xvals('Time'))
             try:
                 sr = info[1]['DAQ']['Shutter']['rate']
@@ -666,6 +669,7 @@ class Acq4Read():
                 print(info[1]['DAQ'].keys())
                 exit(1)
             self.LBR_sample_rate.append(sr)
+        self.LaserBlue_info = info
         self.LaserBlueRaw = np.array(self.LaserBlueRaw)
         self.LaserBlue_pCell = np.array(self.LaserBlue_pCell)
         self.LBR_sample_rate = np.array(self.LBR_sample_rate)
