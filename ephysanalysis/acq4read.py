@@ -755,7 +755,7 @@ class Acq4Read():
         self.scannerinfo = {}
         for i, d in enumerate(dirs):  # now run through the subdirectories : all of dirType 'Protocol'
             index = self._readIndex(currdir=Path(self.protocol, Path(d).name))  # subdirectories _nnn or _nnn_mmm or ... 
-            if 'Scanner' in index['.'].keys():
+            if index is not None and 'Scanner' in index['.'].keys():
                 self.scannerpositions[i] = index['.']['Scanner']['position']
                 self.targets[i] = index['.'][('Scanner', 'targets')]
                 self.spotsize = index['.']['Scanner']['spotSize']
