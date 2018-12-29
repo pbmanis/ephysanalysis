@@ -151,7 +151,7 @@ class DataPlan():
             ds[s]['exclist'] = eval(ds[s]['exclist'])
         return(ds)
 
-    def read_datasummary(self, filename):
+    def read_xlsx_datasummary(self, filename, sheet):
         """
         Read a datasummary file and store into an pandas dataframe
         Datasummaries are flat text files in a csv format and are generated
