@@ -18,7 +18,7 @@ import ephysanalysis.metaarray as EM
 from pyqtgraph import configfile
 import numpy as np
 import datetime
-import matplotlib.pyplot as mpl
+#import matplotlib.pyplot as mpl
 import pprint
 import textwrap as WR
 import collections
@@ -128,7 +128,7 @@ class Acq4Read():
         else:
             indexFile = Path(currdir, '.index')
         if not indexFile.is_file():
-            print("Directory '%s' is not managed! (missing .index file)" % (str(indexFile)))
+            print("Directory '%s' is not managed or '.index' file not found" % (str(indexFile)))
             return self._index
         self._index = configfile.readConfigFile(indexFile)
         return self._index
@@ -138,7 +138,7 @@ class Acq4Read():
         indexFile = os.path.join(currdir, '.index')
        # print (indexFile)
         if not os.path.isfile(indexFile):
-            print("Directory '%s' is not managed!" % (currdir))
+            print("Directory '%s' is not managed or '.index' file not found" % (currdir))
             return self._dirindex
         try:
             self._dirindex = configfile.readConfigFile(indexFile)
@@ -790,7 +790,7 @@ class Acq4Read():
         Returns the image file in the dataname
         Requires full path to the data
         """
-        self.imageData = tf.imread(filename)
+        self.imageData = tf.imread(str(filename))
         # imageframe = EM.MetaArray(file=dataname)
 #         img = imageframe.view(np.ndarray)
         return(self.imageData)
@@ -874,6 +874,7 @@ class Acq4Read():
         return resultframe
 
     def plotClampData(self, all=True):
+        import matplotlib.pyplot as mpl
         f, ax = mpl.subplots(2)
         if all:
             for i in range(len(self.data_array)):
@@ -884,6 +885,7 @@ class Acq4Read():
         mpl.show()
         
 if __name__ == '__main__':
+    import matplotlib.pyplot as mpl
     # test on a big file
     a = Acq4Read()
     BRI = BR.BoundRect()
