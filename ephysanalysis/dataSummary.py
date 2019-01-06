@@ -743,7 +743,8 @@ class DataSummary():
             df = pd.read_csv(pandas.compat.StringIO(self.panda_string), delimiter='\t')
             maindf = pd.read_pickle(self.outFilename)
             maindf = maindf.append(df)
-            maindf = maindf.reset_index()  # redo the indices so all in sequenc
+            maindf = maindf.reset_index(level=0, drop=True)
+           # maindf = maindf.reset_index()  # redo the indices so all in sequence
             maindf.to_pickle(self.outFilename)
         print('Wrote pandas dataframe to pickled file: {0:s}'.format(self.outFilename))
 
