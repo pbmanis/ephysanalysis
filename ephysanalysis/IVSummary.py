@@ -14,7 +14,7 @@ import os.path
 from collections import OrderedDict
 import ephysanalysis as EP
 import matplotlib
-matplotlib.use('MacOSX')
+#matplotlib.use('MacOSX')
 import matplotlib.pyplot as mpl
 import matplotlib.colors
 import matplotlib
