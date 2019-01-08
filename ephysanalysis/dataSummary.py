@@ -344,7 +344,7 @@ class DataSummary():
         if self.verbose:
             print ('Days reported: ', days)
             if self.append:
-                print('Days in pands frame: ', self.pddata['date'].tolist())
+                print('Days in pandas frame: ', self.pddata['date'].tolist())
 
         for nd, day in enumerate(days):
             if self.append and (day in self.pddata['date'].tolist()):
