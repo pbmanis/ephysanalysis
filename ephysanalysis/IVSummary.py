@@ -21,7 +21,7 @@ import matplotlib
 #import colormaps.parula
 import pylibrary.PlotHelpers as PH
 from matplotlib import rc
-rc('font',**{'family':'sans-serif','sans-serif':['Arial']})
+#rc('font',**{'family':'sans-serif','sans-serif':['Arial']})
 #rcParams['font.sans-serif'] = ['Arial']
 #rcParams['font.family'] = 'sans-serif'
 rc('text', usetex=True)
