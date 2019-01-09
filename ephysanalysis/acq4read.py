@@ -12,8 +12,7 @@ import os
 import re
 from pathlib import Path
 #from pyqtgraph import metaarray
-import matplotlib
-matplotlib.use('Agg')
+
 import ephysanalysis.metaarray as EM
 from pyqtgraph import configfile
 import numpy as np
@@ -661,7 +660,14 @@ class Acq4Read():
             try:
                 self.LaserBlue_pCell.append(lbr.view(np.ndarray)[1]) # pCell
             except:
-                self.LaserBlue_pCell.append(None)
+                # see if have a PockelCell as a seprate thing
+                fn = os.path.join(d, 'PockelCell.ma')
+                if not os.path.isfile(fn):
+                    print(' acq4read.getLaserBlueCommand: File not found: ', fn)
+                    self.LaserBlue_pCell.append(None)
+                else:
+                    pcell = EM.MetaArray(file=fn)
+                    self.LaserBlue_pCell.append(pcell.view(np.ndarray)[0])
             self.LBR_time_base.append(lbr.xvals('Time'))
             try:
                 sr = info[1]['DAQ']['Shutter']['rate']
@@ -885,6 +891,8 @@ class Acq4Read():
         mpl.show()
         
 if __name__ == '__main__':
+    import matplotlib
+    matplotlib.use('Agg')
     import matplotlib.pyplot as mpl
     # test on a big file
     a = Acq4Read()
