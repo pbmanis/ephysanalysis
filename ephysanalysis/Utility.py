@@ -238,7 +238,7 @@ class Utility():
         return(np.array(out))
         
     # filter signal with low-pass Bessel
-    def SignalFilter_LPFBessel(self, signal, LPF, samplefreq, NPole=8, reduce=False, bidir=False):
+    def SignalFilter_LPFBessel(self, signal, LPF, samplefreq, NPole=8, bidir=False, reduce=False):
         """ Low pass filter a signal, possibly reducing the number of points in the
             data array.
             signal: a numpya array of dim = 1, 2 or 3. The "last" dimension is filtered.
@@ -247,7 +247,7 @@ class Utility():
             NPole: number of poles in the filter.
             reduce: Flag that controls whether the resulting data is subsampled or not
         """
-        if debugFlag:
+        if self.debugFlag:
             print(("sfreq: %f LPF: %f HPF: %f" % (samplefreq, LPF)))
         flpf = float(LPF)
         sf = float(samplefreq)
@@ -256,7 +256,7 @@ class Utility():
         if reduce:
             if LPF <= samplefreq/2.0:
                 reduction = int(samplefreq/LPF)
-        if debugFlag is True:
+        if self.debugFlag is True:
             print(("signalfilter: samplef: %f  wn: %f,  lpf: %f, NPoles: %d " % (
                sf, wn, flpf, NPole)))
         filter_b,filter_a = scipy.signal.bessel(
