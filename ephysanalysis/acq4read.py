@@ -415,7 +415,10 @@ class Acq4Read():
                     continue
             if check:
                 return True
-            tr = EM.MetaArray(file=fn)
+            try:
+                tr = EM.MetaArray(file=fn)
+            except:
+                continue
             info = tr[0].infoCopy()
             self.parseClampInfo(info)
             self.WCComp = self.parseClampWCCompSettings(info)
