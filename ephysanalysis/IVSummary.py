@@ -76,12 +76,12 @@ class IVSummary():
             return False
 
     def plot_iv(self):
-        x=-0.05
-        y = 1.05
-        sizer = {'A': {'pos': [0.05, 0.50, 0.05, 0.85], 'labelpos': (x,y), 'noaxes': False},
-                 'B': {'pos': [0.60, 0.30, 0.65, 0.25], 'labelpos': (x,y), 'noaxes': False},
-                 'C': {'pos': [0.60, 0.30, 0.35, 0.25], 'labelpos': (x,y)},
-                 'D': {'pos': [0.60, 0.30, 0.05, 0.25], 'labelpos': (x,y)}, 
+        x=-0.08
+        y = 1.02
+        sizer = {'A': {'pos': [0.05, 0.50, 0.08, 0.78], 'labelpos': (x,y), 'noaxes': False},
+                 'B': {'pos': [0.62, 0.30, 0.64, 0.22], 'labelpos': (x,y), 'noaxes': False},
+                 'C': {'pos': [0.62, 0.30, 0.34, 0.22], 'labelpos': (x,y)},
+                 'D': {'pos': [0.62, 0.30, 0.08, 0.22], 'labelpos': (x,y)}, 
                 }
 
         # dict pos elements are [left, width, bottom, height] for the axes in the plot.

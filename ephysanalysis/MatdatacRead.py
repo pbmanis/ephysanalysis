@@ -115,7 +115,7 @@ class GetClamps():
         if item is None:
             return False
         protocol = self.datac.items[item].type
-        print('protocol: ', protocol)
+        # print('protocol: ', protocol)
         rate, recs = self.datac.items[item].data()
         rate = self.datac.items[item].dfile['Sample_Rate']['v']*1e-6  # convert to seconds
         self.dfile = self.datac.items[item].dfile
@@ -165,7 +165,7 @@ class GetClamps():
         self.sample_rate = (1./dt)*np.ones(len(recs))
         self.RSeriesUncomp = 0.
         self.cmd_wave = np.squeeze(self.traces[:, 0, :])*1e-12
-        self.protoTimes = {'drugtestiv': [0.21, 0.51], 'ap-iv2': [0.01, 0.5], 'cciv': [0.005, 0.105]}  # in seconds
+        self.protoTimes = {'drugtestiv': [0.21, 0.5], 'ap-iv2': [0.01, 0.5], 'cciv': [0.005, 0.100]}  # in seconds
         self.tstart = 0.01
         self.tdur = 0.500
         if protocol in self.protoTimes:
@@ -173,6 +173,7 @@ class GetClamps():
             self.tdur = self.protoTimes[protocol][1]
             
         self.tend = self.tstart + self.tdur
+        # print('self.tstart, end, dur: ', self.tstart, self.tend, self.tdur)
         t0 = int(self.tstart/dt)
         t1 = int(self.tend/dt)
         self.values = np.mean(self.cmd_wave[:, t0:t1], axis=1)  # express values in amps
@@ -201,7 +202,7 @@ class GetClamps():
               self.traces.infoCopy('Time'), self.traces.infoCopy(-1)])
         self.spikecount = np.zeros(len(recs))
         self.rgnrmp = [0, 0.005]
-        print('getclamps got it all')
+        # print('getclamps got it all')
         return True
 
     def getDataMode(self):

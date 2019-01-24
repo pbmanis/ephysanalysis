@@ -415,7 +415,6 @@ class SpikeAnalysis():
         thisspike['AP_beginIndex'] = kthresh
         thisspike['AP_Latency'] = self.Clamps.time_base[kthresh]
         thisspike['AP_beginV'] = self.Clamps.traces[i][thisspike['AP_beginIndex']]
-        
         # if successful in defining spike start/end, calculate half widths in two ways:
         # closest points in raw data, and by interpolation
         if (
@@ -440,33 +439,45 @@ class SpikeAnalysis():
                 # interpolated spike hwup, down and width
                 pkt = xr[thisspike['AP_peakIndex']]
                 if tr[kup] <= halfv:
-                    vi = tr[kup:kup+2]
-                    xi = xr[kup:kup+2]
-                else:
                     vi = tr[kup-1:kup+1]
                     xi = xr[kup-1:kup+1]
-                m = (vi[1]-vi[0])/(xi[1]-xi[0])
-                if m == 0.0 or np.std(tr) == 0.0:
-                    return(thisspike)
-                b = vi[1] - m*xi[1]
-
-                t_hwup = (halfv-b)/m
-                if tr[kdown] <= halfv:
-                    vi = tr[kdown-1:kdown+1]
-                    xi = xr[kdown-1:kdown+1]
-                    u='a'
                 else:
+                    vi = tr[kup:kup+2]
+                    xi = xr[kup:kup+2]
+                m1 = (vi[1]-vi[0])/(xi[1]-xi[0])
+                b1 = vi[1] - m1*xi[1]
+                if m1 == 0.0 or np.std(tr) == 0.0:
+                    # print('a: ', vi[1], vi[0], kup, tr[kup:kup+2], tr[kup-1:kup+1], tr[kup], halfv)
+                    return(thisspike)
+
+                t_hwup = (halfv-b1)/m1
+                if tr[kdown] <= halfv:
                     vi = tr[kdown:kdown+2]
                     xi = xr[kdown:kdown+2]
+                    u='a'
+                else:
+                    vi = tr[kdown-1:kdown+1]
+                    xi = xr[kdown-1:kdown+1]
                     u='b'
-                m = (vi[1]-vi[0])/(xi[1]-xi[0])
-                b = vi[1] - m*xi[1]
-                t_hwdown = (halfv-b)/m
-
+                m2 = (vi[1]-vi[0])/(xi[1]-xi[0])
+                b2 = vi[1] - m2*xi[1]
+                if m2 == 0.0 or np.std(tr) == 0.0:
+                    # print('b: ', vi[1], vi[0], kup , tr[kdown-1:kdown+1], tr[kdown:kdown+2], tr[kdown], halfv)
+                    return(thisspike)
+                t_hwdown = (halfv-b2)/m2
+                thisspike['halfwidth'] = t_hwdown-t_hwup
+                # import matplotlib.pyplot as mpl
+                # fig, ax = mpl.subplots(1,1)
+                # ax.plot(xr[kup-10:kdown+10], tr[kup-10:kdown+10])
+                # ax.plot(t_hwdown, halfv, 'ro')
+                # ax.plot(t_hwup, halfv, 'bx')
+                # mpl.show()
                 if thisspike['halfwidth'] > self.min_halfwidth:  # too broad to be acceptable
                     print('spikes > min half width', thisspike['halfwidth'])
+                    print('halfv: ', halfv, thisspike['peak_V'], thisspike['AP_beginV'])
                     thisspike['halfwidth'] = None
                     thisspike['halfwidth_interpolated'] = None
+
                 else:
                     thisspike['halfwidth_interpolated'] = t_hwdown - t_hwup
                 pkvI = tr[thisspike['AP_peakIndex']]
@@ -474,7 +485,6 @@ class SpikeAnalysis():
                 pkvMa = np.argmax(tr[thisspike['AP_beginIndex']:thisspike['AP_endIndex']])
                 if pkvI != pkvM:
                     pktrap = True
-
         return(thisspike)
 
     def getIVCurrentThresholds(self):

@@ -536,18 +536,13 @@ class Utility():
 
         elif detector == 'argrelmax':
           #  spks = scipy.signal.find_peaks_cwt(vma[spv], np.arange(2, int(peakwidth/dt)), noise_perc=0.1)
-            spks = scipy.signal.argrelmax(vma, order=11)[0]
-            spks = spks[np.where(vma[spks] >= thresh)[0]]
-            pk_search = int(0.0015/dt)
-            if debug:
-                print('pksearch: ', pk_search, 'thresh: ', thresh)
-                print('spks: ', spks)
-            stn = []
-            for i, s in enumerate(spks):
-                stn.append(s)
-            
+            order = int(refract/dt) + 1
+            stn = scipy.signal.find_peaks(vma, height=thresh, distance=order)[0]
+            ## argrelmax seems to miss peaks occasionally
+            # spks = scipy.signal.argrelmax(vma, order=order)[0]
+            # stn = spks[np.where(vma[spks] >= thresh)[0]]
             if len(stn) > 0:
-                stn2 = [stn[0]+it0]
+                stn2 = [stn[0]]
             else:
                 stn2 = []
             # filter peaks by checking that valleys between pairs
@@ -571,17 +566,28 @@ class Utility():
                     p2pv = (vma[stn[j]+1]+vma[stn[i]])/2.0 # use half height difference between peaks
                     minv = np.min(vma[stn[i]:stn[j]])
                     if p2pv-minv > mindip:
-                        stn2.append(stn[j]+int(t0/dt))
+                        stn2.append(stn[j])
                         break
                     else:
                         removed.append(j)
-            stn = sorted(list(set(stn2)))
-#            print(' stn: ', stn)
-
+            stn2 = sorted(list(set(stn2)))
+            # print(' stn: ', stn)
+            # if len(removed) > 0:
+            #     print('**** removed: ', removed, np.array(removed)*dt)
+            #     print('*'*80)
             if debug:
                 print('stn: ', stn)
                 print(vma[stn])
-            return(self.clean_spiketimes(x[stn], mindT=refract))  # done here.
+            # if len(stn2) > 0:  # good to test algorithm
+            #     import matplotlib.pyplot as mpl
+            #
+            #     f, ax = mpl.subplots(1,1)
+            #     ax.plot(xt, vma)
+            #     ax.plot(xt[stn2], vma[stn2], 'ro')
+            #     ax.plot(xt[stn], vma[stn], 'bx')
+            #     mpl.show()
+            xspk = x[[s+it0 for s in stn2]]
+            return(self.clean_spiketimes(xspk, mindT=refract))  # done here.
         else:
             raise ValueError('Utility:findspikes: invalid detector')
 
