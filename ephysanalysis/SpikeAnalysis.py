@@ -26,6 +26,7 @@ for Acq4.
 from collections import OrderedDict
 import os
 import os.path
+import inspect
 import sys
 import itertools
 import functools
@@ -36,6 +37,7 @@ from . import Fitting # pbm's fitting stuff...
 import pprint
 import time
 
+this_source_file = inspect.getsource(inspect.getmodule(inspect.currentframe()))
 
 class SpikeAnalysis():
     
@@ -99,6 +101,7 @@ class SpikeAnalysis():
         self.ar_window = 0.1
         self.ar_lastspike = 0.075
         self.min_peaktotrough = 0.010 # change in V on falling phase to be considered a spike
+        self.max_spike_look = 0.010  # msec over which to measure spike widths
 
     def analyzeSpikes(self):
         """
@@ -230,7 +233,7 @@ class SpikeAnalysis():
         elif mode == 'poststimulus':
             twin = [self.Clamps.tend, np.max(self.Clamps.time_base)]
         else:
-            raise ValueError('analyzeSpikes_brief requires mode to be "baseline", "evoked", or "poststimulus"')
+            raise ValueError(f'{thissourcefile:s}:: analyzeSpikes_brief requires mode to be "baseline", "evoked", or "poststimulus"')
 
         ntr = len(self.Clamps.traces)
         allspikes = [[] for i in range(ntr)]
@@ -323,7 +326,7 @@ class SpikeAnalysis():
             if len(self.spikes[i]) == 0:
                 continue
             if printSpikeInfo:
-                print('spikes: ', self.spikes[i])
+                print(f'{this_source_file:s}:: spikes: ', self.spikes[i])
                 print((np.array(self.Clamps.values)))
                 print((len(self.Clamps.traces)))
             (rmps[i], r2) = U.measure('mean', self.Clamps.time_base, self.Clamps.traces[i],
@@ -374,7 +377,7 @@ class SpikeAnalysis():
         if j < self.spikecount[i] - 1:  #
             kend = self.spikeIndices[i][j+1]
         else:
-            kend = len(self.Clamps.traces[i])
+            kend = int(self.spikeIndices[i][j]+self.max_spike_look/dt)
         if kend > dv.shape[0]:
             return(thisspike)  # end of spike would be past end of trace
         else:
@@ -404,7 +407,7 @@ class SpikeAnalysis():
         try:
             km = np.argmax(dv[kbegin:k]) + kbegin
         except:
-            print(kbegin, k)
+            print(f'{this_source_file:s}:: kbdgin, k: ', kbegin, k)
             print(len(dv))
             raise
         if ((km - kbegin) < 1):
@@ -473,8 +476,8 @@ class SpikeAnalysis():
                 # ax.plot(t_hwup, halfv, 'bx')
                 # mpl.show()
                 if thisspike['halfwidth'] > self.min_halfwidth:  # too broad to be acceptable
-                    print('spikes > min half width', thisspike['halfwidth'])
-                    print('halfv: ', halfv, thisspike['peak_V'], thisspike['AP_beginV'])
+                    print(f'{this_source_file:s}::\n   spikes > min half width', thisspike['halfwidth'])
+                    print('   halfv: ', halfv, thisspike['peak_V'], thisspike['AP_beginV'])
                     thisspike['halfwidth'] = None
                     thisspike['halfwidth_interpolated'] = None
 
@@ -485,6 +488,7 @@ class SpikeAnalysis():
                 pkvMa = np.argmax(tr[thisspike['AP_beginIndex']:thisspike['AP_endIndex']])
                 if pkvI != pkvM:
                     pktrap = True
+
         return(thisspike)
 
     def getIVCurrentThresholds(self):
@@ -516,12 +520,12 @@ class SpikeAnalysis():
         try:
             iamin = np.argmin(icmd)
         except:
-            print('SpikeAnalysis, Problem with command: ')
+            print(f'{this_source_file:s}: Problem with command: ')
             print('self.spikeShape.keys(): ', self.spikeShape.keys())
             print('   m = ', m)
             print('   n = ', n)
             print('   current? ', self.spikeShape[m][n]['current'])
-            raise ValueError('IVCurve:getIVCurrentThresholds - icmd seems to be ? : ', icmd)
+            raise ValueError(f'{this_source_file:s}:getIVCurrentThresholds - icmd seems to be ? : ', icmd)
             
         imin = np.min(icmd)
         ia150 = np.argmin(np.abs(1.5*imin-icmd))
@@ -615,7 +619,7 @@ class SpikeAnalysis():
         tuple of (fpar, xf, yf, names, error, f, func)
             These are the fit parameters
         """
-#        print('fitone called')
+        # print('fitone called')
         if function is not None:
             self.FIGrowth = function
         if x is None: # use class data
@@ -655,7 +659,7 @@ class SpikeAnalysis():
             fbr = fire_points[0]
             # print('fpnt: ', fire_points)
             # print('yd: ', yd)
-           # fbr = fpnt[0][0]
+            # fbr = fpnt[0][0]
             # print('fbr: ', fbr)
             ibreak0 = x[fbr-1]  # use point before first spike as the initial break point
             dx = np.abs(np.mean(np.diff(x)))  # get current steps
@@ -788,9 +792,9 @@ class SpikeAnalysis():
                                     fixedPars=None, method=testMethod)
             # print('names: ', names)
             # print('initpars: ', initpars)
-            #print('fitbreak0', fitbreak0)
+            # print('fitbreak0', fitbreak0)
             # print('\n Bounds: ', bounds)
-            #print('results: ', fpar)
+            # print('results: ', fpar)
             error = Fitting.Fitting().getFitErr()
             self.FIKeys = f[6]
 
@@ -815,7 +819,7 @@ class SpikeAnalysis():
         elif self.FIGrowth == 'piecewiselinear3':
 
             fitbreak0 = ibreak0
-            print('ibreak0: ', ibreak0)
+            # print('ibreak0: ', ibreak0)
             if fitbreak0 > 0.:
                 fitbreak0 = 0.
             x1 = np.argwhere(yd > 0.)
@@ -849,10 +853,10 @@ class SpikeAnalysis():
             self.FIKeys = f[6]
             
         elif self.FIGrowth == 'piecewiselinear3_ugh': # use piecewise linear, 3 segment fit
-#            print ('Fitting with 3 segment line')
-         # parameters for pwl3 (piecewise linear...): ['Ibreak', 'Rate0', 'Ibreak1', 'Irate1', 'Irate2', 'Irate3']
+            # print ('Fitting with 3 segment line')
+            # parameters for pwl3 (piecewise linear...): ['Ibreak', 'Rate0', 'Ibreak1', 'Irate1', 'Irate2', 'Irate3']
             fitbreak0 = ibreak0
-            print('ibreak0: ', ibreak0)
+            # print('ibreak0: ', ibreak0)
             if fitbreak0 > 0.:
                 fitbreak0 = 0.
             x1 = np.argwhere(yd > 0.)
@@ -886,10 +890,10 @@ class SpikeAnalysis():
             self.FIKeys = f[6]
 
         elif self.FIGrowth == 'FIGrowthPower':
-#            print ('Fitting with sublinear power function FI')
-        # # parameters for power (piecewise linear...): [c, s, 'd']
-        # data are only fit for the range over which the cell fires
-        # 
+            # print ('Fitting with sublinear power function FI')
+            # parameters for power (piecewise linear...): [c, s, 'd']
+            # data are only fit for the range over which the cell fires
+
             fitbreak0 = ibreak0*1e9
             if fitbreak0 > 0.:
                 fitbreak0 = 0.
