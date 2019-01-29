@@ -187,6 +187,9 @@ class Fitting():
     def expeval(self, p, x, y=None, C=None, sumsq=False, weights=None):
         """
         Exponential with offset
+        if C has a parameter, the first in the list is treated
+        as a gap at the start of the trace that is not included in the
+        error function of the fit
         """
         yd = p[0] + p[1] * np.exp(-x/p[2])
 #        print yd.shape
@@ -194,10 +197,15 @@ class Fitting():
         if y is None:
             return yd
         else:
-            if sumsq is True:
-                return np.sum((y - yd)**2.0)
+            if C is not None:
+                tgap = C[0]
+                igap = int(tgap/(x[1]-x[0]))
             else:
-                return y - yd
+                igap = 0
+            if sumsq is True:
+                return np.sum((y[igap:] - yd[igap:])**2.0)
+            else:
+                return y[igap:] - yd[igap:]
 
     def expevalprime(self, p, x, y=None, C = None, sumsq = False, weights=None):
         """
@@ -615,6 +623,7 @@ p[4]*np.exp(-(p[5] + x)/p[6]))**2.0
             t1 = np.max(tdat)
         if t0 is None:
             t0 = np.min(tdat)
+        
         func = self.fitfuncmap[fitFunc]
         if func is None:
             print ("FitRegion: unknown function %s" % (fitFunc))
