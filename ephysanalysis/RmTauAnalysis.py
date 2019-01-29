@@ -115,24 +115,24 @@ class RmTauAnalysis():
         self.Clamps.traces = self.Clamps.traces - self.Clamps.cmd_wave.view(np.ndarray)*self.bridge_offset
         
     
-    def analyze(self, rmpregion=[0., 0.05], tauregion=[0.1, 0.125]):
+    def analyze(self, rmpregion=[0., 0.05], tauregion=[0.1, 0.125], to_peak=False, tgap=0.):
         self.rmp_analysis(region=rmpregion)
-        self.tau_membrane(region=tauregion)
+        self.tau_membrane(region=tauregion, peak_time=to_peak, tgap=tgap)
         r_ss = self.Clamps.tstart + 0.9*(self.Clamps.tend-self.Clamps.tstart) # steady-state region
         r_pk = self.Clamps.tstart + 0.4*(self.Clamps.tend-self.Clamps.tstart)
         self.ivss_analysis(region=[r_ss, self.Clamps.tend])
         self.ivpk_analysis(region=[self.Clamps.tstart, r_pk])  # peak region
         self.tau_h(self.tauh_voltage, peakRegion=[self.Clamps.tstart, r_pk], steadystateRegion=[r_ss, self.Clamps.tend], printWindow=False)
 
-    def tau_membrane(self, peak_time=None, printWindow=False, whichTau=1, vrange=[-0.002, -0.050], region=[]):
+    def tau_membrane(self, peak_time=False, printWindow=False, whichTau=1, vrange=[-0.002, -0.050], region=[], tgap=0.):
         """
         Compute time constant (single exponential) from the onset of the response to a current step
         
         Parameters
         ----------
         
-        peak_time : float (ms) (default: None)
-            Time to the peak of the data for the fitting. If it is set (not None), the 
+        peak_time : bool (default: False)
+            Whether to fit only to the (negative) peak of the data. If it is True, the 
             fit will only go until the peak time. Otherwise it is set by the end of the region.
         
         printWindow : Boolean (default: False)
@@ -147,6 +147,9 @@ class RmTauAnalysis():
         
         region: list (s) (default: [])
             Define the time region for the fitting
+        
+        tgap: float (sec)
+            gap for the fitting to start (e.g., initial points to ignore)
         
         Return
         ------
@@ -168,8 +171,8 @@ class RmTauAnalysis():
         icmdneg = np.where(self.Clamps.commandLevels < -10e-12)
         maxcmd = np.min(self.Clamps.commandLevels)
         ineg = np.where(self.Clamps.commandLevels[icmdneg] < 0.0)
-        if peak_time is not None and ineg != np.array([]):
-            rgnpk[1] = np.max(peak_time[ineg[0]])
+        # if peak_time is not None and ineg != np.array([]):
+        #     rgnpk[1] = np.max(peak_time[ineg[0]])
         dt = self.Clamps.sample_interval
         rgnpk = sorted(rgnpk)
         vrange = np.sort(vrange) # /1000.
@@ -204,11 +207,32 @@ class RmTauAnalysis():
             [self.taum_fitted[k].clear() for k in list(self.taum_fitted.keys())]
         self.taum_fitted = {}
         whichdata = whichdata[-1:]
+
         for j, k in enumerate(whichdata):
             if self.dataPlot is not None:
                 n = 'w_%03d' % j
                 self.taum_fitted[n] = self.dataPlot.plot(self.Clamps.time_base,
                                      self.Clamps.traces[k], pen=pg.mkPen('w'))
+            taubounds = self.taum_bounds.copy()
+            initpars[2] = np.mean(taubounds)
+            if peak_time:
+                vtr1 = self.Clamps.traces[k][int(rgnpk[0]/dt):int(rgnpk[1]/dt)]
+                ipeak = np.argmin(vtr1)
+                rgnpk[1] = ipeak*dt+rgnpk[0]
+                vtr2 = self.Clamps.traces[k][int(rgnpk[0]/dt):int(rgnpk[1]/dt)]
+                v0 = vtr2[0]
+                v1 = vtr2[-1]-v0
+                for m in range(len(vtr2)):
+                    if vtr2[m]-v0 <= 0.63*v1:
+                        break
+                taubounds[0] = 0.0002
+                taubounds[1] = 2.0*(rgnpk[1] - rgnpk[0])
+                tau_init = m*dt
+                if tau_init >= taubounds[0] and tau_init <= taubounds[1]:
+                    initpars[2] = tau_init
+                else:
+                    initpars[2] = 0.5*ipeak*dt
+                # print('inits: ', initpars)
             (fparx, xf, yf, namesx) = Fits.FitRegion([k], whichaxis,
                                                self.Clamps.time_base,
                                                np.array(self.Clamps.traces),
@@ -216,9 +240,10 @@ class RmTauAnalysis():
                                                t0=rgnpk[0], t1=rgnpk[1],
                                                fitFunc=Func,
                                                fitPars=initpars,
+                                               fixedPars=[tgap],
                                                method='SLSQP',
-                                               bounds=[(-0.08, 0.05), (-0.1, 0.1), 
-                                               (self.taum_bounds[0], self.taum_bounds[1])],
+                                               bounds=[(-0.1, 0.0), (-0.05, 0.05), 
+                                               (taubounds)],
                                                )
         
             if not fparx:

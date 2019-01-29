@@ -49,7 +49,7 @@ class IVSummary():
         self.RM = EP.RmTauAnalysis.RmTauAnalysis()
         self.plot = plot
 
-    def compute_iv(self, threshold=-0.010, bridge_offset=0.0):
+    def compute_iv(self, threshold=-0.010, bridge_offset=0.0, tgap=0.0005):
         """
         Simple plot of spikes, FI and subthreshold IV
         
@@ -68,7 +68,8 @@ class IVSummary():
            # self.SP.fitOne(function='piecewiselinear3')
             self.RM.analyze(rmpregion=[0., self.AR.tstart-0.001],
                             tauregion=[self.AR.tstart,
-                                       self.AR.tstart + (self.AR.tend-self.AR.tstart)/5.])
+                                       self.AR.tstart + (self.AR.tend-self.AR.tstart)/5.],
+                            to_peak=True, tgap=tgap)
             self.plot_iv()
             return True
         else:
@@ -76,7 +77,7 @@ class IVSummary():
             return False
 
     def plot_iv(self):
-        x=-0.08
+        x = -0.08
         y = 1.02
         sizer = {'A': {'pos': [0.05, 0.50, 0.08, 0.78], 'labelpos': (x,y), 'noaxes': False},
                  'B': {'pos': [0.62, 0.30, 0.64, 0.22], 'labelpos': (x,y), 'noaxes': False},
