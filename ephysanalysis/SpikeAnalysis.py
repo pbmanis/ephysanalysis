@@ -413,7 +413,7 @@ class SpikeAnalysis():
         if ((km - kbegin) < 1):
             km = kbegin + int((k - kbegin)/2.) + 1
         kthresh = np.argmin(np.fabs(dv[kbegin:km] - begin_dV)) + kbegin  # point where slope is closest to begin
-        
+        # print('kthresh, kbegin: ', kthresh, kbegin)
         # save values in dict here
         thisspike['AP_beginIndex'] = kthresh
         thisspike['AP_Latency'] = self.Clamps.time_base[kthresh]

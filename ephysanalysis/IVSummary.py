@@ -57,6 +57,7 @@ class IVSummary():
         #print('path: ', self.datapath)
         self.AR.setProtocol(self.datapath)  # define the protocol path where the data is
         if self.AR.getData():  # get that data.
+            # print(self.AR.tstart, self.AR.tend)
             self.RM.setup(self.AR, self.SP, bridge_offset=bridge_offset)
             self.SP.setup(clamps=self.AR, threshold=threshold, 
                     refractory=0.0001, peakwidth=0.001, interpolate=True, verify=False, mode='peak')

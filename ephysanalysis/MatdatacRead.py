@@ -170,8 +170,22 @@ class GetClamps():
         self.tdur = 0.500
         if protocol in self.protoTimes:
             self.tstart = self.protoTimes[protocol][0]
-            self.tdur = self.protoTimes[protocol][1]
-            
+            self.tdur = self.protoTimes[protocol][1]-self.tstart
+        
+        # check how the command wave is doing:
+        cmds = np.mean(np.abs(self.cmd_wave), axis=0)
+        dcmds = np.diff(cmds)
+        # import matplotlib.pyplot as mpl
+        # mpl.plot(self.time_base[:-1], dcmds)
+        # mpl.show()
+        start = np.where(dcmds > 1e-11)[0]
+        if len(start) > 1:
+            start = start[0]
+        end = np.where(dcmds < -1e-11)[0]
+        if len(end) > 1:
+            end = end[0]
+        # print('start, end: ', start, end)
+        # print(self.time_base[start], self.time_base[end])
         self.tend = self.tstart + self.tdur
         # print('self.tstart, end, dur: ', self.tstart, self.tend, self.tdur)
         t0 = int(self.tstart/dt)
