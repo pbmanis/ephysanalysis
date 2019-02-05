@@ -26,6 +26,7 @@ for Acq4.
 from collections import OrderedDict
 import os
 import os.path
+from pathlib import Path
 import inspect
 import sys
 import itertools
@@ -37,7 +38,7 @@ from . import Fitting # pbm's fitting stuff...
 import pprint
 import time
 
-this_source_file = inspect.getsource(inspect.getmodule(inspect.currentframe()))
+this_source_file = Path(inspect.getfile(inspect.getmodule(inspect.currentframe()))).name
 
 class SpikeAnalysis():
     
@@ -585,9 +586,11 @@ class SpikeAnalysis():
         if spikesfound:
             rate = len(self.spikeShape[j150])/self.spikeShape[j150][0]['pulseDuration']  # spikes per second, normalized for pulse duration
             # first AHP depth
+            print('AHP pars: begin, trough: ', self.spikeShape[j150][0]['AP_beginV'], self.spikeShape[j150][0]['trough_V'])
             AHPDepth = self.spikeShape[j150][0]['AP_beginV'] - self.spikeShape[j150][0]['trough_V']  # from first spike in train
             self.analysis_summary['FiringRate_1p5T'] = rate
             self.analysis_summary['AHP_Depth'] = AHPDepth*1e3  # convert to mV
+            print('AHP Depth: ', AHPDepth*1e3)
 
     def fitOne(self, x=None, yd=None, info='', function=None, fixNonMonotonic=True, excludeNonMonotonic=False):
         """Fit the FI plot to an equation that is piecewise linear up to the threshold

@@ -49,7 +49,7 @@ class IVSummary():
         self.RM = EP.RmTauAnalysis.RmTauAnalysis()
         self.plot = plot
 
-    def compute_iv(self, threshold=-0.010, bridge_offset=0.0, tgap=0.0005):
+    def compute_iv(self, threshold=-0.010, bridge_offset=0.0, tgap=0.0005, pubmode=False, plotiv=True):
         """
         Simple plot of spikes, FI and subthreshold IV
         
@@ -71,13 +71,14 @@ class IVSummary():
                             tauregion=[self.AR.tstart,
                                        self.AR.tstart + (self.AR.tend-self.AR.tstart)/5.],
                             to_peak=True, tgap=tgap)
-            self.plot_iv()
+            if plotiv:
+                self.plot_iv(pubmode=pubmode)
             return True
         else:
             print('getData did not return data')
             return False
 
-    def plot_iv(self):
+    def plot_iv(self, pubmode=False):
         x = -0.08
         y = 1.02
         sizer = {'A': {'pos': [0.05, 0.50, 0.08, 0.78], 'labelpos': (x,y), 'noaxes': False},
@@ -129,7 +130,9 @@ class IVSummary():
             P.axdict['A'].plot(self.RM.taum_fitted[k][0]*1e3, self.RM.taum_fitted[k][1]*1e3, '--k', linewidth=0.30)
         for k in self.RM.tauh_fitted.keys():
             P.axdict['A'].plot(self.RM.tauh_fitted[k][0]*1e3, self.RM.tauh_fitted[k][1]*1e3, '--r', linewidth=0.50)
-            
+        if pubmode:
+            PH.calbar(P.axdict['A'], calbar=[0., -90., 25., 25.], axesoff=True, 
+                orient='left', unitNames={'x': 'ms', 'y': 'mV'}, fontsize=10, weight='normal', font='Arial')
         P.axdict['B'].plot(self.SP.analysis_summary['FI_Curve'][0]*1e9, self.SP.analysis_summary['FI_Curve'][1]/(self.AR.tend-self.AR.tstart), 'ko-', markersize=4, linewidth=0.5)
         clist = ['r', 'b', 'g', 'c', 'm']  # only 5 possiblities
         linestyle = ['-', '--', '-.', '-', '--']
@@ -151,24 +154,25 @@ class IVSummary():
             P.axdict['B'].legend(fontsize=6)
         
         P.axdict['C'].plot(self.RM.ivss_cmd*1e9, self.RM.ivss_v*1e3, 'ko-', markersize=4, linewidth=1.0)
-        if self.RM.analysis_summary['CCComp']['CCBridgeEnable'] == 1:
-            enable = 'On'
-        else:
-            enable = 'Off'
-        tstr = (r'RMP: {0:.1f} mV {1:s}${{R_{{in}}}}$: {2:.1f} ${{M\Omega}}${3:s}${{\tau_{{m}}}}$: {4:.2f} ms'.
-                format(self.RM.analysis_summary['RMP'], '\n', 
-                       self.RM.analysis_summary['Rin'], '\n', 
-                       self.RM.analysis_summary['taum']*1e3))
-        tstr += (r'{0:s}Holding: {1:.1f} pA{2:s}Bridge [{3:3s}]: {4:.1f} ${{M\Omega}}$'.
-                 format('\n', np.mean(self.RM.analysis_summary['Irmp'])*1e12,
-                        '\n', enable, 
-                        np.mean(self.RM.analysis_summary['CCComp']['CCBridgeResistance']/1e6)))
-        tstr += (r'{0:s}Bridge Adjust: {1:.1f} ${{M\Omega}}$ {2:s}Pipette: {3:.1f} mV'.
-                format('\n', self.RM.analysis_summary['BridgeAdjust']/1e6,
-                       '\n', np.mean(self.RM.analysis_summary['CCComp']['CCPipetteOffset']*1e3)))
+        if not pubmode:
+            if self.RM.analysis_summary['CCComp']['CCBridgeEnable'] == 1:
+                enable = 'On'
+            else:
+                enable = 'Off'
+            tstr = (r'RMP: {0:.1f} mV {1:s}${{R_{{in}}}}$: {2:.1f} ${{M\Omega}}${3:s}${{\tau_{{m}}}}$: {4:.2f} ms'.
+                    format(self.RM.analysis_summary['RMP'], '\n', 
+                           self.RM.analysis_summary['Rin'], '\n', 
+                           self.RM.analysis_summary['taum']*1e3))
+            tstr += (r'{0:s}Holding: {1:.1f} pA{2:s}Bridge [{3:3s}]: {4:.1f} ${{M\Omega}}$'.
+                     format('\n', np.mean(self.RM.analysis_summary['Irmp'])*1e12,
+                            '\n', enable, 
+                            np.mean(self.RM.analysis_summary['CCComp']['CCBridgeResistance']/1e6)))
+            tstr += (r'{0:s}Bridge Adjust: {1:.1f} ${{M\Omega}}$ {2:s}Pipette: {3:.1f} mV'.
+                    format('\n', self.RM.analysis_summary['BridgeAdjust']/1e6,
+                           '\n', np.mean(self.RM.analysis_summary['CCComp']['CCPipetteOffset']*1e3)))
 
-        P.axdict['C'].text(-0.05, 0.80, tstr,
-            transform=P.axdict['C'].transAxes, horizontalalignment='left', verticalalignment='top', fontsize=7)
+            P.axdict['C'].text(-0.05, 0.80, tstr,
+                transform=P.axdict['C'].transAxes, horizontalalignment='left', verticalalignment='top', fontsize=7)
      #   P.axdict['C'].xyzero=([0., -0.060])
         PH.talbotTicks(P.axdict['A'], tickPlacesAdd={'x': 0, 'y': 0}, floatAdd={'x': 0, 'y': 0})
         P.axdict['A'].set_xlabel('T (ms)')
