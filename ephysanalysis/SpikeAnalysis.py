@@ -37,7 +37,7 @@ from . import Fitting # pbm's fitting stuff...
 import pprint
 import time
 
-this_source_file = inspect.getsource(inspect.getmodule(inspect.currentframe()))
+this_source_file = 'ephysanalysis.SpikeAnalysisrc'
 
 class SpikeAnalysis():
     
@@ -574,13 +574,19 @@ class SpikeAnalysis():
         if len(self.spikeShape[j150]) >= 1 and (0 in list(self.spikeShape[j150].keys())) and self.spikeShape[j150][0]['halfwidth'] is not None:
             self.analysis_summary['AP1_Latency'] = (self.spikeShape[j150][0]['AP_Latency'] - self.spikeShape[j150][0]['tstart'])*1e3
             self.analysis_summary['AP1_HalfWidth'] = self.spikeShape[j150][0]['halfwidth']*1e3
-            self.analysis_summary['AP1_HalfWidth_interpolated'] = self.spikeShape[j150][0]['halfwidth_interpolated']*1e3
+            if self.spikeShape[j150][0]['halfwidth_interpolated'] is not None:
+                self.analysis_summary['AP1_HalfWidth_interpolated'] = self.spikeShape[j150][0]['halfwidth_interpolated']*1e3
+            else:
+                self.analysis_summary['AP1_HalfWidth_interpolated'] = np.nan
             spikesfound = True
 
         if len(self.spikeShape[j150]) >= 2 and (1 in list(self.spikeShape[j150].keys())) and self.spikeShape[j150][1]['halfwidth'] is not None:
             self.analysis_summary['AP2_Latency'] = (self.spikeShape[j150][1]['AP_Latency'] - self.spikeShape[j150][1]['tstart'])*1e3
             self.analysis_summary['AP2_HalfWidth'] = self.spikeShape[j150][1]['halfwidth']*1e3
-            self.analysis_summary['AP2_HalfWidth_interpolated'] = self.spikeShape[j150][1]['halfwidth_interpolated']*1e3
+            if self.spikeShape[j150][1]['halfwidth_interpolated'] is not None:
+                self.analysis_summary['AP2_HalfWidth_interpolated'] = self.spikeShape[j150][1]['halfwidth_interpolated']*1e3
+            else:
+                self.analysis_summary['AP2_HalfWidth_interpolated'] = np.nan
         
         if spikesfound:
             rate = len(self.spikeShape[j150])/self.spikeShape[j150][0]['pulseDuration']  # spikes per second, normalized for pulse duration
