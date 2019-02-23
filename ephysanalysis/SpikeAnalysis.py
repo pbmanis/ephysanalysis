@@ -26,6 +26,7 @@ for Acq4.
 from collections import OrderedDict
 import os
 import os.path
+from pathlib import Path
 import inspect
 import sys
 import itertools
@@ -413,7 +414,7 @@ class SpikeAnalysis():
         if ((km - kbegin) < 1):
             km = kbegin + int((k - kbegin)/2.) + 1
         kthresh = np.argmin(np.fabs(dv[kbegin:km] - begin_dV)) + kbegin  # point where slope is closest to begin
-        
+        # print('kthresh, kbegin: ', kthresh, kbegin)
         # save values in dict here
         thisspike['AP_beginIndex'] = kthresh
         thisspike['AP_Latency'] = self.Clamps.time_base[kthresh]
@@ -591,9 +592,11 @@ class SpikeAnalysis():
         if spikesfound:
             rate = len(self.spikeShape[j150])/self.spikeShape[j150][0]['pulseDuration']  # spikes per second, normalized for pulse duration
             # first AHP depth
+            print('AHP pars: begin, trough: ', self.spikeShape[j150][0]['AP_beginV'], self.spikeShape[j150][0]['trough_V'])
             AHPDepth = self.spikeShape[j150][0]['AP_beginV'] - self.spikeShape[j150][0]['trough_V']  # from first spike in train
             self.analysis_summary['FiringRate_1p5T'] = rate
             self.analysis_summary['AHP_Depth'] = AHPDepth*1e3  # convert to mV
+            print('AHP Depth: ', AHPDepth*1e3)
 
     def fitOne(self, x=None, yd=None, info='', function=None, fixNonMonotonic=True, excludeNonMonotonic=False):
         """Fit the FI plot to an equation that is piecewise linear up to the threshold
