@@ -476,8 +476,12 @@ class Acq4Read():
         seqparams = index['.']['sequenceParams']
         #self.printIndex(index)
         stimuli = index['.']['devices']['MultiClamp1']['waveGeneratorWidget']['stimuli']
-        self.tstart = stimuli['Pulse']['start']['value']
-        self.tend = self.tstart + stimuli['Pulse']['length']['value']
+        if 'Pulse' in list(stimuli.keys()):
+            self.tstart = stimuli['Pulse']['start']['value']
+            self.tend = self.tstart + stimuli['Pulse']['length']['value']
+        else:
+            self.tstart = 0.
+            self.tend = np.max(self.time_base)
         if mclamppulses in seqparams.keys():
             self.repetitions = len(seqparams[mclamppulses])
             self.commandLevels = np.array(seqparams[mclamppulses])

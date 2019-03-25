@@ -324,6 +324,8 @@ class DataSummary():
         days = []
         #print('allfiles: ', allfiles)
         for thisfile in allfiles:
+            if thisfile.endswith('.sql'):
+                continue
             m = self.daytype.match(thisfile)
             if m in ['.DS_Store']:
                 continue
@@ -348,7 +350,7 @@ class DataSummary():
 
         for nd, day in enumerate(days):
             if self.append and (day in self.pddata['date'].tolist()):
-                print('Append mode: day already in list: {0:s}'.format(day))
+                print('\nAppend mode: day already in list: {0:s}'.format(day))
                 continue  # skip
             else:
                 print('Day to do: ', day)
