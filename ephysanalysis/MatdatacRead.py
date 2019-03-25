@@ -116,7 +116,10 @@ class GetClamps():
             return False
         protocol = self.datac.items[item].type
         # print('protocol: ', protocol)
-        rate, recs = self.datac.items[item].data()
+        try:
+            rate, recs = self.datac.items[item].data()
+        except:
+            return False
         rate = self.datac.items[item].dfile['Sample_Rate']['v']*1e-6  # convert to seconds
         self.dfile = self.datac.items[item].dfile
         (ddir, fname) = os.path.split(self.datac.fname)
