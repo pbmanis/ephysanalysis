@@ -49,6 +49,19 @@ class IVSummary():
         self.RM = EP.RmTauAnalysis.RmTauAnalysis()
         self.plot = plot
 
+    def iv_check(self, duration=0.):
+        """
+        Check the IV for a particular duration, but does no analysis
+        """
+        if duration == 0:
+            return True
+        self.AR.setProtocol(self.datapath)
+        if self.AR.getData():
+            dur = self.AR.tend-self.AR.tstart
+            if np.fabs(dur - duration) < 1e-4:
+                return True
+        return False
+
     def compute_iv(self, threshold=-0.010, bridge_offset=0.0, tgap=0.0005, pubmode=False, plotiv=True):
         """
         Simple plot of spikes, FI and subthreshold IV
