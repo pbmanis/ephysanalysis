@@ -546,32 +546,40 @@ class Utility():
             else:
                 stn2 = []
             # filter peaks by checking that valleys between pairs
-            # are sufficiently deep
+            # are sufficiently deep. Note that this only checks
+            # BETWEEN spikes, so we need to do an additional
+            # check of the last "spike" separately
             removed = []
             t_forward = int(0.010/dt)  # use 10 msec forward for drop
             for i in range(len(stn)-1):  # for all putative peaks
                 if i in removed:  # this can happen if event was removed in j loop
                     continue
-                test_end = stn[i]+t_forward
-                if test_end > vma.shape[0]:
-                    test_end = vma.shape[0]
-                if np.fabs(vma[stn[i]] - np.min(vma[stn[i]:test_end])) < mindip:
+                test_end = min([stn[i]+t_forward, stn[i+1], vma.shape[0]])
+                if (vma[stn[i]] - np.min(vma[stn[i]:test_end])) < mindip:
                     if i == 0:  # special case: if first event fails, remove it from output list
                         stn2 = []
                     removed.append(i)
                     continue
-                for j in range(i+1,len(stn)):  # and for subsequent peaks
-                    if j in removed:
-                        continue
-                    p2pv = (vma[stn[j]+1]+vma[stn[i]])/2.0 # use half height difference between peaks
-                    minv = np.min(vma[stn[i]:stn[j]])
-                    if p2pv-minv > mindip:
-                        stn2.append(stn[j])
-                        break
-                    else:
-                        removed.append(j)
+                else:
+                    stn2.append(stn[i])
+                # for j in range(i+1,len(stn)):  # and for subsequent peaks
+                #     if j in removed:
+                #         continue
+                #     p2pv = (vma[stn[j]]+vma[stn[i]])/2.0 # use half height difference between peaks
+                #     minv = np.min(vma[stn[i]:stn[j]])
+                #     if p2pv-minv > mindip:
+                #         stn2.append(stn[j])
+                #         break
+                #     else:
+                #         removed.append(j)
+            # handle "spikes" that do not repolarize and are the *last* spike
+            if len(stn2) > 1:
+                test_end = stn2[-1] + t_forward
+                minv = np.min(vma[stn2[-1]:test_end])
+                if (vma[stn2][-1] - minv) < mindip:
+                    removed.append(stn2[-1])
+                    stn2 = stn2[:-1]  # remove the last spike
             stn2 = sorted(list(set(stn2)))
-            # print(' stn: ', stn)
             # if len(removed) > 0:
             #     print('**** removed: ', removed, np.array(removed)*dt)
             #     print('*'*80)
