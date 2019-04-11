@@ -19,7 +19,7 @@ an instance of acq4read.
 
 RmTauAnalysis requires that the SpikeAnalysis be run first.
 
-Paul B. Manis, 2015-2017
+Paul B. Manis, 2015-2019
 for acq4
 
 """
@@ -432,6 +432,8 @@ class RmTauAnalysis():
 
     def leak_subtract(self):
         self.yleak = np.zeros(len(self.ivss_v))
+        # basically, should not do this blind...so it is commented out.
+        
         # if self.ctrl.IVCurve_subLeak.isChecked():
         #     if self.Clamps.data_mode in self.dataModel.ic_modes:
         #         sf = 1e-12

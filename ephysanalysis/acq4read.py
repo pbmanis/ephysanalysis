@@ -11,13 +11,11 @@ Requires pyqtgraph to read the .ma files and the .index file
 import os
 import re
 from pathlib import Path
-#from pyqtgraph import metaarray
 
 import ephysanalysis.metaarray as EM
 from pyqtgraph import configfile
 import numpy as np
 import datetime
-#import matplotlib.pyplot as mpl
 import pprint
 import textwrap as WR
 import collections
@@ -905,6 +903,7 @@ if __name__ == '__main__':
     a = Acq4Read()
     BRI = BR.BoundRect()
 #    a.setProtocol('/Users/pbmanis/Documents/data/MRK_Pyramidal/2018.01.26_000/slice_000/cell_000/CCIV_1nA_max_000/')
+    # this won't work in the wild, need appropriate data for testing.
     cell = '/Users/pbmanis/Documents/data/mrk/2017.09.12_000/slice_000/cell_001'
     datasets = os.listdir(cell)
     imageplotted = False
@@ -984,8 +983,8 @@ if __name__ == '__main__':
     
     # a.getData()
     # a.plotClampData(all=True)
-    #print a.clampInfo
-   # print a.traces[0]
+    # print a.clampInfo
+    # print a.traces[0]
     pos = mpl.ginput(-1, show_clicks=True)
     print(pos)
     

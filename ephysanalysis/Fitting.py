@@ -44,7 +44,6 @@ import scipy.optimize
 import ctypes
 import numpy.random
 
-#from numba import autojit
       
 class Fitting():
     # dictionary contains:

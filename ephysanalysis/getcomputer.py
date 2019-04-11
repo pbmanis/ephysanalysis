@@ -1,5 +1,11 @@
 import subprocess
 import os
+"""
+Wont work out of the box for you, but you can fix that
+This is so specific data sets can be found on multiple machines. 
+File under "there must be a better way..."
+
+"""
 
 def getcomputer():
     if os.name == 'nt':

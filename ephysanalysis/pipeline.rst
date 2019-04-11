@@ -32,6 +32,7 @@ openpyxl (and it's dependencies)
 Although the code might run under Python 2.7, we strongly recommend running it under a recent version of Python 3.
 
 We also recommend setting up a python3 environment in anaconda (or however you prefer) so that there is a clean
+environment to work in.
 
 Processing pipeline
 -------------------
@@ -109,13 +110,14 @@ ToDo:
 
 2. More sophisticated VCIV analysis. 
 
-3. 
+3. lots more..... 
 
 
 Using the Pipeline
 ==================
 
-Note: When manipulating data file structures, always use Acq4's DataManager. 
+Note: When manipulating data file structures on disk, **always** use Acq4's DataManager.
+ 
 Clean up the data
 -----------------
 The semi-automated analysis of large datasets requires (and relies) on the data being "pristine" and in the correct structure. Unfortuately, ACQ4 has significant flexibility and it is all to easy to store the data into the wrong level/folder, fail to open a slice or cell folder, etc. In addition, users sometimes store non-acq4 data in some of the directories. Such files might include bits of screenshots or exports of a window, SQL databases, etc.
