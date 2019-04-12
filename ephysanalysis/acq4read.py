@@ -513,6 +513,16 @@ class Acq4Read():
                 return EM.MetaArray(np.zeros(tVals.shape), info=[{'name': 'Time', 'values': tVals, 'units': 's'}, {'units': units}])
         return None
 
+    def getStim(self, stimname='Stim'):
+        supindex = self._readIndex(currdir=self.protocol)
+        if supindex is None:
+            supindex = self._readIndex()
+            if supindex is None:
+                raise ValueError('Cannot read index....')
+        stimuli = supindex['.']['devices'][stimname]['channels']['command']
+        stimuli = stimuli['waveGeneratorWidget']['stimuli']
+        return(self._getPulses(stimuli))
+        
     def getBlueLaserTimes(self):
         """
         Get laser pulse times  - handling multiple possible configurations (ugly)
@@ -535,6 +545,10 @@ class Acq4Read():
                 print(supindex['.']['devices']['PockelCell']['channels'].keys())
                 raise ValueError('Unable to parse devices PockeCell')
         stimuli = stimuli['waveGeneratorWidget']['stimuli']
+        return self._getPulses(stimuli)
+
+
+    def _getPulses(self, stimuli):
         if 'PulseTrain' in stimuli.keys():
             times = {}
             times['start'] = []
@@ -548,7 +562,6 @@ class Acq4Read():
                 times['start'].append(tstart[0] + n*times['period'][0])
                 times['duration'].append(stimuli['PulseTrain']['length']['value'])
                 times['amplitude'].append(stimuli['PulseTrain']['amplitude']['value'])
-            return times
         
         elif 'Pulse' in stimuli.keys():
             times = {}
@@ -566,7 +579,6 @@ class Acq4Read():
                 times['amplitude'].append(stimuli[key]['amplitude']['value'])
                 times['period'].append(starttime -laststarttime)
                 laststarttime = starttime
-            return times
 
         elif 'Pulse3' in stimuli.keys():
             times = {}
@@ -574,11 +586,12 @@ class Acq4Read():
             times['duration'] = stimuli['Pulse3']['length']['value']
             times['amplitude'] = stimuli['Pulse3']['amplitude']['value']
             times['type'] = stimuli['Pulse3']['type']
-            return times
 
         else:
-            raise ValueError('need to find keys for stimulus (might be empty): ' % stimuli)
-
+            raise ValueError('need to find keys for stimulus (might be empty): ' % stimuli)        
+        
+        return times
+        
     def getDeviceData(self, device='Photodiode', devicename='Photodiode'):
         """
         Get the data from a device
