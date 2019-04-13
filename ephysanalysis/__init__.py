@@ -22,6 +22,7 @@ import ephysanalysis.VCSummary
 import ephysanalysis.boundrect
 import ephysanalysis.poisson_score
 import ephysanalysis.bridge
+import ephysanalysis.MakeClamps
 
 import ephysanalysis.metaarray as MetaArray
 
