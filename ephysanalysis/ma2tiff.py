@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import print_function
 """
-Translate metaarray file to tiff file
+Translate metaarray file to tiff file (for images)
 11 July 2018 PBM
 
 Specify path in this file, and then pass the filename on the command line

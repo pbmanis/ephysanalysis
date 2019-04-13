@@ -18,8 +18,8 @@ as class variables, or through the class variable analysis_summary,
 a dictionary with key analysis results. 
 IVCurve uses the analysis_summary to post results to an sql database.
 
-Paul B. Manis, Ph.D. 2016-2018
-for Acq4.
+Paul B. Manis, Ph.D. 2016-2019
+for Acq4 (and beyond)
 
 """
 
@@ -147,7 +147,7 @@ class SpikeAnalysis():
         #print 'clamp start/end: ', self.Clamps.tstart, self.Clamps.tend
         lastspikecount = 0
         U = Utility.Utility()
-        for i in range(ntr):
+        for i in range(ntr):  # this is where we should parallelize the analysis for spikes
             spikes = U.findspikes(self.Clamps.time_base, np.array(self.Clamps.traces[i]),
                                               self.threshold, t0=self.Clamps.tstart,
                                               t1=self.Clamps.tend,
@@ -177,28 +177,23 @@ class SpikeAnalysis():
             #   Here we return a standardized ar measured during the first 100 msec
             #  (standard ar)
             if (minspk <= len(spikes)) and (self.spikecount[i] > lastspikecount):
-#                print(spikes)
                 spx = spikes[np.where(spikes-self.Clamps.tstart < self.ar_window)]  # default is 100 msec
                 if len(spx) >= 4: # at least 4 spikes
-#                    print('spx: ', spx)
                     if spx[-1] > self.ar_lastspike+self.Clamps.tstart:  # default 75 msec
                         misi = np.mean(np.diff(spx[-2:]))*1e3  # last ISIs in the interval
                         ar[i] = misi / self.fisi[i]
             lastspikecount = self.spikecount[i]  # update rate (sets max rate)
             
         iAR = np.where(ar > 0)  # valid AR and monotonically rising
-#        print('iAR: ', iAR)
         self.adapt_ratio = np.nan
         if len(ar[iAR]) > 0:
             self.adapt_ratio = np.mean(ar[iAR])  # only where we made the measurement
         self.ar = ar  # stores all the ar values
         self.analysis_summary['AdaptRatio'] = self.adapt_ratio  # only the valid values
-#        print('AR: ', self.adapt_ratio)
         self.nospk = np.where(self.spikecount == 0)
         self.spk = np.where(self.spikecount > 0)[0]
         self.analysis_summary['FI_Curve'] = np.array([self.Clamps.values, self.spikecount])
         self.analysis_summary['FiringRate'] = np.max(self.spikecount)/(self.Clamps.tend - self.Clamps.tstart)
-#        print self.analysis_summary['FI_Curve']
         self.spikes_counted = True
 #        self.update_SpikePlots()
 
@@ -508,14 +503,10 @@ class SpikeAnalysis():
             value will be the closest estimate given the step sizes used to
             collect the data)
         """
-        # nsp = []
         icmd = []  # list of command currents that resulted in spikes.
         for m in sorted(self.spikeShape.keys()):
             n = len(list(self.spikeShape[m].keys())) # number of spikes in the trace
             for n in list(self.spikeShape[m].keys()):
-                # if n > 0:
-                # nsp.append(len(self.spikeShape[m].keys()))
-                # print (m, n, self.spikeShape[m], self.spikeShape[m].keys(), len(icmd))
                 icmd.append(self.spikeShape[m][n]['current'])
         icmd = np.array(icmd)
         try:
@@ -532,7 +523,6 @@ class SpikeAnalysis():
         ia150 = np.argmin(np.abs(1.5*imin-icmd))
         iacmdthr = np.argmin(np.abs(imin-self.Clamps.values))
         ia150cmdthr = np.argmin(np.abs(icmd[ia150] - self.Clamps.values))
-        #print 'thr indices and values: ', iacmdthr, ia150cmdthr, self.Clamps.values[iacmdthr], self.Clamps.values[ia150cmdthr]
         return (iacmdthr, ia150cmdthr)  # return threshold indices into self.Clamps.values array at threshold and 150% point
 
 

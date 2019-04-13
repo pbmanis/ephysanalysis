@@ -12,8 +12,8 @@ day
             cells
                 protocols
 
-The clice may have images and videos, but no protocols
-The cells and paris may have both
+The slice may have images and videos, but no protocols
+The cells and pairs may have both
 Pairs should have cells and protocols under cells
 
 Any other organization is flagged.

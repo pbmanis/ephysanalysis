@@ -110,7 +110,7 @@ class Printer():
 class DataSummary():
 
     def __init__(self, basedir, outputMode='terminal', outputFile=None, daylistfile=None,
-                 after=None, before=None, dryrun=False, depth='all', inspect=True,
+                 after=None, before=None, day=None, dryrun=False, depth='all', inspect=True,
                  deep=False, append=False, verbose=False):
         """
         Note that the init is just setup - you have to call getDay the object to do anything
@@ -148,6 +148,9 @@ class DataSummary():
             An ending date for the summary. Files after this date will not be processed. 
             The format is the same as for the starting date
     
+        day : str(no default)
+            The day to do a summary on.
+                 
         dryrun : bool (default False)
             Causes the output to be limited and protocols are not fully investigated
     
@@ -179,6 +182,7 @@ class DataSummary():
         self.dryrun = dryrun
         self.after = after
         self.before = before
+        self.day = day
         self.depth = depth
         self.verbose = verbose
         self.deep_check = deep
@@ -193,9 +197,6 @@ class DataSummary():
             self.reportIncompleteProtocols = False # do include incomplete protocol runs in print
             self.InvestigateProtocols = False  # set True to check out the protocols in detail
         self.panda_string = ''
-        
-        # initialized dictionary that holds all the stuff
-        #self.analysis_summary = {}
 
         # column definitions - may need to adjust if change data that is pasted into the output
         self.day_defs = ['date', 'description', 'notes', 'species', 'strain', 'genotype', 'age', 
@@ -227,24 +228,13 @@ class DataSummary():
                         )        
         self.AR = acq4read.Acq4Read()  # instance of the reader
 
-#        outputDir = os.path.join(os.path.expanduser("~"), 'Desktop/acq4_scripts')
         if self.outputMode == 'tabfile':
-            # self.outFilename = self.basedir.replace('/', '_') + '.tab'
-            # self.outFilename = self.outFilename.replace('\\', '_')
-            # if self.outFilename[0] == '_':
-            #     self.outFilename = self.outFilename[1:]
-            # self.outFilename = os.path.join(outputDir, self.outFilename)
             print('Tabfile output: Writing to {:<s}'.format(self.outFilename))
             h = open(self.outFilename, 'w')  # write new file
             h.write(self.basedir+'\n')
             h.write(self.coldefs + '\n')
             h.close()
         elif self.outputMode == 'pandas':  # save output as a pandas data structure, pickled
-            # self.outFilename = self.basedir.replace('/', '_') + '.pkl'
-            # self.outFilename = self.outFilename.replace('\\', '_')
-            # if self.outFilename[0] == '_':
-            #     self.outFilename = self.outFilename[1:]
-            # self.outFilename = os.path.join(outputDir, self.outFilename)
             print('Pandas output: will write to {:<s}'.format(self.outFilename))
         else:
             pass  # just print if terminal
@@ -267,6 +257,11 @@ class DataSummary():
                 maxdayx = (dt.year, dt.month, dt.day)
             except:
                 raise ValueError('Date for BEFORE cannot be parsed : {0:s}'.format(self.before))
+        if self.day is not None:
+                dt = DUP.parse(self.day)
+                mindayx = (dt.year, dt.month, dt.day)
+                maxdayx = (dt.year, dt.month, dt.day)
+            
         print(self.after, self.before, mindayx, maxdayx)
         print(self.daylistfile)
         if self.daylistfile is None:  # get from command line
@@ -337,6 +332,7 @@ class DataSummary():
                 id = idl[0]*1e4+idl[1]*1e2+idl[2]
 
                 if self.daylist is None:
+                    print('id, self.minday, self.maxday: ', id, self.minday, self.maxday)
                     if id >= self.minday and id <= self.maxday:
                         days.append(thisfile)  # was [0:10]
                 else:
@@ -404,7 +400,6 @@ class DataSummary():
         The result is stored in teh class variable slice_index
         
         """
-#        print('\ndo slices')
         allfiles = os.listdir(os.path.join(self.basedir, day))
         slicetype = re.compile("(slice\_)(\d{3,3})")
         slices = []
@@ -454,7 +449,6 @@ class DataSummary():
         The result is stored in teh calss variable cell_index
         
         """
-#        print('\ndo cells')
         allfiles = os.listdir(thisslice)
         cell_re = re.compile("(cell_)(\d{3,3})")
         cells = []
@@ -504,7 +498,6 @@ class DataSummary():
         
         The results are stored in a class variable "ostring", which is a dict of protocols and summary of images and videos
         """
-#        print( '\n\nSearching protocols')
         allfiles = os.listdir(thiscell)
         protocols = []
         nonprotocols = []
@@ -588,29 +581,6 @@ class DataSummary():
             if self.verbose:
                 print('self.completeprotocols', self.completeprotocols)
                 print('self.incompleteprotocols', self.incompleteprotocols)
-    # else:
-       #      self.incompleteprotocolstring += ''
-       #
-       #      anyprotocols = True
-       #      prots = {}
-       #      for np, protocol in enumerate(protocols):
-       #          Printer(self.cstring + ' Prot[%2d/%2d]: %s' % (np,len(protocols), protocol))
-       #          if protocol not in self.allprotocols:
-       #              self.allprotocols.append(protocol)
-       #          m = endmatch.search(protocol)
-       #          if m is not None:
-       #              p = protocol[:-4]
-       #          else:
-       #              p = protocol
-       #          if p not in prots.keys():
-       #              prots[p] = 1
-       #          else:
-       #              prots[p] += 1
-       #      if len(prots.keys()) > 0:
-       #          for p in prots.keys():
-       #              self.incompleteprotocolstring += '{:<s}({:<d}), '.format(p, prots[p])
-       #      else:
-       #          self.completeprotocolstring = '<No protocols found>'
 
         if len(self.completeprotocols) == 0:
             self.completeprotocols = ' '
@@ -698,15 +668,12 @@ class DataSummary():
             prot_string += pstx + '\t'
             phdr += k + '\t'
             ohdr += k + '\t'
-        # print('\n\nestring: ', ostring)
-        # print('\nprot_string: ', prot_string)
-        # print('\nohdr: ', ohdr)
             
         ostring = day_string + slice_string + cell_string + prot_string
         ostring = ostring.replace('\n', ' ')
         ostring = ostring.rstrip('\t ')
         ostring += '\n'
-        # print('\nOSTRING: \n', ostring.replace('\t', '##').replace('\n', '&&'))
+
         phdr = phdr.rstrip('\t\n')
         if len(self.panda_string) == 0:  # catch the header
             self.panda_string = phdr.replace('\n', '') + '\n'  # clip the last \t and add a 
@@ -806,6 +773,8 @@ def main():
                         help='perform deep inspection (very slow)')
     parser.add_argument('--daylist', type=str, default=None, dest='daylist',
                         help='Specify daylistfile')
+    parser.add_argument('-d', '--day', type=str, default=None, 
+                        help='day for analysis')
     parser.add_argument('-a', '--after', type=str, default=None, dest='after',
                         help='only analyze dates on or after a date')
     parser.add_argument('-b', '--before', type=str, default=None, dest='before',
@@ -816,14 +785,14 @@ def main():
                         help='Verbose print out during run')
     parser.add_argument('--no-inspect', action='store_false', dest='noinspect',
                         help='Do not inspect protocols, only report directories')
-    parser.add_argument('-d', '--depth', type=str, default='all', dest='depth',
+    parser.add_argument('--depth', type=str, default='all', dest='depth',
                         choices = ['days', 'slices', 'cells', 'protocols', 'all'],
                         help='Specify depth for --dry-run')
     parser.add_argument('-A', '--append', action='store_true', dest='append',
                         help='update new/missing entries to specified output file')
     args = parser.parse_args()
     ds = DataSummary(basedir=args.basedir, daylistfile=args.daylist, outputMode=args.output, outputFile=args.outputFilename,
-            after=args.after, before=args.before, dryrun=args.dryrun, depth=args.depth, inspect=args.noinspect,
+            after=args.after, before=args.before, day=args.day, dryrun=args.dryrun, depth=args.depth, inspect=args.noinspect,
             deep=args.deep, append=args.append,
             verbose=args.verbose)
 
@@ -916,7 +885,8 @@ def main():
                 print(c)
             print('='*80)
 
-    
+    print('\n\n')
     
 if __name__ == "__main__":
     main()
+

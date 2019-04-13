@@ -1,4 +1,17 @@
 # -*- coding: utf-8 -*-
+"""
+Read the 'old' matdata files - File structure used in the Manis lab from
+about 2000 to 2015.
+
+The files are matlab files (basically HDF5 in the later versions).
+This code specifically reads those files and turns them into a "clamps" structure
+as used by acq4 code. This way we can use the same analysis. 
+
+GetClamps does the transformation.
+
+2018-2019, Paul B. Manis.
+
+"""
 from __future__ import print_function
 import os
 import sys
