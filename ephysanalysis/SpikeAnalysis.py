@@ -38,7 +38,7 @@ from . import Fitting # pbm's fitting stuff...
 import pprint
 import time
 
-this_source_file = 'ephysanalysis.SpikeAnalysisrc'
+this_source_file = 'ephysanalysis.SpikeAnalysis'
 
 class SpikeAnalysis():
     
@@ -477,8 +477,8 @@ class SpikeAnalysis():
                 # ax.plot(t_hwup, halfv, 'bx')
                 # mpl.show()
                 if thisspike['halfwidth'] > self.min_halfwidth:  # too broad to be acceptable
-                    print(f'{this_source_file:s}::\n   spikes > min half width', thisspike['halfwidth'])
-                    print('   halfv: ', halfv, thisspike['peak_V'], thisspike['AP_beginV'])
+                    # print(f'{this_source_file:s}::\n   spikes > min half width', thisspike['halfwidth'])
+                    # print('   halfv: ', halfv, thisspike['peak_V'], thisspike['AP_beginV'])
                     thisspike['halfwidth'] = None
                     thisspike['halfwidth_interpolated'] = None
 
@@ -592,11 +592,11 @@ class SpikeAnalysis():
         if spikesfound:
             rate = len(self.spikeShape[j150])/self.spikeShape[j150][0]['pulseDuration']  # spikes per second, normalized for pulse duration
             # first AHP depth
-            print('AHP pars: begin, trough: ', self.spikeShape[j150][0]['AP_beginV'], self.spikeShape[j150][0]['trough_V'])
+            # print('AHP pars: begin, trough: ', self.spikeShape[j150][0]['AP_beginV'], self.spikeShape[j150][0]['trough_V'])
             AHPDepth = self.spikeShape[j150][0]['AP_beginV'] - self.spikeShape[j150][0]['trough_V']  # from first spike in train
             self.analysis_summary['FiringRate_1p5T'] = rate
             self.analysis_summary['AHP_Depth'] = AHPDepth*1e3  # convert to mV
-            print('AHP Depth: ', AHPDepth*1e3)
+            # print('AHP Depth: ', AHPDepth*1e3)
 
     def fitOne(self, x=None, yd=None, info='', function=None, fixNonMonotonic=True, excludeNonMonotonic=False):
         """Fit the FI plot to an equation that is piecewise linear up to the threshold
