@@ -138,11 +138,13 @@ class Acq4Read():
        # print (indexFile)
         if not os.path.isfile(indexFile):
             print("Directory '%s' is not managed or '.index' file not found" % (currdir))
+            print('indexfile: ', indexFile)
             return self._dirindex
         try:
             self._dirindex = configfile.readConfigFile(indexFile)
         except:
             print('Failed to read index file for %s' % currdir)
+            print('indexfile should be: ', indexFile)
             print('Probably bad formatting or broken .index file')
             return self._dirindex
         return self._dirindex
