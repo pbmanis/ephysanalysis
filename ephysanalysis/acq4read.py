@@ -403,6 +403,7 @@ class Acq4Read():
                 else:
                     sequence_values = [x for x in self.clampValues]
         self.mode = None
+        j = 0
         for i, d in enumerate(dirs):
             fn = os.path.join(d, self.dataname)
             if not os.path.isfile(fn):
@@ -430,7 +431,10 @@ class Acq4Read():
             self.data_array.append(tr.view(np.ndarray)[self.tracepos])
             self.cmd_wave.append(tr.view(np.ndarray)[self.cmdpos])
             if sequence_values is not None:
-                self.values.append(sequence_values[i])
+                if j >= len(sequence_values):
+                    j = 0
+                self.values.append(sequence_values[j])
+                j += 1
             self.time_base.append(tr.xvals('Time'))
             sr = info[1]['DAQ']['primary']['rate']
             self.sample_rate.append(self.samp_rate)
