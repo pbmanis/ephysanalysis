@@ -79,8 +79,12 @@ class PSCSummary():
         self.AR.setProtocol(self.datapath)  # define the protocol path where the data is
         self.setup(clamps=self.AR)
         if self.AR.getData():  # get that data.
-            # self.analyze_IO()
-            self.analyze_VDEP()
+            if protocolName.startswith('Stim_IO'):
+                self.analyze_IO()
+            elif protocolName.startswith('VC-EPSC'):
+                self.analyze_VDEP()
+            elif protocolName.startswith('PPF'):
+                self.analyze_PPF()
             self.plot_vciv()
             return True
         return False
@@ -193,11 +197,8 @@ class PSCSummary():
             i_mean = self.mean_I_analysis(region=[pdelay-width, pdelay+width], reps=reps)
             i_nmda_mean = self.mean_I_analysis(region=[nmdelay-nwidth, nmdelay+nwidth], reps=reps)
             bl = self.mean_I_analysis(region=self.baseline, reps=reps)
-            print('baseline: ', bl)
             i_mean -= bl
             i_nmda_mean -= bl
-            # print('imean: ', i_mean)
-            # print('bl: ', bl)
             self.analysis_summary[f'PSP_VDEP'][i] = i_mean
             self.analysis_summary[f'PSP_VDEP_NMDA'][i] = i_nmda_mean
             cmdv.extend(self.i_mean_cmd)
@@ -206,11 +207,8 @@ class PSCSummary():
 
         self.analysis_summary['psc_stim_amplitudes'] = np.array(stim_I)
         self.analysis_summary['psc_intervals'] = np.array(stimintvl)
-        self.analysis_summary['ppf_dt'] = np.array(stim_dt)
         self.analysis_summary['stim_times'] = ptrain['start']
         self.analysis_summary['Vcmd'] = np.array(cmdv)+self.AR.holding
-        print(self.analysis_summary['Vcmd'].shape)
-        print(self.analysis_summary['PSP_VDEP_NMDA'])
         
     def analyze_PPF(self, rmpregion=[0., 0.05], protocolName=None):
         #self.rmp_analysis(region=rmpregion)
@@ -223,9 +221,7 @@ class PSCSummary():
         dd  = self.AR.getDeviceData(device='Stim0', devicename='command')
 
         reps = self.AR.sequence[('protocol', 'repetitions')]
-        stim_dt = np.diff(ptrain['start'])
         stim_I = [ptrain['amplitude'][0]]
-        mode = '?'
         if not ('Stim0', 'command.PulseTrain_period') in self.AR.sequence.keys():
             raise ValueError('Cannot find PulseTrain_period in stimulus command')
         
@@ -234,32 +230,33 @@ class PSCSummary():
         
         delay = 7*1e-3
         width = 0.25*1e-3
+        ndelay = 7*1e-3
+        nwidth =width
         baseline = []
         meani = []
         stimamp = []
         stimintvl = []
         cmdv = []
-        self.sign = -1
+        self.sign = 1
         self.set_baseline_times(rmpregion)
-        print('tstart: ', self.Clamps.tstart)
         self.i_mean = []
         self.analysis_summary['iHold'] = []
-        self.mean_I_analysis(name='iHold', region=rmpregion)
-        print(self.analysis_summary['iHold'])
+        self.i_mean = []
+        self.analysis_summary[f'PPF'] = [[]]*len(stim_dt)
         # print(ptrain)
-        print(ptrain)
         self.i_mean = []
         for i in range(len(stim_dt)):
-            self.analysis_summary[f'PSP_{i:d}'] = []
-            pdelay = ptrain['start'][0] + stim_dt[i] + delay
-            print('pdelay: ', pdelay)
-            print(stim_dt[i])
-            self.mean_I_analysis(name=f'PSP_{i:d}', region=[pdelay-width, pdelay+width], intno=i, nint=len(stim_dt), reps=reps)
-            meani.append(self.i_mean)
-            cmdv.append(self.i_mean_cmd)
-            stimamp.append(ptrain['amplitude'])
+            bl = self.mean_I_analysis(region=self.baseline, reps=reps)
+            pdelay = ptrain['start'][0] + stim_dt[i] + delay  # second stim of pair
+            rdelay = ptrain['start'][0] + ndelay # first stim of pair
+            i_mean = self.mean_I_analysis(region=[pdelay-width, pdelay+width], intno=i, nint=len(stim_dt), reps=reps)
+            i_mean_ref = self.mean_I_analysis(region=[rdelay-width, rdelay+width], intno=i, nint=len(stim_dt), reps=reps)
+            i_mean -= bl.mean()
+            i_mean_ref -= bl.mean()
+            cmdv.extend(self.i_mean_cmd)
+            stimamp.extend(ptrain['amplitude'])
             stimintvl.append(stim_dt[i])
-
+            self.analysis_summary[f'PPF'][i] = i_mean/i_mean_ref
         self.analysis_summary['psc_stim_amplitudes'] = np.array(stim_I)
         self.analysis_summary['psc_intervals'] = np.array(stimintvl)
         self.analysis_summary['ppf_dt'] = np.array(stim_dt)
@@ -291,23 +288,18 @@ class PSCSummary():
         data1 = self.Clamps.traces['Time': region[0]:region[1]]
         data1 = data1.view(np.ndarray)
         sh = data1.shape
-        print('data shape: ', sh)
+        nreps = len(reps)
+        if nint > 1:
+            dindx = range(intno, sh[0], nint)
+            data1 = data1[dindx]
         nx = int(sh[0]/len(reps))
-        # print(data1[30])
         i_mean = data1.mean(axis=1)  # all traces, average over specified time window
-        print('imean shape: ', i_mean.shape)
-        i_mean = np.reshape(i_mean, (len(reps), nx))  # reshape by repetition
-        print('imean reshaped: ', i_mean.shape)
-        print('intno, nint: ', intno, nint)
-        if intno == 0:
-            i_mean = i_mean.mean(axis=0) # average across reps
-        else:
-            i_mean = i_mean[intno:nint:].mean(axis=0)
-        # print('mean: ', self.i_mean.shape)
-        # print(self.i_mean)
+        if nint == 1:
+            nx = int(sh[0]/len(reps))
+            i_mean = np.reshape(i_mean, (len(reps), nx))  # reshape by repetition
+        i_mean = i_mean.mean(axis=0)
         self.i_mean_cmd = self.Clamps.commandLevels
         return i_mean
-        # self.analysis_summary[name].append(np.array(self.i_mean).squeeze())
 
     def vcss_analysis(self, region=None):
         """
@@ -370,48 +362,57 @@ class PSCSummary():
     def plot_vciv(self):
         
         P = PH.regular_grid(2 , 2, order='columns', figsize=(8., 6.), showgrid=False,
-                        verticalspacing=0.1, horizontalspacing=0.12,
+                        verticalspacing=0.1, horizontalspacing=0.1,
                         margins={'leftmargin': 0.12, 'rightmargin': 0.12, 'topmargin': 0.08, 'bottommargin': 0.1},
                         labelposition=(-0.12, 0.95))
         (date, sliceid, cell, proto, p3) = self.file_cell_protocol(self.datapath)
         
         P.figure_handle.suptitle(os.path.join(date, sliceid, cell, proto).replace('_', '\_'), fontsize=12)
         bl = self.get_baseline()
+        if "PPF" in self.analysis_summary.keys():
+            maxt = 250.
+        else:
+            maxt = 150.
         for i in range(self.AR.traces.shape[0]):
             P.axdict['A'].plot(self.AR.time_base*1e3, (self.AR.traces[i,:]-bl[i])*1e12, 'k-', linewidth=0.5)
         if 'PSP_VDEP' in self.analysis_summary.keys():
-            print('stim times: ', self.analysis_summary['stim_times'])
             P.axdict['A'].set_xlim(self.analysis_summary['stim_times'][0]*1e3-10, self.analysis_summary['stim_times'][0]*1e3+50)
             # P.axdict['A'].set_ylim(-2500, 2500)
         else:
-            P.axdict['A'].set_xlim(40, 150.)
+            P.axdict['A'].set_xlim(40, maxt)
             P.axdict['A'].set_ylim(-2000, 500)
         # PH.talbotTicks(P.axdict['A'], tickPlacesAdd={'x': 0, 'y': 0}, floatAdd={'x': 0, 'y': 0})
         P.axdict['A'].set_xlabel('T (ms)')
         P.axdict['A'].set_ylabel('I (pA)')
-        PH.crossAxes(P.axdict['C'], xyzero=(-60., 0.))
-        print('psc stim amplitudes: ', self.analysis_summary['psc_stim_amplitudes'])
 
         if 'PSP_IO' in self.analysis_summary.keys(): # io function
             for i in range(len(self.analysis_summary['stim_times'])):
                 P.axdict['C'].plot(self.analysis_summary['psc_stim_amplitudes']*1e6,
                         self.sign*np.array(self.analysis_summary[f'PSP_IO'][i])*1e12, linewidth=1, markersize=4)
+            P.axdict['C'].set_xlabel('Istim (microAmps)')
+            P.axdict['C'].set_ylabel('EPSC I (pA)')
+            PH.talbotTicks(P.axdict['C'], tickPlacesAdd={'x': 0, 'y': 0}, floatAdd={'x': 0, 'y': 0})
         elif 'PSP_VDEP' in self.analysis_summary.keys(): # io function
             for i in range(len(self.analysis_summary['stim_times'])):
                 P.axdict['C'].plot(self.analysis_summary['Vcmd']*1e3,
                         self.sign*np.array(self.analysis_summary[f'PSP_VDEP'][i])*1e12, marker='o', linewidth=1, markersize=4)
                 P.axdict['C'].plot(self.analysis_summary['Vcmd']*1e3,
                         self.sign*np.array(self.analysis_summary[f'PSP_VDEP_NMDA'][i])*1e12, marker='s', linewidth=1, markersize=4)
+            P.axdict['C'].set_xlabel('V (mV)')
+            P.axdict['C'].set_ylabel('EPSC I (pA)')
+            PH.crossAxes(P.axdict['C'], xyzero=(-60., 0.))
+            PH.talbotTicks(P.axdict['C'], tickPlacesAdd={'x': 0, 'y': 0}, floatAdd={'x': 0, 'y': 0})
         elif 'PPF' in self.analysis_summary.keys():
             for i in range(len(self.analysis_summary['stim_times'])):
-                for j in range(len(self.analysis_summary[f'PSP_VDEP'])):
-                    print(i,j,(np.array(self.analysis_summary[f'PSP_VDEP'])[j]))
-                    P.axdict['C'].plot(self.analysis_summary['psc_stim_amplitudes']*1e6,
-                            self.sign*np.array(self.analysis_summary[f'PSP_VDEP'])[j]*1e12, linewidth=1, markersize=4)
-            
-        P.axdict['C'].set_xlabel('Istim (microAmps)')
-        P.axdict['C'].set_ylabel('EPSC I (pA)')
-        PH.talbotTicks(P.axdict['C'], tickPlacesAdd={'x': 0, 'y': 0}, floatAdd={'x': 0, 'y': 0})
+                P.axdict['C'].plot(self.analysis_summary['ppf_dt']*1e3,
+                            self.sign*np.array(self.analysis_summary[f'PPF']), linewidth=1, markersize=4)
+                P.axdict['C'].set_xlim(0, 200.)
+                P.axdict['C'].set_ylim(0, 2.0)
+                PH.referenceline(P.axdict['C'], 1.0)
+                P.axdict['C'].set_xlabel('Interval (ms)')
+                P.axdict['C'].set_ylabel('PPF (R2/R1)')
+                PH.talbotTicks(P.axdict['C'], tickPlacesAdd={'x': 0, 'y': 1}, floatAdd={'x': 0, 'y': 1})
+
 
         P.axdict['B'].set_xlabel('I (nA)')
         P.axdict['B'].set_ylabel('V (mV)')
@@ -454,12 +455,12 @@ if __name__ == '__main__':
     middir = 'Kasten_Michael'
     middir = ''
     directory = 'Maness_PFC_stim'
-    cell = '2019.03.19_000/slice_001/cell_000'
+    cell = '2019.03.19_000/slice_000/cell_001'
     
     ddc = Path(disk, directory, cell)
     protocol = 'Stim_IO_1_001'
     # protocol = 'PPF_2_001'
-    protocol = 'VC-EPSC_3_ver2_003'
+    # protocol = 'VC-EPSC_3_ver2_003'
     fn = Path(ddc, protocol)
     PSC = PSCSummary(fn)
     PSC.compute_PSC_IV(protocol[:-3])
