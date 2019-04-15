@@ -407,7 +407,7 @@ class Acq4Read():
         for i, d in enumerate(dirs):
             fn = os.path.join(d, self.dataname)
             if not os.path.isfile(fn):
-                print(' acq4read.getData: File not found: ', fn)
+                # print(' acq4read.getData: File not found: ', fn)
                 if check:
                     return False
                 else:
@@ -637,7 +637,11 @@ class Acq4Read():
             if not os.path.isfile(fn):
                 print(' acq4read.getDeviceData: File not found: ', fn)
                 return None
-            lbr = EM.MetaArray(file=fn)
+            try:
+                lbr = EM.MetaArray(file=fn)
+            except:
+                print(' acq4read.getDeviceData: Corrupt Metaarray: ', fn)
+                return None
             info = lbr[0].infoCopy()
             self.Device_data.append(lbr.view(np.ndarray)[0])
             self.Device_time_base.append(lbr.xvals('Time'))

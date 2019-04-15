@@ -799,9 +799,9 @@ class MetaArray(object):
             try:
                 meta += line
             except:
-                print('meta: ', meta)
-                print('line: ', line)
-                raise ValueError('adios')
+                # print('meta: ', meta)
+                # print('line: ', line)
+                raise ValueError('MetaArray: _readMeta: Unable to parse metaarray')
         ret = eval(meta)
         #print ret
         return ret
