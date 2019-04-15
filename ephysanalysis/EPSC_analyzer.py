@@ -71,17 +71,21 @@ class PSCSummary():
 
         self.analysis_summary = {}  # init the result structure
 
-    def compute_PSC_IV(self, protocolName=None):
+    def compute_PSC_IV(self, protocolName=None, plot=True):
         """
         Simple plot voltage clamp traces
         """
         #print('path: ', self.datapath)
         self.AR.setProtocol(self.datapath)  # define the protocol path where the data is
         self.setup(clamps=self.AR)
-        if self.AR.getData():  # get that data.
-            # self.analyze_IO()
-            self.analyze_VDEP()
-            self.plot_vciv()
+        if self.AR.getData():  # get that data - if we fail then it is an incomplete protocol and will be discarded.
+            ok = self.analyze_IO()
+            # self.analyze_VDEP()
+            if not ok:
+                print('Failed on protocol: ', self.datapath, protocolName)
+                return False
+            if plot:
+                self.plot_vciv()
             return True
         return False
 
@@ -136,20 +140,22 @@ class PSCSummary():
         for i in range(len(ptrain['start'])):
             pdelay = ptrain['start'][i] + delay
             i_mean = self.mean_I_analysis(region=[pdelay-width, pdelay+width], reps=reps)
+            if i_mean is None:
+                return False
             bl = self.mean_I_analysis(region=self.baseline, reps=reps)
             i_mean -= bl
             # print('imean: ', i_mean)
             # print('bl: ', bl)
-            self.analysis_summary[f'PSP_IO'][i] = i_mean
+            self.analysis_summary[f'PSP_IO'][i] = self.sign*1e12*i_mean
             cmdv.append(self.i_mean_cmd)
             stimamp.append(ptrain['amplitude'][i])
             stimintvl.append(ptrain['period'][0])
 
-        self.analysis_summary['psc_stim_amplitudes'] = np.array(stim_I)
+        self.analysis_summary['psc_stim_amplitudes'] = 1e6*np.array(stim_I)
         self.analysis_summary['psc_intervals'] = np.array(stimintvl)
         self.analysis_summary['ppf_dt'] = np.array(stim_dt)
         self.analysis_summary['stim_times'] = ptrain['start']
-
+        return True
 
     def analyze_VDEP(self, rmpregion=[0., 0.05], protocolName=None):
  
@@ -198,8 +204,8 @@ class PSCSummary():
             i_nmda_mean -= bl
             # print('imean: ', i_mean)
             # print('bl: ', bl)
-            self.analysis_summary[f'PSP_VDEP'][i] = i_mean
-            self.analysis_summary[f'PSP_VDEP_NMDA'][i] = i_nmda_mean
+            self.analysis_summary[f'PSP_VDEP'][i] = self.sign*i_mean
+            self.analysis_summary[f'PSP_VDEP_NMDA'][i] = self.sign*i_nmda_mean
             cmdv.extend(self.i_mean_cmd)
             stimamp.append(ptrain['amplitude'][i])
             stimintvl.append(ptrain['period'][0])
@@ -291,14 +297,17 @@ class PSCSummary():
         data1 = self.Clamps.traces['Time': region[0]:region[1]]
         data1 = data1.view(np.ndarray)
         sh = data1.shape
-        print('data shape: ', sh)
+        # print('data shape: ', sh)
         nx = int(sh[0]/len(reps))
         # print(data1[30])
         i_mean = data1.mean(axis=1)  # all traces, average over specified time window
-        print('imean shape: ', i_mean.shape)
-        i_mean = np.reshape(i_mean, (len(reps), nx))  # reshape by repetition
-        print('imean reshaped: ', i_mean.shape)
-        print('intno, nint: ', intno, nint)
+        # print('imean shape: ', i_mean.shape)
+        try:
+            i_mean = np.reshape(i_mean, (len(reps), nx))  # reshape by repetition
+        except:
+            return None
+        # print('imean reshaped: ', i_mean.shape)
+        # print('intno, nint: ', intno, nint)
         if intno == 0:
             i_mean = i_mean.mean(axis=0) # average across reps
         else:
@@ -394,8 +403,12 @@ class PSCSummary():
 
         if 'PSP_IO' in self.analysis_summary.keys(): # io function
             for i in range(len(self.analysis_summary['stim_times'])):
-                P.axdict['C'].plot(self.analysis_summary['psc_stim_amplitudes']*1e6,
-                        self.sign*np.array(self.analysis_summary[f'PSP_IO'][i])*1e12, linewidth=1, markersize=4)
+                try:
+                    P.axdict['C'].plot(self.analysis_summary['psc_stim_amplitudes'],
+                        np.array(self.analysis_summary[f'PSP_IO'][i]), linewidth=1, markersize=4)
+                except:
+                    print('Plot Failed on protocol: ', self.datapath, proto)
+                    
         elif 'PSP_VDEP' in self.analysis_summary.keys(): # io function
             for i in range(len(self.analysis_summary['stim_times'])):
                 P.axdict['C'].plot(self.analysis_summary['Vcmd']*1e3,
@@ -450,13 +463,13 @@ class PSCSummary():
 if __name__ == '__main__':
     
     disk = '/Volumes/Pegasus/ManisLab_Data3'
-    disk = '/Volumes/PBM_005/data'
+    # disk = '/Volumes/PBM_005/data'
     middir = 'Kasten_Michael'
-    middir = ''
+    # middir = ''
     directory = 'Maness_PFC_stim'
     cell = '2019.03.19_000/slice_001/cell_000'
     
-    ddc = Path(disk, directory, cell)
+    ddc = Path(disk, middir, directory, cell)
     protocol = 'Stim_IO_1_001'
     # protocol = 'PPF_2_001'
     protocol = 'VC-EPSC_3_ver2_003'
