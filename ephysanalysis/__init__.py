@@ -23,6 +23,7 @@ import ephysanalysis.EPSC_analyzer
 import ephysanalysis.boundrect
 import ephysanalysis.poisson_score
 import ephysanalysis.bridge
+import ephysanalysis.cursor_plot
 
 import ephysanalysis.metaarray as MetaArray
 

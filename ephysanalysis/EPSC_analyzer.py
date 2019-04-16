@@ -34,10 +34,14 @@ import numpy as np
 
 import ephysanalysis as EP
 import ephysanalysis.metaarray as EM  # need to use this version for Python 3
+import ephysanalysis.cursor_plot as CP
 import matplotlib.pyplot as mpl
 import matplotlib.colors
 import pylibrary.PlotHelpers as PH
 
+import pyqtgraph as pg
+from pyqtgraph.Qt import QtGui, QtCore
+from pyqtgraph.Point import Point
 
 
 class PSCSummary():
@@ -290,7 +294,10 @@ class PSCSummary():
         # self.analysis_summmary['psc_amplitudes'] = meani
         # print(self.analysis_summary)
         #self.ivpk_analysis(region=[self.Clamps.tstart, self.Clamps.tstart+0.4*(self.Clamps.tend-self.Clamps.tstart)])
-        
+
+
+    
+
     def mean_I_analysis(self, region=None, mode='mean', intno=0, nint=1, reps=[0]):
         """
         Get the mean current in a window
@@ -311,16 +318,24 @@ class PSCSummary():
             raise ValueError("PSPSummary, mean_I_analysis requires a region beginning and end to measure the current")
         
         data1 = self.Clamps.traces['Time': region[0]:region[1]]
+
+        tb = np.arange(0, data1.shape[1]*self.Clamps.sample_interval, self.Clamps.sample_interval)
         data1 = data1.view(np.ndarray)
-        print(data1.shape)
         if mode == 'min':
+            newCP = CP.CursorPlot()
+            setline = True
             for i in range(data1.shape[0]):
-                mpl.plot(data1[i,:])
-                fn = str(self.datapath).replace('_' ,'\_')
-                mpl.title(f"{fn[-60:]:s}\n{str(region):s}")
-            mpl.show()
-
-
+                newCP.plotData(x=tb*1e3, y=data1[i]*1e12, setline=setline)
+                setline = False # only do on first plot
+            
+            # for i in range(data1.shape[0]):
+            #     mpl.plot(data1[i,:])
+            #     fn = str(self.datapath).replace('_' ,'\_')
+            #     mpl.title(f"{fn[-60:]:s}\n{str(region):s}")
+            # mpl.show()
+            if (sys.flags.interactive != 1) or not hasattr(QtCore, 'PYQT_VERSION'):
+                QtGui.QApplication.instance().exec_()
+            print(newCP.rgn)  # get bounding region... 
         sh = data1.shape
         nreps = len(reps)
         if nint > 1:
@@ -347,6 +362,7 @@ class PSCSummary():
         i_mean = i_mean.mean(axis=0)  # average over reps
         self.i_mean_cmd = self.Clamps.commandLevels
         return i_mean
+
 
     def vcss_analysis(self, region=None):
         """
