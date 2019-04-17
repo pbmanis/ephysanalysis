@@ -159,8 +159,8 @@ class CursorPlot(object):
             self.lasty = mousePoint.y()
 
     def mouseClicked(self, evt):
-        print(evt)
-        print(f"<{self.nextStore:s}>")
+        # print(evt)
+        # print(f"<{self.nextStore:s}>")
         # print(dir(self.T0))
         if self.nextStore == 'T0':
             self.T0.setValue(self.lastx)
