@@ -18,6 +18,7 @@ from pathlib import Path
 import os  #legacy
 import matplotlib
 import scipy.signal
+import pandas as pd
 matplotlib.use('Qt4Agg')
 from matplotlib import rc
 #rc('font',**{'family':'sans-serif','sans-serif':['Arial']})
@@ -43,12 +44,22 @@ import pyqtgraph as pg
 from pyqtgraph.Qt import QtGui, QtCore
 from pyqtgraph.Point import Point
 
+def make_key(pathname):
+    """
+    Make a key string using the date, slice, cell and protocol from the path name
+    """
+    p = pathname.parts
+
+    return(str('~'.join([p[i] for i in range(-4, 0)])))
+
 
 class PSCSummary():
     def __init__(self, datapath, plot=True):
         self.datapath = datapath
         self.AR = EP.acq4read.Acq4Read()  # make our own private cersion of the analysis and reader
         self.plot = plot
+        self.db = None
+        self.db_filename = None
 
     def setup(self, clamps=None, spikes=None, baseline=[0, 0.001]):
         """
@@ -75,15 +86,29 @@ class PSCSummary():
         self.set_baseline_times(baseline)
 
         self.analysis_summary = {}  # init the result structure
+    
+    def read_database(self, filename):
+        self.db_filename = Path(filename)
+        if self.db_filename.is_file():
+            with(open(self.db_filename, 'rb')) as fh:
+                self.db = pd.read_pickle(fh)
+        else:
+            self.db = pd.DataFrame(columns=['date', 'protocol', 'T0', 'T1'])
 
-    def compute_PSC_IV(self, protocolName=None, plot=True):
+    def update_database(self):
+        if self.db is not None:
+            self.db.to_pickle(self.db_filename)
+
+    def compute_PSC_IV(self, protocolName=None, plot=True, savetimes=False):
         """
         Simple plot voltage clamp traces
         """
         #print('path: ', self.datapath)
         self.AR.setProtocol(self.datapath)  # define the protocol path where the data is
         self.setup(clamps=self.AR)
-
+        self.read_database(f"{protocolName:s}.p")
+        print('database has:')
+        print(self.db.head())
         if self.AR.getData():  # get that data.
             if protocolName.startswith('Stim_IO'):
                 ok = self.analyze_IO()
@@ -96,6 +121,22 @@ class PSCSummary():
                 return False
             if plot:
                 self.plot_vciv()
+            if savetimes:
+                date = make_key(self.datapath)
+                print('date: ', date)
+                print('db: ', self.db)
+                print('date list: \n', self.db['date'].tolist())
+                if date not in self.db['date'].tolist():
+                    self.db.loc[len(self.db)] = [date, protocolName, self.T0, self.T1]
+                    print('new date added')
+                else:
+                    self.db.loc[date, 'date'] = date
+                    self.db.loc[date, 'protocol'] = protocolName
+                    self.db.loc[date, 'T0'] = self.T0
+                    self.db.loc[date, 'T1'] = self.T1
+                    print('old date updated')
+                self.update_database()
+                print('db head: ', self.db.head())
             return True
         return False
 
@@ -140,8 +181,8 @@ class PSCSummary():
             raise ValueError('Cannot find PulseTrain_amplitude in stimulus command')
             
         stim_I = self.AR.sequence[('Stim0', 'command.PulseTrain_amplitude')]
-        delay = 2.5*1e-3
-        width = 10.0*1e-3
+        delay = 1.0*1e-3
+        width = 15.0*1e-3
         baseline = []
         meani = []
         stimamp = []
@@ -153,16 +194,17 @@ class PSCSummary():
         self.analysis_summary['iHold'] = []
         self.i_mean = []
         self.analysis_summary[f'PSP_IO'] = [[]]*len(ptrain['start'])
+        bl = self.mean_I_analysis(region=self.baseline, mode='baseline', reps=[0])
         for i in range(len(ptrain['start'])):
             pdelay = ptrain['start'][i] + delay
+            if i == 0:
+                rgn = self.set_region([ptrain['start'][i], ptrain['start'][i]+width], baseline=bl)
+                self.T0 = rgn[0]
+                self.T1 = rgn[1]
             print('pdelay: ', pdelay, self.baseline)
-            i_mean = self.mean_I_analysis(region=[pdelay, pdelay+width], mode='min', reps=reps)
+            i_mean = self.mean_I_analysis(region=np.array(rgn)+ptrain['start'][i], mode='min', baseline=bl, reps=reps)
             if i_mean is None:
                 return False
-            bl = self.mean_I_analysis(region=self.baseline, mode='mean', reps=reps)
-            i_mean -= bl
-            # print('imean: ', i_mean)
-            # print('bl: ', bl)
             self.analysis_summary[f'PSP_IO'][i] = self.sign*1e12*i_mean
             cmdv.append(self.i_mean_cmd)
             stimamp.append(ptrain['amplitude'][i])
@@ -172,6 +214,7 @@ class PSCSummary():
         self.analysis_summary['psc_intervals'] = np.array(stimintvl)
         self.analysis_summary['ppf_dt'] = np.array(stim_dt)
         self.analysis_summary['stim_times'] = ptrain['start']
+        self.analysis_summary['window'] = [self.T0, self.T1]
         return True
 
     def analyze_VDEP(self, rmpregion=[0., 0.05], protocolName=None):
@@ -210,16 +253,20 @@ class PSCSummary():
         self.i_mean = []
         self.analysis_summary[f'PSP_VDEP'] = [[]]*len(ptrain['start'])
         self.analysis_summary[f'PSP_VDEP_NMDA'] = [[]]*len(ptrain['start'])
+        bl = self.mean_I_analysis(region=self.baseline, mode='baseline', reps=[0])
         for i in range(len(ptrain['start'])):
             pdelay = ptrain['start'][i] + delay
+            if i == 0:
+                rgn = self.set_region([ptrain['start'][i], ptrain['start'][i]+0.050], baseline=bl)
+                self.T0 = rgn[0]
+                self.T1 = rgn[1]
+            print('pdelay: ', pdelay, self.baseline)
+            pdelay = ptrain['start'][i] + delay
             nmdelay = ptrain['start'][i] + ndelay
-            i_mean = self.mean_I_analysis(region=[pdelay-width, pdelay+width], reps=reps)
+            i_mean = self.mean_I_analysis(region=[pdelay-width, pdelay+width], baseline=bl, reps=reps)
             if i_mean is None:
                 return False
-            i_nmda_mean = self.mean_I_analysis(region=[nmdelay-nwidth, nmdelay+nwidth], reps=reps)
-            bl = self.mean_I_analysis(region=self.baseline, reps=reps)
-            i_mean -= bl
-            i_nmda_mean -= bl
+            i_nmda_mean = self.mean_I_analysis(region=[nmdelay-nwidth, nmdelay+nwidth], baseline=bl, reps=reps)
 
             self.analysis_summary[f'PSP_VDEP'][i] = self.sign*i_mean
             self.analysis_summary[f'PSP_VDEP_NMDA'][i] = self.sign*i_nmda_mean
@@ -231,6 +278,7 @@ class PSCSummary():
         self.analysis_summary['psc_intervals'] = np.array(stimintvl)
         self.analysis_summary['stim_times'] = ptrain['start']
         self.analysis_summary['Vcmd'] = np.array(cmdv)+self.AR.holding
+        self.analysis_summary['window'] = [self.T0, self.T1]
         return True
         
     def analyze_PPF(self, rmpregion=[0., 0.05], protocolName=None):
@@ -251,9 +299,9 @@ class PSCSummary():
         stim_dt = self.AR.sequence[('Stim0', 'command.PulseTrain_period')]
         mode = 'PPF'
         print('PPF')
-        delay = 12.0*1e-3
-        width = 5.0*1e-3
-        ndelay = 2.0*1e-3
+        delay = 1.0*1e-3
+        width = 10.0*1e-3
+        ndelay = 1.0*1e-3
         nwidth = width
         baseline = []
         meani = []
@@ -268,17 +316,30 @@ class PSCSummary():
         self.analysis_summary[f'PPF'] = [[]]*len(stim_dt)
         # print(ptrain)
         self.i_mean = []
+        bl = self.mean_I_analysis(region=self.baseline, mode='baseline', reps=[0])
         for i in range(len(stim_dt)):
-            bl = self.mean_I_analysis(region=self.baseline, reps=reps)
-            if bl is None:
-                return False
-            pdelay = ptrain['start'][0] + stim_dt[i] + delay  # second stim of pair
-            rdelay = ptrain['start'][0] + ndelay # first stim of pair
-            print(pdelay, rdelay, rdelay+width)
-            i_mean_ref = self.mean_I_analysis(region=[rdelay, rdelay+width], mode='min', intno=i, nint=len(stim_dt), reps=reps)
+            if i == 0:
+                self.gottimes = False
+                if self.db is not None:
+                    datekey = make_key(self.datapath)
+                    if datekey in self.db['date'].tolist():
+                        self.T0 = float(self.db[self.db['date'] == datekey]['T0'].tolist()[0])
+                        self.T1 = float(self.db[self.db['date'] == datekey]['T1'].tolist()[0])
+                        self.gottimes = True
+                if not self.gottimes:
+                    rgn = self.set_region([ptrain['start'], ptrain['start']+0.020], baseline=bl)
+                    self.T0 = float(rgn[0])
+                    self.T1 = float(rgn[1])
+            p2delay = self.T0 + ptrain['start'][0] + stim_dt[i] # second stim of pair
+            p1delay = self.T0 + ptrain['start'][0] # first stim of pair
+            # print('p1, p2, t1: ', p1delay, p2delay, self.T1)
+            # print('T1: ', float(self.T1))
+            i_mean_ref = self.mean_I_analysis(region=[p1delay, p1delay+self.T1], mode='min', baseline=bl,
+                        intno=i, nint=len(stim_dt), reps=reps)
             if i_mean_ref is None:
                 return False
-            i_mean = self.mean_I_analysis(region=[pdelay, pdelay+width], mode='min', intno=i, nint=len(stim_dt), reps=reps)
+            i_mean = self.mean_I_analysis(region=[p2delay, p2delay+self.T1], mode='min', baseline=bl,
+                intno=i, nint=len(stim_dt), reps=reps)
             i_mean -= bl.mean()
             i_mean_ref -= bl.mean()
             cmdv.extend(self.i_mean_cmd)
@@ -289,16 +350,37 @@ class PSCSummary():
         self.analysis_summary['psc_intervals'] = np.array(stimintvl)
         self.analysis_summary['ppf_dt'] = np.array(stim_dt)
         self.analysis_summary['stim_times'] = ptrain['start']
+        self.analysis_summary['window'] = [self.T0, self.T1]
         return True
         
         # self.analysis_summmary['psc_amplitudes'] = meani
         # print(self.analysis_summary)
         #self.ivpk_analysis(region=[self.Clamps.tstart, self.Clamps.tstart+0.4*(self.Clamps.tend-self.Clamps.tstart)])
 
+    def set_region(self, region=None, baseline=None):
+        if region is None:
+            raise ValueError("PSPSummary, set_region requires a region beginning and end to measure the current")
+    
+        data1 = self.Clamps.traces['Time': region[0]:region[1]]
+        if baseline is None:
+            baseline = 0.
 
+        tb = np.arange(0, data1.shape[1]*self.Clamps.sample_interval, self.Clamps.sample_interval)
+        data1 = data1.view(np.ndarray)
+        newCP = CP.CursorPlot()
+        setline = True
+        for i in range(data1.shape[0]):
+            newCP.plotData(x=tb, y=(data1[i]-baseline[i])*1e12, setline=setline)
+            setline = False # only do on first plot
+    
+        if (sys.flags.interactive != 1) or not hasattr(QtCore, 'PYQT_VERSION'):
+            QtGui.QApplication.instance().exec_()
+         
+        self.T0, self.T1 = newCP.selectedRegion
+        return(newCP.selectedRegion)
     
 
-    def mean_I_analysis(self, region=None, mode='mean', intno=0, nint=1, reps=[0]):
+    def mean_I_analysis(self, region=None, mode='mean', baseline=None, intno=0, nint=1, reps=[0]):
         """
         Get the mean current in a window
         
@@ -318,35 +400,19 @@ class PSCSummary():
             raise ValueError("PSPSummary, mean_I_analysis requires a region beginning and end to measure the current")
         
         data1 = self.Clamps.traces['Time': region[0]:region[1]]
-
+        if baseline is None:
+            baseline = 0.
         tb = np.arange(0, data1.shape[1]*self.Clamps.sample_interval, self.Clamps.sample_interval)
         data1 = data1.view(np.ndarray)
-        if mode == 'min':
-            newCP = CP.CursorPlot()
-            setline = True
-            for i in range(data1.shape[0]):
-                newCP.plotData(x=tb*1e3, y=data1[i]*1e12, setline=setline)
-                setline = False # only do on first plot
-            
-            # for i in range(data1.shape[0]):
-            #     mpl.plot(data1[i,:])
-            #     fn = str(self.datapath).replace('_' ,'\_')
-            #     mpl.title(f"{fn[-60:]:s}\n{str(region):s}")
-            # mpl.show()
-            if (sys.flags.interactive != 1) or not hasattr(QtCore, 'PYQT_VERSION'):
-                QtGui.QApplication.instance().exec_()
-            print(newCP.rgn)  # get bounding region... 
+
         sh = data1.shape
         nreps = len(reps)
         if nint > 1:
             dindx = range(intno, sh[0], nint)
             data1 = data1[dindx]
-        # x = np.linspace(region[0], region[1], len(data1.T))
-        # mpl.plot(x, self.sign*data1.T*1e12)
-        # mpl.show()
-        # exit()
+
         nx = int(sh[0]/len(reps))
-        if mode == 'mean':
+        if mode in ['mean', 'baseline']:
             i_mean = data1.mean(axis=1)  # all traces, average over specified time window
         elif mode == 'min':
             # dfilt = scipy.signal.savgol_filter(data1, 5, 2, axis=1, mode='nearest')
@@ -516,18 +582,21 @@ class PSCSummary():
 
 if __name__ == '__main__':
     
-    disk = '/Volumes/Pegasus/ManisLab_Data3'
+    # disk = '/Volumes/Pegasus/ManisLab_Data3'
     # disk = '/Volumes/PBM_005/data'
+    disk = '/Users/pbmanis/Documents/Lab'
     middir = 'Kasten_Michael'
+    middir = 'data'
     # middir = ''
     directory = 'Maness_PFC_stim'
     cell = '2019.03.19_000/slice_000/cell_001'
+    # cell = '2019.03.19_000/slice_001/cell_000'
     
     ddc = Path(disk, middir, directory, cell)
-    protocol = 'Stim_IO_1_001'
-    # protocol = 'PPF_2_001'
+    # protocol = 'Stim_IO_1_001'
+    protocol = 'PPF_2_001'
     # protocol = 'VC-EPSC_3_ver2_003'
     fn = Path(ddc, protocol)
     PSC = PSCSummary(fn)
-    PSC.compute_PSC_IV(protocol[:-3])
+    PSC.compute_PSC_IV(protocol[:-3], savetimes=True)
     

@@ -55,8 +55,6 @@ class CursorPlot(object):
         self.T1 = self.ptreedata.param('Data').param('T1')
         self.T0.sigValueChanged.connect(self.T0_Changed)
         self.T1.sigValueChanged.connect(self.T1_Changed)
-        
-
 
         self.layout.addWidget(ptree, 0, 0, 9, 1) # Parameter Tree on left
 
@@ -87,17 +85,15 @@ class CursorPlot(object):
     def command_dispatcher(self, param, changes):
         for param, change, data in changes:
             path = self.ptreedata.childPath(param)
-            if path[1] == 'Done':
-                # close window
-                pass
-            elif path[1] == 'Save T0':
+            if path[1] == 'Save T0':
                 self.nextstore = 'T0'
             elif path[1] == 'Save T1':
                 self.nextstore = 'T1'
-            
-            
-            pass
-            
+            elif path[1] == 'Done':
+                print('done')
+                self.selectedRegion = [float(self.T0.value()), float(self.T1.value())]
+                self.win.close()
+                        
     def T0_Changed(self):
         pass
     
@@ -149,6 +145,7 @@ class CursorPlot(object):
         # evt is a PyQt5.QtCore.QPointF
         pos = evt[0]  ## using signal proxy turns original arguments into a tuple
         if self.plots['Windowed'].sceneBoundingRect().contains(pos):
+
             mousePoint = self.vb.mapSceneToView(pos)
             index = int(mousePoint.x())
             if index > 0 and index < len(self.dataX):
