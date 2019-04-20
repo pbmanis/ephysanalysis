@@ -54,12 +54,13 @@ def make_key(pathname):
 
 
 class PSCSummary():
-    def __init__(self, datapath, plot=True):
+    def __init__(self, datapath, plot=True, update_regions=False):
         self.datapath = datapath
         self.AR = EP.acq4read.Acq4Read()  # make our own private cersion of the analysis and reader
         self.plot = plot
         self.db = None
         self.db_filename = None
+        self.update_regions = update_regions
 
     def setup(self, clamps=None, spikes=None, baseline=[0, 0.001]):
         """
@@ -107,12 +108,14 @@ class PSCSummary():
         self.AR.setProtocol(self.datapath)  # define the protocol path where the data is
         self.setup(clamps=self.AR)
         self.read_database(f"{protocolName:s}.p")
-        print('database has:')
-        print(self.db.head())
+        # print('database has:')
+        # print(self.db['date'])
+        # print('protocol: ', protocolName)
         if self.AR.getData():  # get that data.
+            ok = False
             if protocolName.startswith('Stim_IO'):
                 ok = self.analyze_IO()
-            elif protocolName.startswith('VC-EPSC'):
+            elif protocolName.startswith('VC-EPSC_3'):
                 ok = self.analyze_VDEP()
             elif protocolName.startswith('PPF'):
                 ok = self.analyze_PPF()
@@ -123,9 +126,9 @@ class PSCSummary():
                 self.plot_vciv()
             if savetimes:
                 date = make_key(self.datapath)
-                print('date: ', date)
-                print('db: ', self.db)
-                print('date list: \n', self.db['date'].tolist())
+                # print('date: ', date)
+                # print('db: ', self.db)
+                # print('date list: \n', self.db['date'].tolist())
                 if date not in self.db['date'].tolist():
                     self.db.loc[len(self.db)] = [date, protocolName, self.T0, self.T1]
                     print('new date added')
@@ -136,9 +139,10 @@ class PSCSummary():
                     self.db.loc[date, 'T1'] = self.T1
                     print('old date updated')
                 self.update_database()
-                print('db head: ', self.db.head())
+                # print('db head: ', self.db.head())
             return True
-        return False
+        else:
+            return False
 
     def get_stimtimes(self):
         pass
@@ -158,7 +162,7 @@ class PSCSummary():
         """
         bl = self.mean_I_analysis(region=self.baseline, reps=[0])
         return bl
-
+        
     def analyze_IO(self, rmpregion=[0., 0.05], protocolName=None):
  
         ptrain = self.AR.getStim('Stim0')
@@ -172,7 +176,16 @@ class PSCSummary():
         # except:
         #     print('Failed to get device data from Stim0')
         #     return False
-
+        filekey = Path(make_key(self.datapath))
+        # check the db to see if we have parameters already
+        dfiles = self.db['date'].tolist()
+        if filekey in dfiles:
+            delay = self.db.loc[filekey, 'date']['T0']
+            t1    = self.db.loc[filekey, 'date']['T1']
+            width = t1-delay
+        else:
+            delay = 1.0*1e-3
+            width = 15.0*1e-3            
         reps = self.AR.sequence[('protocol', 'repetitions')]
         stim_dt = np.diff(ptrain['start'])
         stim_I = [ptrain['amplitude'][0]]
@@ -181,8 +194,7 @@ class PSCSummary():
             raise ValueError('Cannot find PulseTrain_amplitude in stimulus command')
             
         stim_I = self.AR.sequence[('Stim0', 'command.PulseTrain_amplitude')]
-        delay = 1.0*1e-3
-        width = 15.0*1e-3
+
         baseline = []
         meani = []
         stimamp = []
@@ -197,10 +209,12 @@ class PSCSummary():
         bl = self.mean_I_analysis(region=self.baseline, mode='baseline', reps=[0])
         for i in range(len(ptrain['start'])):
             pdelay = ptrain['start'][i] + delay
-            if i == 0:
-                rgn = self.set_region([ptrain['start'][i], ptrain['start'][i]+width], baseline=bl)
-                self.T0 = rgn[0]
-                self.T1 = rgn[1]
+            if i == 0 and self.update_regions:
+                rgn = self.set_region([ptrain['start'][i], ptrain['start'][i]+0.050], baseline=bl)
+            else:
+                rgn = [delay, delay+width]
+            self.T0 = rgn[0]
+            self.T1 = rgn[1]
             print('pdelay: ', pdelay, self.baseline)
             i_mean = self.mean_I_analysis(region=np.array(rgn)+ptrain['start'][i], mode='min', baseline=bl, reps=reps)
             if i_mean is None:
@@ -218,7 +232,12 @@ class PSCSummary():
         return True
 
     def analyze_VDEP(self, rmpregion=[0., 0.05], protocolName=None):
- 
+        """
+        Analyze the voltage-dependence of EPSCs 
+        
+        When selecting the analysis window, choose a window that encompases
+        the peak of the inward EPSC in the negative voltage range.
+        """
         ptrain = self.AR.getStim('Stim0')
         # stim dict in ptrain will look like:
         # {'start': [0.05, 0.1], 'duration': [0.0001, 0.0001],
@@ -230,54 +249,86 @@ class PSCSummary():
         stim_dt = np.diff(ptrain['start'])
         stim_I = [ptrain['amplitude'][0]]
         mode = '?'
-        print('sequence: ', self.AR.sequence.keys())
         if not ('MultiClamp1', 'Pulse_amplitude') in self.AR.sequence.keys():
             raise ValueError('Cannot find (MultiClamp1, Pulse_amplitude) in stimulus command')
             
         stim_V = self.AR.sequence[('MultiClamp1', 'Pulse_amplitude')]
 
         delay = 6*1e-3
-        ndelay = 15*1e-3
+        ndelay = 25*1e-3  # 25 msec after stimulus seems a fair time.
         nwidth = 2.5*1e-3
-        width = 0.5*1e-3
-        rmpregion = [ptrain['start'][0]-0.060, ptrain['start'][0]-0.010]
+        width = 0.25*1e-3
+        filekey = Path(make_key(self.datapath))
+        # check the db to see if we have parameters already
+        dfiles = self.db['date'].tolist()
+        if filekey in dfiles:
+            delay = self.db.loc[filekey, 'date']['T0']
+            t1    = self.db.loc[filekey, 'date']['T1']
+            width = t1-delay
+        else:
+            delay = 1.0*1e-3
+            width = 20.0*1e-3
+
+        bl_region = [ptrain['start'][0]-0.060, ptrain['start'][0]-0.010]  # time just before stimulus
         baseline = []
+        self.baseline = bl_region
         meani = []
         stimamp = []
         stimintvl = []
         cmdv = []
         self.sign = 1
         self.i_mean = []
-        self.set_baseline_times(rmpregion)
+        # self.set_baseline_times(rmpregion)
         self.analysis_summary['iHold'] = []
         self.i_mean = []
         self.analysis_summary[f'PSP_VDEP'] = [[]]*len(ptrain['start'])
         self.analysis_summary[f'PSP_VDEP_NMDA'] = [[]]*len(ptrain['start'])
-        bl = self.mean_I_analysis(region=self.baseline, mode='baseline', reps=[0])
+        bl = self.mean_I_analysis(region=bl_region, mode='baseline', reps=[0])
+        print('bl_region: ', bl_region)
         for i in range(len(ptrain['start'])):
             pdelay = ptrain['start'][i] + delay
-            if i == 0:
-                rgn = self.set_region([ptrain['start'][i], ptrain['start'][i]+0.050], baseline=bl)
-                self.T0 = rgn[0]
-                self.T1 = rgn[1]
-            print('pdelay: ', pdelay, self.baseline)
-            pdelay = ptrain['start'][i] + delay
+            if i == 0 and self.update_regions:
+                rgn = self.set_region([ptrain['start'][i]+0.002, ptrain['start'][i]+0.025], baseline=bl, slope=False)
+            else:
+                rgn = [delay, delay+width]
+            self.T0 = rgn[0]
+            self.T1 = rgn[1]
+            pdelay = ptrain['start'][i] + self.T0
+            pdelay2 = ptrain['start'][i] + self.T1
             nmdelay = ptrain['start'][i] + ndelay
-            i_mean = self.mean_I_analysis(region=[pdelay-width, pdelay+width], baseline=bl, reps=reps)
+            i_mean = self.mean_I_analysis(region=[pdelay, pdelay2], mode='mean',
+                                        baseline=bl, reps=reps, slope=False)
             if i_mean is None:
                 return False
-            i_nmda_mean = self.mean_I_analysis(region=[nmdelay-nwidth, nmdelay+nwidth], baseline=bl, reps=reps)
+            # values for nmda analysis are currently fixed
+            i_nmda_mean = self.mean_I_analysis(region=[nmdelay-nwidth, nmdelay+nwidth], mode='mean',
+                                        baseline=bl, reps=reps, slope=False)
 
             self.analysis_summary[f'PSP_VDEP'][i] = self.sign*i_mean
             self.analysis_summary[f'PSP_VDEP_NMDA'][i] = self.sign*i_nmda_mean
             cmdv.extend(self.i_mean_cmd)
             stimamp.append(ptrain['amplitude'][i])
             stimintvl.append(ptrain['period'][0])
+        
+        data1, tb = self.get_traces(region=[ptrain['start'][0], ptrain['start'][0]+0.050],
+            trlist=None, baseline=bl, intno=0, nint=1, reps=reps, slope=False)
+        # find -80 and +30 voltage indices (so we can save them and save the data)
+        cmdv = np.array(cmdv)+self.AR.holding
+        i80 = np.argmin(np.fabs(cmdv+0.080))
+        i30 = np.argmin(np.fabs(cmdv-0.030))
+        if i30 >= data1.shape[0]:
 
+            self.analysis_summary['Vindices'] = {'-80': np.nan, '30': np.nan}
+            self.analysis_summary['AMPA_NMDA_traces'] = {'T': None, 'VN80': None, 'VP30': None}
+        else:
+            print('data1 shape: ', data1.shape, i80, i30, cmdv[i80], cmdv[i30])
+
+            self.analysis_summary['Vindices'] = {'-80': i80, '30': i30}
+            self.analysis_summary['AMPA_NMDA_traces'] = {'T': tb, 'VN80': data1[i80], 'VP30': data1[i30]}
         self.analysis_summary['psc_stim_amplitudes'] = np.array(stim_I)
         self.analysis_summary['psc_intervals'] = np.array(stimintvl)
         self.analysis_summary['stim_times'] = ptrain['start']
-        self.analysis_summary['Vcmd'] = np.array(cmdv)+self.AR.holding
+        self.analysis_summary['Vcmd'] = cmdv
         self.analysis_summary['window'] = [self.T0, self.T1]
         return True
         
@@ -300,8 +351,19 @@ class PSCSummary():
         mode = 'PPF'
         print('PPF')
         delay = 1.0*1e-3
-        width = 10.0*1e-3
+        width = 20.0*1e-3
         ndelay = 1.0*1e-3
+
+        filekey = Path(make_key(self.datapath))
+        # check the db to see if we have parameters already
+        dfiles = self.db['date'].tolist()
+        if filekey in dfiles:
+            delay = self.db.loc[filekey, 'date']['T0']
+            t1    = self.db.loc[filekey, 'date']['T1']
+            width = t1-delay
+        else:
+            delay = 1.0*1e-3
+            width = 20.0*1e-3
         nwidth = width
         baseline = []
         meani = []
@@ -319,17 +381,12 @@ class PSCSummary():
         bl = self.mean_I_analysis(region=self.baseline, mode='baseline', reps=[0])
         for i in range(len(stim_dt)):
             if i == 0:
-                self.gottimes = False
-                if self.db is not None:
-                    datekey = make_key(self.datapath)
-                    if datekey in self.db['date'].tolist():
-                        self.T0 = float(self.db[self.db['date'] == datekey]['T0'].tolist()[0])
-                        self.T1 = float(self.db[self.db['date'] == datekey]['T1'].tolist()[0])
-                        self.gottimes = True
-                if not self.gottimes:
-                    rgn = self.set_region([ptrain['start'], ptrain['start']+0.020], baseline=bl)
-                    self.T0 = float(rgn[0])
-                    self.T1 = float(rgn[1])
+                rgn = [delay, delay+width]
+
+                if self.update_regions:
+                    rgn = self.set_region([ptrain['start'][0], ptrain['start'][0]+0.020], baseline=bl)
+                self.T0 = float(rgn[0])
+                self.T1 = float(rgn[1])
             p2delay = self.T0 + ptrain['start'][0] + stim_dt[i] # second stim of pair
             p1delay = self.T0 + ptrain['start'][0] # first stim of pair
             # print('p1, p2, t1: ', p1delay, p2delay, self.T1)
@@ -340,8 +397,8 @@ class PSCSummary():
                 return False
             i_mean = self.mean_I_analysis(region=[p2delay, p2delay+self.T1], mode='min', baseline=bl,
                 intno=i, nint=len(stim_dt), reps=reps)
-            i_mean -= bl.mean()
-            i_mean_ref -= bl.mean()
+            # i_mean -= bl.mean()
+            # i_mean_ref -= bl.mean()
             cmdv.extend(self.i_mean_cmd)
             stimamp.extend(ptrain['amplitude'])
             stimintvl.append(stim_dt[i])
@@ -357,30 +414,33 @@ class PSCSummary():
         # print(self.analysis_summary)
         #self.ivpk_analysis(region=[self.Clamps.tstart, self.Clamps.tstart+0.4*(self.Clamps.tend-self.Clamps.tstart)])
 
-    def set_region(self, region=None, baseline=None):
+    def set_region(self, region=None, baseline=None, slope=True):
         if region is None:
             raise ValueError("PSPSummary, set_region requires a region beginning and end to measure the current")
     
         data1 = self.Clamps.traces['Time': region[0]:region[1]]
         if baseline is None:
-            baseline = 0.
+            baseline = [0.]
 
         tb = np.arange(0, data1.shape[1]*self.Clamps.sample_interval, self.Clamps.sample_interval)
         data1 = data1.view(np.ndarray)
-        newCP = CP.CursorPlot()
+        newCP = CP.CursorPlot(str(self.datapath))
         setline = True
-        for i in range(data1.shape[0]):
-            newCP.plotData(x=tb, y=(data1[i]-baseline[i])*1e12, setline=setline)
-            setline = False # only do on first plot
+
+        # for i in range(data1.shape[0]):
+        newCP.plotData(x=tb, y=np.array([data1[i]-baseline[i] for i in range(data1.shape[0])])*1e12, setline=setline, slope=slope)
+            # setline = False # only do on first plot
     
         if (sys.flags.interactive != 1) or not hasattr(QtCore, 'PYQT_VERSION'):
             QtGui.QApplication.instance().exec_()
          
         self.T0, self.T1 = newCP.selectedRegion
+        if self.T0 == None:
+            return(None)
         return(newCP.selectedRegion)
     
 
-    def mean_I_analysis(self, region=None, mode='mean', baseline=None, intno=0, nint=1, reps=[0]):
+    def mean_I_analysis(self, region=None, mode='mean', baseline=None, intno=0, nint=1, reps=[0], slope=True):
         """
         Get the mean current in a window
         
@@ -400,8 +460,7 @@ class PSCSummary():
             raise ValueError("PSPSummary, mean_I_analysis requires a region beginning and end to measure the current")
         
         data1 = self.Clamps.traces['Time': region[0]:region[1]]
-        if baseline is None:
-            baseline = 0.
+
         tb = np.arange(0, data1.shape[1]*self.Clamps.sample_interval, self.Clamps.sample_interval)
         data1 = data1.view(np.ndarray)
 
@@ -411,6 +470,12 @@ class PSCSummary():
             dindx = range(intno, sh[0], nint)
             data1 = data1[dindx]
 
+        # subtract the "baseline" from the beginning of the interval to the end. 
+        if slope:
+            data1 = self.slope_subtraction(tb, data1, region, mode=mode)
+            
+        if baseline is not None:
+            data1 = np.array([data1[i]-baseline[i] for i in range(data1.shape[0])])
         nx = int(sh[0]/len(reps))
         if mode in ['mean', 'baseline']:
             i_mean = data1.mean(axis=1)  # all traces, average over specified time window
@@ -429,6 +494,98 @@ class PSCSummary():
         self.i_mean_cmd = self.Clamps.commandLevels
         return i_mean
 
+    def slope_subtraction(self, tb, data1, region, mode='mean'):
+        """
+        Based on """
+        dt = tb[1]-tb[0]
+        minX = 0 #int((region[0])/dt)
+        maxX = int((region[1]-region[0])/dt)
+        for i in range(data1.shape[0]):
+            x0 = list(range(minX,minX+3))
+            ml = maxX
+            x0.extend(list(range(ml-10, ml)))
+            fdx = np.array([tb[j] for j in x0])
+            fdy = np.array([data1[i][j] for j in x0])
+            pf = np.polyfit(fdx, fdy, 1)
+            bline = np.polyval(pf, tb)
+            if bline.shape[0] > data1[i].shape[0]:
+                bline = bline[:data1[i].shape[0]]
+            if mode != 'baseline':
+                data1[i,:] -= bline
+        return data1
+
+    def get_traces(self, region=None, trlist=None, baseline=None, intno=0, nint=1, reps=[0], slope=True):
+        """
+        Get the mean current (averages) in a window
+        
+        Parameters
+        ----------
+        region : tuple, list or numpy array with 2 values (default: None)
+            start and end time of a trace used to measure the RMP across
+            traces.
+        
+        Return
+        ------
+        Nothing
+        
+        Stores computed mean current in the variable "name".
+        """
+        if region is None:
+            raise ValueError("PSPSummary, mean_I_analysis requires a region beginning and end to measure the current")
+        
+        data1 = self.Clamps.traces['Time': region[0]:region[1]]
+
+        tb = np.arange(0, data1.shape[1]*self.Clamps.sample_interval, self.Clamps.sample_interval)
+        data1 = data1.view(np.ndarray)
+
+        sh = data1.shape
+        nreps = len(reps)
+        if nint > 1:
+            dindx = range(intno, sh[0], nint)
+            data1 = data1[dindx]
+
+        # subtract the "baseline" from the beginning of the interval to the end. 
+        if slope:
+            data1 = self.slope_subtraction(tb, data1, region, mode=mode)
+            
+        if baseline is not None:
+            data1 = np.array([data1[i]-baseline[i] for i in range(data1.shape[0])])
+        
+        nx = int(sh[0]/len(reps))
+        # print('unshaped data1: ', data1.shape)
+        # prop_cycle = mpl.rcParams['axes.prop_cycle']
+        # colors = prop_cycle.by_key()['color']
+        #
+        # from cycler import cycler
+        # from itertools import cycle
+        # color_cycle = cycler(c=['r', 'g', 'b', 'c', 'y', 'm', 'k'])
+        # f, ax = mpl.subplots(1, 1)
+        # k = 0
+        # for j in range(len(reps)):
+        #     for i, sty in zip(range(nx), cycle(color_cycle)):
+        # # for i in range(data1.shape[0]):
+        #         ax.plot(tb, data1[k], linewidth=0.5, **sty)
+        #         k += 1
+        # print('nx: ', nx, '  reps: ', reps, '  len reps: ', len(reps))
+        data1 = np.reshape(data1, (len(reps), nx,   -1))
+        # print('reshaped data: ', data1.shape)
+        data1 = data1.mean(axis=0)
+        # print('mean data data: ', data1.shape)
+        # for i, sty in zip(range(data1.shape[0]), cycle(color_cycle)):
+        #     ax.plot(tb, data1[i], '--', **sty)
+        # mpl.show()
+        # exit()
+        
+        # if nint == 1:
+        #     nx = int(sh[0]/len(reps))
+        #     try:
+        #         i_mean = np.reshape(i_mean, (len(reps), nx))  # reshape by repetition
+        #     except:
+        #         return None
+
+        # i_mean = i_mean.mean(axis=0)  # average over reps
+        return data1, tb
+                
 
     def vcss_analysis(self, region=None):
         """
@@ -598,5 +755,5 @@ if __name__ == '__main__':
     # protocol = 'VC-EPSC_3_ver2_003'
     fn = Path(ddc, protocol)
     PSC = PSCSummary(fn)
-    PSC.compute_PSC_IV(protocol[:-3], savetimes=True)
+    PSC.compute_PSC_IV(protocol[:-4], savetimes=True)
     
