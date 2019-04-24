@@ -100,6 +100,41 @@ class Acq4Read():
         dirs = sorted(dirs)  # make sure these are in proper order... 
         return dirs
 
+    def checkProtocol(self, protocolpath):
+        """
+        Check the protocol to see if the data is complete
+        """
+        dirs = self.subDirs(protocolpath)  # get all sequence entries (directories) under the protocol
+        modes = []
+        info = self.readDirIndex(protocolpath) # top level info dict
+        if info is None:
+            print('Protocol is not managed (no .index file found): {0:s}'.format(protocolpath))
+            return False
+        info = info['.']
+        if 'devices' not in info.keys():  # just safety... 
+            print('No devices in the protocol')
+            return False
+        devices = info['devices'].keys()
+        clampDevices = []
+        for d in devices:
+            if d in self.clampdevices:
+                clampDevices.append(d)
+        if len(clampDevices) == 0:
+            return False 
+        mainDevice = clampDevices[0]
+
+        nexpected = len(dirs)  # acq4 writes dirs before, so this is the expected fill
+        ncomplete = 0  # count number actually done
+        for i, directory_name in enumerate(dirs):  # dirs has the names of the runs within the protocol
+            datafile = os.path.join(directory_name, mainDevice+'.ma')  # clamp device file name
+            clampInfo = self.getDataInfo(datafile)
+            if clampInfo is None:
+                break
+            ncomplete += 1  # count up
+        if ncomplete != nexpected:
+            return False
+        return True
+
     def listSequenceParams(self, dh):
         """Given a directory handle for a protocol sequence, return the dict of sequence parameters"""
         try:
