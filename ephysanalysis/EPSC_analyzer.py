@@ -66,6 +66,10 @@ class PSCSummary():
         self.db_filename = None
         self.update_regions = update_regions
         self.JunctionPotential = -8.0 * 1e-3  # junction potential for correction
+        self.NMDA_voltage = 0.050 # in V  positive
+        self.AMPA_voltage = -0.0741 # in V  - this is the Cl eq potential to minize GABA interference
+        self.NMDA_delay = 0.050 # delay in s to make measurement
+        
 
     def setup(self, clamps=None, spikes=None, baseline=[0, 0.001]):
         """
@@ -286,7 +290,7 @@ class PSCSummary():
             delay = 1.0*1e-3
             t1 = (20-1.0)*1e-3
             print('auto delay', delay, t1)
-        ndelay = 0.025
+        ndelay = self.NMDA_delay
         nwidth = 0.0025
         bl_region = [ptrain['start'][0]-0.060, ptrain['start'][0]-0.010]  # time just before stimulus
         baseline = []
@@ -307,7 +311,7 @@ class PSCSummary():
         rgn = [delay, t1]
         # print('rgn: ', rgn)
         if self.update_regions:
-            rgn = self.set_region([ptrain['start'][0], ptrain['start'][0]+0.050], baseline=bl, slope=True)
+            rgn = self.set_region([ptrain['start'][0], ptrain['start'][0]+self.NMDA_delay+0.010], baseline=bl, slope=True)
         self.T0 = float(rgn[0])
         self.T1 = float(rgn[1])
 
@@ -334,7 +338,7 @@ class PSCSummary():
             trlist=None, baseline=bl, intno=0, nint=1, reps=reps, slope=False)
         # self.plot_data(tb, data1)
    
-        ind = np.argmin(np.fabs(cmds+0.090))
+        ind = np.argmin(np.fabs(cmds-self.AMPA_voltage))
 
         self.T1 = self.T0 + 0.010
         print('p1min: ', self.T0)
@@ -351,7 +355,7 @@ class PSCSummary():
         if len(self.i_argmin) < 1:
             return False
         mintime = self.i_argmin[ind]*dt  # get AMPA peak index in the window
-        print('AMPA mintime @ ~ -90: ', mintime)
+        print(f'AMPA mintime @ {self.AMPA_voltage*1e3:.1f} mV: {mintime*1e3:.3f} ms')
 
 
         # values for nmda analysis are currently fixed
@@ -369,22 +373,22 @@ class PSCSummary():
         # find -80 and +30 voltage indices (so we can save them and save the data)
 
         # print(cmds)
-        i90 = np.argmin(np.fabs(+0.090+cmds))
-        i50 = np.argmin(np.fabs(-0.050+cmds))
-        # print(i90, i50)
-        # print('-90 mV found closest command: ', cmds[i90])
-        # print('+50 mV found closest command: ', cmds[i50])
-        if data1 is None or i50 >= data1.shape[0]:
+        iAMPA = np.argmin(np.fabs(-self.AMPA_voltage+cmds))
+        iNMDA = np.argmin(np.fabs(-self.NMDA_voltage+cmds))
+        # print(iAMPA, iNMDA)
+        # print('-90 mV found closest command: ', cmds[iAMPA])
+        # print('+50 mV found closest command: ', cmds[iNMDA])
+        if data1 is None or iNMDA >= data1.shape[0]:
 
-            self.analysis_summary['Vindices'] = {'-90': np.nan, '50': np.nan}
+            self.analysis_summary['Vindices'] = {'vAMPA': np.nan, 'vNMDA': np.nan}
             self.analysis_summary['NMDAAMPARatio'] = np.nan
-            self.analysis_summary['AMPA_NMDA_traces'] = {'T': None, 'VN90': None, 'VP50': None}
+            self.analysis_summary['AMPA_NMDA_traces'] = {'T': None, 'iAMPA': None, 'iNMDA': None}
         else:
-            # print('data1 shape: ', data1.shape, i90, i50, cmds[i90], cmds[i50])
+            # print('data1 shape: ', data1.shape, iAMPA, iNMDA, cmds[iAMPA], cmds[iNMDA])
             # print(self.analysis_summary[f'PSP_VDEP_AMPA'])
-            self.analysis_summary['Vindices'] = {'-90': i90, '50': i50}
-            self.analysis_summary['NMDAAMPARatio'] = self.analysis_summary[f'PSP_VDEP_NMDA'][0][i50]/self.analysis_summary[f'PSP_VDEP_AMPA'][0][i90]
-            self.analysis_summary['AMPA_NMDA_traces'] = {'T': tb, 'VN90': data1[i90], 'VP50': data1[i50]}
+            self.analysis_summary['Vindices'] = {'-90': iAMPA, '50': iNMDA}
+            self.analysis_summary['NMDAAMPARatio'] = self.analysis_summary[f'PSP_VDEP_NMDA'][0][iNMDA]/self.analysis_summary[f'PSP_VDEP_AMPA'][0][iAMPA]
+            self.analysis_summary['AMPA_NMDA_traces'] = {'T': tb, 'iAMPA': data1[iAMPA], 'iNMDA': data1[iNMDA]}
         self.analysis_summary['meas_times'] = {'tAMPA': mintime, 'tNMDA': ndelay}
         self.analysis_summary['psc_stim_amplitudes'] = np.array(stim_I)
         self.analysis_summary['psc_intervals'] = np.array(stimintvl)

@@ -104,15 +104,17 @@ class Acq4Read():
         """
         Check the protocol to see if the data is complete
         """
+        print('Check...')
         dirs = self.subDirs(protocolpath)  # get all sequence entries (directories) under the protocol
         modes = []
         info = self.readDirIndex(protocolpath) # top level info dict
         if info is None:
-            print('Protocol is not managed (no .index file found): {0:s}'.format(protocolpath))
+            print('acq4read.checkProtocol: Protocol is not managed (no .index file found): {0:s}'.format(protocolpath))
             return False
         info = info['.']
         if 'devices' not in info.keys():  # just safety... 
-            print('No devices in the protocol')
+            print('acq4read.checkProtocol: No devices in the protocol')
+            print(info.keys())
             return False
         devices = info['devices'].keys()
         clampDevices = []
@@ -120,6 +122,7 @@ class Acq4Read():
             if d in self.clampdevices:
                 clampDevices.append(d)
         if len(clampDevices) == 0:
+            print('acq4read.checkProtocol: No clamp devices found?')
             return False 
         mainDevice = clampDevices[0]
 
@@ -132,7 +135,8 @@ class Acq4Read():
                 break
             ncomplete += 1  # count up
         if ncomplete != nexpected:
-            return False
+            print(f"acq4read.checkProtocol: Completed dirs and expected dirs are different: Completed {ncomplete: d}, expected: {nexpected:d}")
+            #return False
         return True
 
     def listSequenceParams(self, dh):
