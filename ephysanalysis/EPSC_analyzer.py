@@ -57,10 +57,31 @@ def make_key(pathname):
 
 class PSCSummary():
     def __init__(self, datapath, plot=True, update_regions=False):
+        """
+        Analyze PSCs in a few different formats:
+        IO - a stimulus sequence with increasing stimulation current,
+        all collected at a single holding voltage
+        VDEP - a Meausrement of EPSCs across voltage, targeted at obtaining
+        an NMDA/AMPA current ratio from currents at +50 and -90 mV. Data may include
+        averaging of repetead trials.
+        PPF - Paired pulse facilitiation over several intervals; may include repeated
+        trials
+        
+        Parameters
+        ----------
+        datapath : path to the data protocol (Path or string)
+        
+        plot : boolean (default: True)
+            Flag to control plotting of the data
+        
+        update_regions: Boolean (default: False)
+            A flag that forces the routines to plot data so that a time window for the
+            analysis can be defined and saved.
+        
+        
+        """
         self.datapath = datapath
         self.AR = EP.acq4read.Acq4Read()  # make our own private cersion of the analysis and reader
-
-        
         self.plot = plot
         self.db = None
         self.db_filename = None
@@ -98,9 +119,26 @@ class PSCSummary():
         self.analysis_summary = {}  # init the result structure
 
     def check_protocol(self, protocol):
+        """
+        Verify that the protocol we are examining is complete.
+        Returns True or False
+        """
+        
         return(self.AR.checkProtocol(protocol))
             
     def read_database(self, filename):
+        """
+        Read the database that will be used for analysis
+        The database is a pandas pickled file with columns
+        date, protocol, T0 and T1
+        
+        Parameters
+        ----------
+        filename : str or Path 
+            The name of the database file (full path or file if in the current
+            working directory)
+        """
+        
         self.db_filename = Path(filename)
         if self.db_filename.is_file():
             with(open(self.db_filename, 'rb')) as fh:
@@ -109,20 +147,30 @@ class PSCSummary():
             self.db = pd.DataFrame(columns=['date', 'protocol', 'T0', 'T1'])
 
     def update_database(self):
+        """
+        Write the database
+        """
+        
         if self.db is not None:
             self.db.to_pickle(self.db_filename)
 
-    def compute_PSC_IV(self, protocolName=None, plot=True, savetimes=False):
+    def compute_PSC_IV(self, protocolName, plot=True, savetimes=False):
         """
-        Simple plot voltage clamp traces
+        Direct the analysis
+        Uses the beginning of the protocol name to select which analysis to use
+        
+        Parameters:
+        protocolName : str 
+            Name of the protocol to analyze, underneath the datapath
+        
+        plot : boolean (default: True)
+            Flag to plot data
+        
         """
-        #print('path: ', self.datapath)
         self.AR.setProtocol(self.datapath)  # define the protocol path where the data is
         self.setup(clamps=self.AR)
         self.read_database(f"{protocolName:s}.p")
-        # print('database has:')
-        # print(self.db['date'])
-        # print('protocol: ', protocolName)
+
         if self.AR.getData():  # get that data.
             ok = False
             if protocolName.startswith('Stim_IO'):
@@ -138,9 +186,7 @@ class PSCSummary():
                 self.plot_vciv()
             if savetimes:
                 date = make_key(self.datapath)
-                # print('date: ', date)
-                # print('db: ', self.db)
-                # print('date list: \n', self.db['date'].tolist())
+ 
                 if date not in self.db['date'].tolist():
                     self.db.loc[len(self.db)] = [date, protocolName, self.T0, self.T1]
                     print('new date added')

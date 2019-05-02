@@ -96,8 +96,8 @@ class Acq4Read():
         p : str (no default)
             path to investigate
         """
-        dirs = filter(os.path.isdir, [os.path.join(p, d) for d in os.listdir(p)])
-        dirs = sorted(dirs)  # make sure these are in proper order... 
+        dirs = filter(Path.is_dir, list(Path(p).glob('*')))
+        dirs = sorted(list(dirs))  # make sure these are in proper order... 
         return dirs
 
     def checkProtocol(self, protocolpath):
@@ -129,7 +129,7 @@ class Acq4Read():
         nexpected = len(dirs)  # acq4 writes dirs before, so this is the expected fill
         ncomplete = 0  # count number actually done
         for i, directory_name in enumerate(dirs):  # dirs has the names of the runs within the protocol
-            datafile = os.path.join(directory_name, mainDevice+'.ma')  # clamp device file name
+            datafile = Path(directory_name, mainDevice+'.ma')  # clamp device file name
             clampInfo = self.getDataInfo(datafile)
             if clampInfo is None:
                 break
@@ -171,13 +171,13 @@ class Acq4Read():
 
     def readDirIndex(self, currdir=''):
         self._dirindex = None
-        indexFile = os.path.join(currdir, '.index')
+        indexFile = Path(currdir, '.index')
        # print (indexFile)
-        if not os.path.isfile(indexFile):
+        if not indexFile.is_file():
             print("Directory '%s' is not managed or '.index' file not found" % (currdir))
             return self._dirindex
         try:
-            self._dirindex = configfile.readConfigFile(indexFile)
+            self._dirindex = configfile.readConfigFile(str(indexFile))
         except:
             print('Failed to read index file for %s' % currdir)
             print('Probably bad formatting or broken .index file')
@@ -288,11 +288,12 @@ class Acq4Read():
         tuple: (date, cell, protocol)
         last argument returned is the rest of the path...
         """
-        (p0, proto) = os.path.split(filename)
-        (p1, cell) = os.path.split(p0)
-        (p2, sliceid) = os.path.split(p1)
-        (p3, date) = os.path.split(p2)
-        return (date, sliceid, cell, proto, p3)
+        filename = Path(filename)
+        proto = filename.stem
+        cell = filename.parent
+        sliceid = cell.parent
+        date = sliceid.parent.name
+        return (date, sliceid.name, cell.name, proto, sliceid.parent)
 
     def getClampDevices(self, currdir='', verbose=False):
         """
@@ -320,7 +321,8 @@ class Acq4Read():
         Get the index info for a record, without reading the trace data
         """
         info = None
-        if (os.path.isfile(fn)):
+        fn = Path(fn)
+        if (fn.is_file()):
             try:
                 tr = EM.MetaArray(file=fn, readAllData=False)
             except:
@@ -444,8 +446,8 @@ class Acq4Read():
         self.mode = None
         j = 0
         for i, d in enumerate(dirs):
-            fn = os.path.join(d, self.dataname)
-            if not os.path.isfile(fn):
+            fn = Path(d, self.dataname)
+            if not fn.is_file():
                 # print(' acq4read.getData: File not found: ', fn)
                 if check:
                     return False
@@ -672,8 +674,8 @@ class Acq4Read():
         self.Device_sample_rate = []
         self.Device_time_base = []
         for i, d in enumerate(dirs):
-            fn = os.path.join(d, device + '.ma')
-            if not os.path.isfile(fn):
+            fn = Path(d, device + '.ma')
+            if not fn.is_file():
                 print(' acq4read.getDeviceData: File not found: ', fn)
                 return None
             try:
@@ -715,8 +717,8 @@ class Acq4Read():
         self.LBR_sample_rate = []
         self.LBR_time_base = []
         for i, d in enumerate(dirs):
-            fn = os.path.join(d, 'Laser-Blue-raw.ma')
-            if not os.path.isfile(fn):
+            fn = Path(d, 'Laser-Blue-raw.ma')
+            if not fn.is_file():
                 print(' acq4read.getLaserBlueCommand: File not found: ', fn)
                 return False
             lbr = EM.MetaArray(file=fn)
@@ -726,8 +728,8 @@ class Acq4Read():
                 self.LaserBlue_pCell.append(lbr.view(np.ndarray)[1]) # pCell
             except:
                 # see if have a PockelCell as a seprate thing
-                fn = os.path.join(d, 'PockelCell.ma')
-                if not os.path.isfile(fn):
+                fn = Path(d, 'PockelCell.ma')
+                if not fn.is_file():
                     print(' acq4read.getLaserBlueCommand: File not found: ', fn)
                     self.LaserBlue_pCell.append(None)
                 else:
@@ -770,8 +772,8 @@ class Acq4Read():
         self.Photodiode_sample_rate = []
         self.Photodiode_command = []
         for i, d in enumerate(dirs):
-            fn = os.path.join(d, 'Photodiode.ma')
-            if not os.path.isfile(fn):
+            fn = Path(d, 'Photodiode.ma')
+            if not fn.is_file():
                 print(' acq4read.getPhotodiode: File not found: ', fn)
                 return False
             pdr = EM.MetaArray(file=fn)
@@ -915,8 +917,8 @@ class Acq4Read():
             if i == nmax:  # check limit here first
                 break
             index = self._readIndex(d)
-            imageframe = EM.MetaArray(file=os.path.join(d, dataname))
-            cindex = self._readIndex(os.path.join(d, 'Camera'))
+            imageframe = EM.MetaArray(file=Path(d, dataname))
+            cindex = self._readIndex(Path(d, 'Camera'))
             frsize = cindex['frames.ma']['region']
             binning = cindex['frames.ma']['binning']
            # print ('image shape: ', imageframe.shape)
@@ -954,18 +956,18 @@ class Acq4Read():
         else:
             ax[0].plot(self.time_base, np.array(self.data_array).mean(axis=0))
         mpl.show()
-        
-if __name__ == '__main__':
+
+def one_test():
+    BRI = BR.BoundRect()
+    #    a.setProtocol('/Users/pbmanis/Documents/data/MRK_Pyramidal/2018.01.26_000/slice_000/cell_000/CCIV_1nA_max_000/')
+        # this won't work in the wild, need appropriate data for testing.
     import matplotlib
     matplotlib.use('Agg')
     import matplotlib.pyplot as mpl
-    # test on a big file
+    # test on a big file    
     a = Acq4Read()
-    BRI = BR.BoundRect()
-#    a.setProtocol('/Users/pbmanis/Documents/data/MRK_Pyramidal/2018.01.26_000/slice_000/cell_000/CCIV_1nA_max_000/')
-    # this won't work in the wild, need appropriate data for testing.
     cell = '/Users/pbmanis/Documents/data/mrk/2017.09.12_000/slice_000/cell_001'
-    datasets = os.listdir(cell)
+    datasets = Path(cell.glob('*'))
     imageplotted = False
     imagetimes = []
     imagename = []
@@ -986,7 +988,7 @@ if __name__ == '__main__':
     for im, m in enumerate(maptimes):
         u = np.argmin(maptimes[im] - np.array(imagetimes))
         maptoimage[mapname[im]] = imagename[u]
-            
+        
     print (maptoimage)
 
     for i, d in enumerate(datasets):
@@ -998,8 +1000,8 @@ if __name__ == '__main__':
     #    a.setProtocol('/Volumes/Pegasus/ManisLab_Data3/Kasten, Michael/2017.11.20_000/slice_000/cell_000/CCIV_4nA_max_000')
         if not a.getScannerPositions():
            continue
-        
     
+
         print( a.scannerCamera['frames.ma']['transform'])
         pos = a.scannerCamera['frames.ma']['transform']['pos']
         scale = a.scannerCamera['frames.ma']['transform']['scale']
@@ -1024,7 +1026,7 @@ if __name__ == '__main__':
         print(fp.shape)
         scannerbox = np.append(scannerbox, fp, axis=1)
         print(scannerbox)
-    
+
         boxw = np.swapaxes(np.array(camerabox), 0, 1)
         print('camera box: ', boxw)
         scboxw = np.array(scannerbox)
@@ -1040,15 +1042,26 @@ if __name__ == '__main__':
         mpl.plot(a.scannerpositions[:,0], a.scannerpositions[:,1], 'ro', alpha=0.2, markeredgecolor='w')
         mpl.plot(boxw[0,:], boxw[1,:], 'g-', linewidth=5)
         mpl.plot(scboxw[0,:], scboxw[1,:], linewidth=1.5, label=d.replace('_', '\_'))
-    
+
     # a.getData()
     # a.plotClampData(all=True)
     # print a.clampInfo
     # print a.traces[0]
     pos = mpl.ginput(-1, show_clicks=True)
     print(pos)
-    
+
     mpl.legend()
     mpl.show()
+    
+if __name__ == '__main__':
+
+    AR = Acq4Read()
+    
+    datapath = '/Users/pbmanis/Documents/Lab/data/Maness_PFC_stim/2019.03.19_000/slice_000/cell_001'
+    d = AR.subDirs(datapath)
+
+    
+    
+
             
 
