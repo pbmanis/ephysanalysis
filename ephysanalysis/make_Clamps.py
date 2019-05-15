@@ -29,8 +29,8 @@ class MakeClamps():
         r = df['Results'][0]
         
     
-        P = PH.Plotter(1, 1, figsize=(6, 4))
-        
+        P = PH.Plotter((1, 1), figsize=(6, 4))
+        cell_ax = list(P.axdict.keys())[0]
         for trial in range(len(df['Results'])):
             ds = df['Results'][trial]
             k0 = list(df['Results'][trial].keys())[0]
