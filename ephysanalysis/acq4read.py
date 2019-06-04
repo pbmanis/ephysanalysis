@@ -24,7 +24,6 @@ import tifffile as tf
 pp = pprint.PrettyPrinter(indent=4)
 
 
-
 class Acq4Read():
     """
     Provides methods to read an acq4 protocol directory
@@ -50,9 +49,8 @@ class Acq4Read():
         if pathtoprotocol is not None:
             self.setProtocol(pathtoprotocol)
         if dataname is None:
-            self.dataname = 'MultiClamp1.ma'
-        else:
-            self.dataname = dataname
+            dataname = 'MultiClamp1.ma'  # the default, but sometimes need to use Clamp1.ma
+        self.setDataName(dataname)
         self.clampInfo = {}
         self.lb = '\n'
         # establish known clamp devices:
@@ -86,6 +84,8 @@ class Acq4Read():
         Set the type (name) of the data metaarray name that will be read
         """
         self.dataname = dataname
+        self.shortdname = str(Path(self.dataname).stem)
+        
 
     def subDirs(self, p):
         """
@@ -416,8 +416,8 @@ class Acq4Read():
         self.sample_rate = []
         info = self.getIndex() #self.protocol)
 #        print('Info: ', info, self.protocol)
-        holdcheck = info['devices']['MultiClamp1']['holdingCheck']
-        holdvalue = info['devices']['MultiClamp1']['holdingSpin']
+        holdcheck = info['devices'][self.shortdname]['holdingCheck']
+        holdvalue = info['devices'][self.shortdname]['holdingSpin']
         if holdcheck:
             self.holding = holdvalue
         else:
@@ -448,7 +448,7 @@ class Acq4Read():
         for i, d in enumerate(dirs):
             fn = Path(d, self.dataname)
             if not fn.is_file():
-                # print(' acq4read.getData: File not found: ', fn)
+                print(' acq4read.getData: File not found: ', fn)
                 if check:
                     return False
                 else:
@@ -515,10 +515,10 @@ class Acq4Read():
         self.data_array = np.array(self.data_array)
         self.time_base = np.array(self.time_base[0])
         protoreps = ('protocol', 'repetitions')
-        mclamppulses = ('MultiClamp1', 'Pulse_amplitude')
+        mclamppulses = (self.shortdname, 'Pulse_amplitude')
         seqparams = index['.']['sequenceParams']
         #self.printIndex(index)
-        stimuli = index['.']['devices']['MultiClamp1']['waveGeneratorWidget']['stimuli']
+        stimuli = index['.']['devices'][self.shortdname]['waveGeneratorWidget']['stimuli']
         if 'Pulse' in list(stimuli.keys()):
             self.tstart = stimuli['Pulse']['start']['value']
             self.tend = self.tstart + stimuli['Pulse']['length']['value']
@@ -528,7 +528,7 @@ class Acq4Read():
         if mclamppulses in seqparams.keys():
             self.repetitions = len(seqparams[mclamppulses])
             self.commandLevels = np.array(seqparams[mclamppulses])
-            function = index['.']['devices']['MultiClamp1']['waveGeneratorWidget']['function']
+            function = index['.']['devices'][self.shortdname]['waveGeneratorWidget']['function']
         elif protoreps in seqparams.keys():
             self.repetitions = seqparams[protoreps][0] + 1
         else:
