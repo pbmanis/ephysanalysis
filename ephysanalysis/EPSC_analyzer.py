@@ -16,20 +16,9 @@ The results of the analysis are stored in the class variable analysis_summary
 import sys
 from pathlib import Path
 import os  #legacy
-import matplotlib
 import scipy.signal
 import pandas as pd
-matplotlib.use('Qt4Agg')
-from matplotlib import rc
-#rc('font',**{'family':'sans-serif','sans-serif':['Arial']})
-#rcParams['font.sans-serif'] = ['Arial']
-#rcParams['font.family'] = 'sans-serif'
-rc('text', usetex=True)
-rcParams = matplotlib.rcParams
-rcParams['svg.fonttype'] = 'none' # No text as paths. Assume font installed.
-rcParams['pdf.fonttype'] = 42
-rcParams['ps.fonttype'] = 42
-rcParams['text.latex.unicode'] = True
+
 from cycler import cycler
 from itertools import cycle
 import numpy as np
@@ -38,9 +27,9 @@ import numpy as np
 import ephysanalysis as EP
 import ephysanalysis.metaarray as EM  # need to use this version for Python 3
 import ephysanalysis.cursor_plot as CP
+import pylibrary.PlotHelpers as PH
 import matplotlib.pyplot as mpl
 import matplotlib.colors
-import pylibrary.PlotHelpers as PH
 
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtGui, QtCore
@@ -1026,7 +1015,18 @@ class PSCSummary():
         
 
 if __name__ == '__main__':
-    
+    import matplotlib
+    matplotlib.use('Qt4Agg')
+    from matplotlib import rc
+    #rc('font',**{'family':'sans-serif','sans-serif':['Arial']})
+    #rcParams['font.sans-serif'] = ['Arial']
+    #rcParams['font.family'] = 'sans-serif'
+    rc('text', usetex=False)
+    rcParams = matplotlib.rcParams
+    rcParams['svg.fonttype'] = 'none' # No text as paths. Assume font installed.
+    rcParams['pdf.fonttype'] = 42
+    rcParams['ps.fonttype'] = 42
+    rcParams['text.latex.unicode'] = True    
     # disk = '/Volumes/Pegasus/ManisLab_Data3'
     # disk = '/Volumes/PBM_005/data'
     disk = '/Users/pbmanis/Documents/Lab'

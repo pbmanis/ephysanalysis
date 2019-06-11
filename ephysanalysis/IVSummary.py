@@ -10,17 +10,17 @@ import sys
 import numpy as np
 import os.path
 from collections import OrderedDict
-import matplotlib
-from matplotlib import rc
-#rc('font',**{'family':'sans-serif','sans-serif':['Arial']})
-#rcParams['font.sans-serif'] = ['Arial']
-#rcParams['font.family'] = 'sans-serif'
-rc('text', usetex=True)
-rcParams = matplotlib.rcParams
-rcParams['svg.fonttype'] = 'none' # No text as paths. Assume font installed.
-rcParams['pdf.fonttype'] = 42
-rcParams['ps.fonttype'] = 42
-rcParams['text.latex.unicode'] = True
+# import matplotlib
+# from matplotlib import rc
+# #rc('font',**{'family':'sans-serif','sans-serif':['Arial']})
+# #rcParams['font.sans-serif'] = ['Arial']
+# #rcParams['font.family'] = 'sans-serif'
+# rc('text', usetex=True)
+# rcParams = matplotlib.rcParams
+# rcParams['svg.fonttype'] = 'none' # No text as paths. Assume font installed.
+# rcParams['pdf.fonttype'] = 42
+# rcParams['ps.fonttype'] = 42
+# rcParams['text.latex.unicode'] = True
 import matplotlib.pyplot as mpl
 import matplotlib.colors
 import pylibrary.PlotHelpers as PH
