@@ -21,7 +21,6 @@ from collections import OrderedDict
 # rcParams['pdf.fonttype'] = 42
 # rcParams['ps.fonttype'] = 42
 # rcParams['text.latex.unicode'] = True
-import matplotlib.pyplot as mpl
 import matplotlib.colors
 import pylibrary.PlotHelpers as PH
 import ephysanalysis as EP
@@ -215,5 +214,6 @@ class IVSummary():
         self.IVFigure = P.figure_handle
     
         if self.plot:
+             import matplotlib.pyplot as mpl
              mpl.show()
 

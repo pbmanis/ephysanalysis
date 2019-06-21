@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 import pickle
 import matplotlib
-matplotlib.use('Qt4Agg')
+# matplotlib.use('Qt4Agg')
 
 import matplotlib.pyplot as mpl
 import pylibrary.PlotHelpers as PH
