@@ -517,6 +517,7 @@ class Acq4Read():
         protoreps = ('protocol', 'repetitions')
         mclamppulses = (self.shortdname, 'Pulse_amplitude')
         seqparams = index['.']['sequenceParams']
+        # print('sequence params: ', seqparams)
         #self.printIndex(index)
         stimuli = index['.']['devices'][self.shortdname]['waveGeneratorWidget']['stimuli']
         if 'Pulse' in list(stimuli.keys()):
@@ -525,15 +526,18 @@ class Acq4Read():
         else:
             self.tstart = 0.
             self.tend = np.max(self.time_base)
+
         if mclamppulses in seqparams.keys():
             self.repetitions = len(seqparams[mclamppulses])
             self.commandLevels = np.array(seqparams[mclamppulses])
             function = index['.']['devices'][self.shortdname]['waveGeneratorWidget']['function']
         elif protoreps in seqparams.keys():
-            self.repetitions = seqparams[protoreps][0] + 1
+            self.repetitions = len(seqparams[protoreps])
+            # WE probably should reshape the data arrays here (traces, cmd_wave, data_array)
+            #data = np.reshape(self.AR.traces, (self.AR.repetitions, int(self.AR.traces.shape[0]/self.AR.repetitions), self.AR.traces.shape[1]))
         else:
-            protoreps = 1
-            self.repetitions = 1
+            raise ValueError(" cannot determine the protocol repetitions")# protoreps = 1
+            # self.repetitions = 1
         return True
 
     def getClampCommand(self, data, generateEmpty=True):    
