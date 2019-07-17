@@ -25,6 +25,7 @@ import ephysanalysis.poisson_score
 import ephysanalysis.bridge
 import ephysanalysis.cursor_plot
 import ephysanalysis.make_Clamps
+import ephysanalysis.test_notch
 
 import ephysanalysis.metaarray as MetaArray
 

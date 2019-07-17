@@ -362,6 +362,9 @@ class HFile(object):
         self.rec = rec
         self.data = flatten(self.datac.data[self.rec['MatName'][0]])
         self.type = 'HFILE'
+        self.age = self.data['Age']['v']
+        self.species = self.data['Species']['v']
+        self.sex = self.data['Sex']['v']
         
     def summary(self):
         exp = self.data['Experiment']['v']

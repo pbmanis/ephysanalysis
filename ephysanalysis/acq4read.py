@@ -176,6 +176,9 @@ class Acq4Read():
         if not indexFile.is_file():
             print("Directory '%s' is not managed or '.index' file not found" % (currdir))
             return self._dirindex
+        # print('\nindex file found for currdir: ', currdir)
+        self._dirindex = configfile.readConfigFile(str(indexFile))
+        # print(self._dirindex)
         try:
             self._dirindex = configfile.readConfigFile(str(indexFile))
         except:
@@ -595,7 +598,6 @@ class Acq4Read():
                 raise ValueError('Unable to parse devices PockeCell')
         stimuli = stimuli['waveGeneratorWidget']['stimuli']
         return self._getPulses(stimuli)
-
 
     def _getPulses(self, stimuli):
         if 'PulseTrain' in stimuli.keys():
