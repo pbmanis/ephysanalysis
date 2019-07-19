@@ -22,6 +22,8 @@ import pylibrary.fileselector as FS
 import pyqtgraph as pg
 from pyqtgraph.parametertree import Parameter, ParameterTree
 import mapanalysistools.digital_filters as FILT
+from minis import minis_methods
+
 
 # datadir = '/Volumes/Pegasus/ManisLab_Data3/Kasten_Michael/NF107Ai32Het'
 # dbfile = 'NF107Ai32Het_bcorr2.pkl'
@@ -37,10 +39,15 @@ class TraceAnalyzer(pg.QtGui.QWidget):
         self.notch_freqs = [60., 120., 180., 240.]
         self.notch_Q = 30.
         self.curves = []
-        self.AR.traces = None
+        self.scatter = []
         self.maxT = 0.6
-        
+        self.tau1 = 0.1
+        self.tau2 = 0.4
+        self.thresh = 3.0
+        self.sign = -1
         self.n_adjusted = 0
+        self.MA = minis_methods.MiniAnalyses()  # get a minianalysis instance
+        
     
     def getProtocolDir(self):
         sel = FS.FileSelector(dialogtype='dir', startingdir=self.datadir)
@@ -82,6 +89,82 @@ class TraceAnalyzer(pg.QtGui.QWidget):
         self.AR.setProtocol(self.protocolPath)  # define the protocol path where the data is
         if self.AR.getData():  # get that data.
             self.update_traces()
+
+    def _getpars(self):
+        pars = self.minis_values.text()
+        sv = pars.split(',')
+        self.tau1 = float(sv[0])
+        self.tau2 = float(sv[1])
+        self.thresh = float(sv[2])
+        self.sign = float(sv[3])
+        print(self.tau1, self.tau2, self.thresh, self.sign)
+        
+    def CB(self):
+        self._getpars()
+        cb = minis_methods.ClementsBekkers()
+        rate = np.mean(np.diff(self.tb))
+        jmax = int((2*self.tau1 + 3*self.tau2)/rate)
+        cb.setup(tau1=self.tau1, tau2=self.tau2, dt=rate, delay=0.0, template_tmax=rate*(jmax-1),
+                sign=self.sign, eventstartthr=None)
+        meandata = np.mean(self.current_data)
+        cb._make_template()
+        cb.cbTemplateMatch(self.current_data,  threshold=self.thresh)
+        self.decorate(cb)
+        
+    def AJ(self):
+        self._getpars()
+        aj = minis_methods.AndradeJonas()
+        rate = np.mean(np.diff(self.tb))
+        jmax = int((2*self.tau1 + 3*self.tau2)/rate)
+        aj.setup(tau1=self.tau1, tau2=self.tau2, dt=rate, delay=0.0, template_tmax=rate*(jmax-1),
+                sign=self.sign, eventstartthr=None)
+        meandata = np.mean(self.current_data)
+        aj.deconvolve(self.current_data, data_nostim=None,
+                thresh=self.thresh, llambda=1., order=7)  # note threshold scaling...
+        self.decorate(aj)
+    
+    def decorate(self, minimethod):
+        for s in self.scatter:
+            s.clear()
+        self.scatter = []
+        if len(minimethod.onsets) is not None:
+            self.scatter.append(self.dataplot.plot(self.tb[minimethod.smpkindex]*1e3,  np.array(minimethod.smoothed_peaks),
+                      pen = None, symbol='o', symbolPen=None, symbolSize=5, symbolBrush=(255, 0, 0, 255)))
+
+    def update_traces(self):
+        if len(self.AR.traces) == 0:
+            return
+        self.current_trace = int(self.w1.x)
+        self.dataplot.setTitle(f'Trace: {self.current_trace:d}')
+        for c in self.curves:
+            c.clear()
+        for s in self.scatter:
+            s.clear()
+        self.scatter = []
+        self.curves = []
+
+        notchfr = self.notch_button.value()
+        i = self.current_trace
+        if (i > self.AR.traces.shape[0]):
+            self.dataplot.setTitle(f'Trace > Max traces: {self.AR.traces.shape[0]:d}')
+            return
+        imax = int(self.maxT*self.AR.sample_rate[0])
+        mod_data = self.AR.traces[i,:].copy()[:imax]
+        if self.notch_check.checkState():
+            mod_data =  FILT.NotchFilterZP(mod_data, notchf=[notchfr], Q=self.notch_Q,
+                            QScale=False, samplefreq=self.AR.sample_rate[0])
+
+        if self.lpf_check.checkState():
+            mod_data = FILT.SignalFilter_LPFBessel(mod_data, self.lpf_button.value(),
+                        samplefreq=self.AR.sample_rate[0], NPole=8)
+
+        self.curves.append(self.dataplot.plot(self.AR.time_base[:imax]*1e3,
+                            # self.AR.traces[i,:],
+                            mod_data, 
+                           pen=pg.intColor(1)))
+        self.current_data = mod_data
+        self.tb = self.AR.time_base[:imax]
+
 
     def quit(self):
         exit(0)
@@ -128,15 +211,28 @@ class TraceAnalyzer(pg.QtGui.QWidget):
         
         
         self.lpf_button = pg.QtGui.QDoubleSpinBox()
-        self.lpf_button.setValue(5000.)
         self.lpf_button.setMinimum(200.)
         self.lpf_button.setMaximum(10000.)
+        self.lpf_button.setValue(3000.)
         self.buttons.addWidget(self.lpf_button)
         self.lpf_button.valueChanged.connect(self.update_traces)
         self.buttons.addWidget(self.lpf_button)
         self.lpf_check = pg.QtGui.QCheckBox("LPF")
+        self.lpf_check.setChecked(True)
         self.lpf_check.stateChanged.connect(self.update_traces)
         self.buttons.addWidget(self.lpf_check)
+        
+        self.cb_button = pg.QtGui.QPushButton("Clements-Bekkers")
+        self.buttons.addWidget(self.cb_button)
+        self.cb_button.clicked.connect(self.CB)
+
+        self.aj_button = pg.QtGui.QPushButton("AJ")
+        self.buttons.addWidget(self.aj_button)
+        self.aj_button.clicked.connect(self.AJ)
+        
+        self.minis_values = pg.QtGui.QLineEdit("0.001, 0.004, 3, -1")
+        self.buttons.addWidget(self.minis_values)
+        
         
         spacerItem1 = pg.QtGui.QSpacerItem(0, 400, pg.QtGui.QSizePolicy.Expanding, pg.QtGui.QSizePolicy.Minimum)
         self.buttons.addItem(spacerItem1)
@@ -156,33 +252,6 @@ class TraceAnalyzer(pg.QtGui.QWidget):
         layout.setColumnStretch(0, 1)  # reduce width of LHS column of buttons
         layout.setColumnStretch(1, 7)  # and stretch out the data dispaly
         
-    def update_traces(self):
-        if self.AR.traces is None:
-            return
-        self.current_trace = int(self.w1.x)
-        self.dataplot.setTitle(f'Trace: {self.current_trace:d}')
-        for c in self.curves:
-            c.clear()
-        self.curves = []
-        notchfr = self.notch_button.value()
-        i = self.current_trace
-        if (i > self.AR.traces.shape[0]):
-            self.dataplot.setTitle(f'Trace > Max traces: {self.AR.traces.shape[0]:d}')
-            return
-        imax = int(self.maxT*self.AR.sample_rate[0])
-        print('imax: ', imax)
-        mod_data = self.AR.traces[i,:].copy()[:imax]
-        if self.notch_check.checkState():
-            mod_data =  FILT.NotchFilterZP(mod_data, notchf=[notchfr], Q=self.notch_Q,
-                               QScale=False, samplefreq=self.AR.sample_rate[0])
-        if self.lpf_check.checkState():
-            mod_data = FILT.SignalFilter_LPFBessel(mod_data, self.lpf_button.value(), samplefreq=self.AR.sample_rate[0], NPole=8)
-        self.curves.append(self.dataplot.plot(self.AR.time_base[:imax]*1e3,
-                            # self.AR.traces[i,:],
-                            mod_data, 
-                           # FILT.NotchFilterZP(self.AR.traces[i,:], notchf=[notchfr], Q=self.notch_Q,
- #                               QScale=False, samplefreq=self.AR.sample_rate[0]),
-                           pen=pg.intColor(1)))
 
 class FloatSlider(pg.QtGui.QSlider):
     def __init__(self, parent, decimals=3, *args, **kargs):
