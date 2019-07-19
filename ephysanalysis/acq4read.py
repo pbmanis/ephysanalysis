@@ -68,7 +68,19 @@ class Acq4Read():
         clamps.extend([(aon, 'Pulse_amplitude'), (apn, 'Pulse_amplitude')])
         self.clampdevices.extend([aon, apn])
         self.clamps = clamps
+        
         self.tstamp = re.compile('\s*(__timestamp__: )([\d.\d]*)')
+        self.clampInfo['dirs'] = []
+        self.clampInfo['missingData'] = []
+        self.traces = []
+        self.data_array = []
+        self.commandLevels = []
+        self.cmd_wave = []
+        self.time_base = []
+        self.values = []
+        self.trace_StartTimes = np.zeros(0)
+        self.sample_rate = []
+                
         
     def setProtocol(self, pathtoprotocol):
         """
