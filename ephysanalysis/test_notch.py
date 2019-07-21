@@ -46,6 +46,7 @@ class TraceAnalyzer(pg.QtGui.QWidget):
         self.thresh = 3.0
         self.sign = -1
         self.n_adjusted = 0
+        self.curve_set = False
         self.MA = minis_methods.MiniAnalyses()  # get a minianalysis instance
         
     
@@ -124,6 +125,9 @@ class TraceAnalyzer(pg.QtGui.QWidget):
         self.decorate(aj)
     
     def decorate(self, minimethod):
+        if not self.curve_set:
+            return
+        print('decorate')
         for s in self.scatter:
             s.clear()
         self.scatter = []
@@ -142,14 +146,14 @@ class TraceAnalyzer(pg.QtGui.QWidget):
             s.clear()
         self.scatter = []
         self.curves = []
-
+        self.curve_set = False
         notchfr = self.notch_button.value()
         i = self.current_trace
-        if (i > self.AR.traces.shape[0]):
-            self.dataplot.setTitle(f'Trace > Max traces: {self.AR.traces.shape[0]:d}')
+        if (i > self.AR.data_array.shape[0]):
+            self.dataplot.setTitle(f'Trace > Max traces: {self.AR.data_array.shape[0]:d}')
             return
         imax = int(self.maxT*self.AR.sample_rate[0])
-        mod_data = self.AR.traces[i,:].copy()[:imax]
+        mod_data = self.AR.data_array[i,:imax]
         if self.notch_check.checkState():
             mod_data =  FILT.NotchFilterZP(mod_data, notchf=[notchfr], Q=self.notch_Q,
                             QScale=False, samplefreq=self.AR.sample_rate[0])
@@ -164,6 +168,7 @@ class TraceAnalyzer(pg.QtGui.QWidget):
                            pen=pg.intColor(1)))
         self.current_data = mod_data
         self.tb = self.AR.time_base[:imax]
+        self.curve_set = True
 
 
     def quit(self):
