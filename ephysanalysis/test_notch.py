@@ -29,7 +29,8 @@ from minis import minis_methods
 # dbfile = 'NF107Ai32Het_bcorr2.pkl'
 
 class TraceAnalyzer(pg.QtGui.QWidget):
-    def __init__(self):
+    def __init__(self, app=None):
+        self.app = app
         self.datadir = '/Volumes/Pegasus/ManisLab_Data3/Kasten_Michael/NF107Ai32Het'
         self.AR = EP.acq4read.Acq4Read()  # make our own private cersion of the analysis and reader
         self.SP = EP.SpikeAnalysis.SpikeAnalysis()
@@ -39,6 +40,7 @@ class TraceAnalyzer(pg.QtGui.QWidget):
         self.notch_freqs = [60., 120., 180., 240.]
         self.notch_Q = 30.
         self.curves = []
+        self.crits = []
         self.scatter = []
         self.maxT = 0.6
         self.tau1 = 0.1
@@ -59,9 +61,9 @@ class TraceAnalyzer(pg.QtGui.QWidget):
             for p in self.pdirs:
                 self.clampfiles.append(p)
                 # print(p)
-        self.w1.slider.setValue(1)
-        self.w1.slider.setMinimum(1)
-        self.w1.slider.setMaximum(len(self.clampfiles)+1)
+        self.w1.slider.setValue(0)
+        self.w1.slider.setMinimum(0)
+        self.w1.slider.setMaximum(len(self.clampfiles))
         self.protocolPath = sel.fileName
         print('protocolpath: ', sel.fileName)
         self.updateTraces()
@@ -84,7 +86,7 @@ class TraceAnalyzer(pg.QtGui.QWidget):
         self.protocolKey = Path(self.date, self.slice, self.cell, self.protocolName)
         if not self.protocolPath.is_dir():
             print('dir not found: ', str(self.protocolPath))
-            exit(1)
+            return
 
     def updateTraces(self):
         self.AR.setProtocol(self.protocolPath)  # define the protocol path where the data is
@@ -111,6 +113,7 @@ class TraceAnalyzer(pg.QtGui.QWidget):
         cb._make_template()
         cb.cbTemplateMatch(self.current_data,  threshold=self.thresh)
         self.decorate(cb)
+        self.method = cb
         
     def AJ(self):
         self._getpars()
@@ -123,6 +126,7 @@ class TraceAnalyzer(pg.QtGui.QWidget):
         aj.deconvolve(self.current_data, data_nostim=None,
                 thresh=self.thresh, llambda=1., order=7)  # note threshold scaling...
         self.decorate(aj)
+        self.method = aj
     
     def decorate(self, minimethod):
         if not self.curve_set:
@@ -130,11 +134,21 @@ class TraceAnalyzer(pg.QtGui.QWidget):
         print('decorate')
         for s in self.scatter:
             s.clear()
+        for c in self.crits:
+            c.clear()
         self.scatter = []
+        self.crits = []
         if len(minimethod.onsets) is not None:
+            print('A')
             self.scatter.append(self.dataplot.plot(self.tb[minimethod.smpkindex]*1e3,  np.array(minimethod.smoothed_peaks),
                       pen = None, symbol='o', symbolPen=None, symbolSize=5, symbolBrush=(255, 0, 0, 255)))
+            # self.scatter.append(self.dataplot.plot(self.tb[minimethod.peaks]*1e3,  np.array(minimethod.amplitudes),
+            #           pen = None, symbol='o', symbolPen=None, symbolSize=5, symbolBrush=(255, 0, 0, 255)))
 
+            print('b')
+            self.crits.append(self.dataplot2.plot(self.tb[:len(minimethod.Crit)]*1e3, minimethod.Crit, pen='r'))
+            print('c')
+    
     def update_traces(self):
         if len(self.AR.traces) == 0:
             return
@@ -149,7 +163,7 @@ class TraceAnalyzer(pg.QtGui.QWidget):
         self.curve_set = False
         notchfr = self.notch_button.value()
         i = self.current_trace
-        if (i > self.AR.data_array.shape[0]):
+        if (i >= self.AR.data_array.shape[0]):
             self.dataplot.setTitle(f'Trace > Max traces: {self.AR.data_array.shape[0]:d}')
             return
         imax = int(self.maxT*self.AR.sample_rate[0])
@@ -169,6 +183,8 @@ class TraceAnalyzer(pg.QtGui.QWidget):
         self.current_data = mod_data
         self.tb = self.AR.time_base[:imax]
         self.curve_set = True
+        self.CB()
+        
 
 
     def quit(self):
@@ -199,7 +215,6 @@ class TraceAnalyzer(pg.QtGui.QWidget):
         self.win.resize(1280, 800)
         
         self.buttons = pg.QtGui.QGridLayout()
-        layout.addLayout(self.buttons, 0, 0, 7, 1)
         self.b3 = pg.QtGui.QPushButton("Get Protocol Directory")
         self.buttons.addWidget(self.b3)
         self.b3.clicked.connect(self.getProtocolDir)
@@ -246,14 +261,18 @@ class TraceAnalyzer(pg.QtGui.QWidget):
         self.buttons.addWidget(self.b2)
         self.b2.clicked.connect(self.quit)
 
+        self.w1 = Slider(0, 250, scalar=1., parent=parent)
+        self.w1.slider.valueChanged.connect(self.update_traces)
+
         # spacerItem = pg.QtGui.QSpacerItem(0, 10, pg.QtGui.QSizePolicy.Expanding, pg.QtGui.QSizePolicy.Minimum)
         # self.buttons.addItem(spacerItem)
 
         self.dataplot = pg.PlotWidget()
-        layout.addWidget(self.dataplot, 0, 1, 6, 7)
-        self.w1 = Slider(0, 250, scalar=1.)
-        self.w1.slider.valueChanged.connect(self.update_traces)
-        layout.addWidget(self.w1, 7, 1, 1, 7)
+        self.dataplot2 = pg.PlotWidget()
+        layout.addLayout(self.buttons, 0, 0, 7, 1)
+        layout.addWidget(self.dataplot,  0, 1, 1, 6)
+        layout.addWidget(self.dataplot2, 6, 1, 4, 6)
+        layout.addWidget(self.w1,        7, 1, 1, 6)
         layout.setColumnStretch(0, 1)  # reduce width of LHS column of buttons
         layout.setColumnStretch(1, 7)  # and stretch out the data dispaly
         
@@ -316,15 +335,18 @@ class Slider(pg.QtGui.QWidget):
 
 def main():
 
-    TA = TraceAnalyzer()
 
-    app = pg.mkQApp()
+    app = pg.QtGui.QApplication([])
+    TA = TraceAnalyzer(app)
     app.aboutToQuit.connect(TA.quit)  # prevent python exception when closing window with system control
     TA.set_window()
     # TA.show()
-
-    if sys.flags.interactive == 0:
-     app.exec_()
+    import sys
+    if (sys.flags.interactive != 1) or not hasattr(QtCore, 'PYQT_VERSION'):
+        pg.QtGui.QApplication.instance().exec_()
+        
+    # if sys.flags.interactive == 0:
+    #  app.exec_()
 
 
 if __name__ == '__main__':
