@@ -21,6 +21,7 @@ setup(name='ephysanalysis',
                'ma2tiff=ephysanalysis.ma2tiff:convertfiles',
                'bridge=ephysanalysis.bridge:main',
                'notch=ephysanalysis.test_notch:main',
+               'matread=ephysanalysis.MatdatacRead:main',
           ]
       },
       classifiers = [

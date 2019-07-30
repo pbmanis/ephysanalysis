@@ -13,8 +13,8 @@ GetClamps does the transformation.
 
 """
 from __future__ import print_function
-import os
 import sys
+import os
 import re
 from pathlib import Path
 from collections import OrderedDict
@@ -23,7 +23,14 @@ import numpy as np
 import pprint
 import ephysanalysis.metaarray as EM
 import ephysanalysis.IVSummary as IVS
+import pylibrary.fileselector as FS
 
+import matplotlib
+import matplotlib.pyplot as mpl
+import matplotlib.mlab as mlab
+import sys
+import pylibrary.PlotHelpers as PH
+    
 """
 Helper functions
 """
@@ -339,11 +346,13 @@ class DatacFile(object):
             
     def summary(self):
         """
-        Print a sumary of the file (which blocks, etc)
+        Generate a string with a short summary of the file (which blocks, etc)
         """
-        summ = 'FILE: ' + self.fname
-        typs = set([i.type for i in self.items if i.type not in ('HFILE', 'NOTE')])
-        summ += '\nBLOCKS: ' + '  '.join(list(typs))
+        summ = 'FILE: ' + str(self.fname)
+        typs = [i.type for i in self.items if i.type not in ('HFILE', 'NOTE')]
+        summ += '\nBlocks: \n'
+        for i, t in enumerate(typs):
+            summ += f"    {i:3d}: {t:s}\n"
         
         for i in self.items:
             if i.type == 'HFILE':
@@ -382,7 +391,7 @@ class HFile(object):
 class Note(object):
     def __init__(self, datac, rec):
         """
-        Store the note assicated with the current record
+        Store the note associated with the current record
         from the matdatac file structure
         
         Parameters
@@ -501,53 +510,169 @@ class Block(object):
         self._data = rate, x
         return self._data
 
-
-if __name__ == '__main__':
-    import sys
-    import matplotlib
-    import matplotlib.pyplot as mpl
-    import matplotlib.mlab as mlab
-    matplotlib.use('TkAgg',warn=False, force=True)
-    path = ''
-    datasummary = '../DataSummaries'
-#    fn = '/Users/pbmanis/Documents/data/RX_CCdata/13jul09a.mat'
-  #  fn = '/Volumes/Pegasus/ManisLab_Data3/Rich_Alex/Rich_Acq3/01may09c.mat'
-    fn = '/Volumes/Samsung_T5/data/Rich_Alex/Acq3Files/10dec08a.mat'
-
-    df = DatacFile(os.path.join(fn))  # get the matdatac file
-    # for it in df.items:
-    #     if isinstance(it, Block):
-    #         print(it.summary())
-    #
-    blocksel = 2
-    GC = GetClamps(df)  # make an instance of the clamp converter
-    GC.setProtocol(blocksel)
-    GC.getData()  # convert the data to acq4 Clamp object
-    # print(dir(GC))
-    # print(dir(GC.datac))
-    # print(GC.datac.data.keys())
-    block = 2
-    dfn = 'df%d' % block
-   # print('dfn: ', GC.datac.data[dfn][0][0])
-    print(len(GC.datac.data[dfn]))
-    dbn = 'db_%d' % block
-    kx = list(GC.datac.data[dbn][0][0].keys())[0]
-    print('kx: ', kx)
-    V = GC.datac.data[dbn][0][0][kx]['data']
-    print(GC.datac.data[dbn][0][0][kx].keys())
-    T = GC.time_base
-    print(GC.protocol)
-    sf = GC.datac.data['sf2']
-   # print(sf[0][0])
-    #mpl.ion()
-    f, ax = mpl.subplots(1,1)
-    print(V.shape)
-    print(T.shape)
-    for i in range(int(V[:, 0].shape[0]/T.shape[0])):
-        ax.plot(T, V[i*len(T):i*len(T)+len(T)], 'k-', linewidth=0.5)
-    mpl.draw()
+def example_dir_scan(searchstr, protocol='cciv2'):
+    """
+    Scan a directory and plot the traces from the first protocol
+    that matches the search string
+    """
+    fns = glob.glob(searchstr)
+    for fn in fns:
+        df = printNotes(fn, indent=5)
+        if df is None:
+            continue
+        for protn in df.expInfo.keys():
+            if df.expInfo[protn]['Protocol'] == protocol:
+                df.readrecords(range(df.expInfo[protn]['R'], df.expInfo[protn]['Rend']))
+                df.plotcurrentrecs(fn)
+                break  
     mpl.show()
-    print('aaa')# print(GC.tstart, GC.tend)
+
+def get_blocks_type(fn, protocol):
+    df = DatacFile(Path(fn))
+    for item in df.items:
+        print(item.type)
+
+def get_blocks(fn, protocol):
+    blks = []
+    prots = []
+    df = DatacFile(Path(fn))
+    for i, item in enumerate(df.items):
+        if item.type.startswith(protocol):
+            blks.append(i)
+            prots.append(item.type)
+    return blks, prots
+            
+
+def get_note(fn):
+    df = DatacFile(Path(fn))
+    for item in df.items:
+        # print(item.type)
+        if item.type == 'HFILE':
+            # print('HFILE: ', item.data['Experiment']['v'])
+            return ' '.join(item.data['Experiment']['v']).replace('\t', ',')
+        if item.type == 'NOTE':
+            return item.note
+    return ''
+
+
+def plot_block(ax, fn=None, block=1, protocol=''):
+
+    # matplotlib.use('TkAgg',warn=False, force=True)
+    # f, ax = mpl.subplots(2,1)
+
+    df = DatacFile(Path(fn))  # get the matdatac file
+    GC = GetClamps(df)  # make an instance of the clamp converter
+    GC.setProtocol(block)
+    GC.getData()  # convert the data to acq4 Clamp object
+    # print(df.summary())
+    dfn = 'df%d' % block
+    dbn = 'db_%d' % block
+    # print(len(GC.datac.data[dbn]))  # is a numpy recarray
+    for rec in range(len(GC.datac.data[dbn][0])):
+        drec = list(GC.datac.data[dbn][0][rec].keys())
+        V = GC.datac.data[dbn][0][rec][drec[0]]['data']
+        T = GC.time_base
+        sf2 = GC.datac.data['sf2']
+        # ax[0].plot(T, V[:, 0], 'k-', linewidth=0.5)
+        ax.plot(T, V[:, 1], 'b-', linewidth=0.5)
+        ax.set_xlim([0.008, 0.015])
+    ax.set_title(f"Block: {block:d} Proto: {protocol:s}")
+
+def plot_blocks(fn, pdfpath=None):
+    df = DatacFile(Path(fn))
+    blks, protocols = get_blocks(fn, 'an')
+    # print('an blocks: ', blks)
+    nblk = len(blks)
+    (r, c) = PH.getLayoutDimensions(nblk, pref='width')
+    P = PH.regular_grid(r, c, order='rowsfirst', figsize=(8., 10.), showgrid=False,
+                    verticalspacing=0.08, horizontalspacing=0.08,
+                    margins={'leftmargin': 0.08, 'rightmargin': 0.08, 'topmargin': 0.1, 'bottommargin': 0.1},
+                    labelposition=(0., 0.), parent_figure=None, panel_labels=None)
+    axs = P.axarr.ravel()
+    for iblk, blk in enumerate(blks):
+        try:
+            plot_block(axs[iblk], fn=fn, block=blk, protocol=protocols[iblk])
+        except:
+            pass
+    note = get_note(fn)
+    P.figure_handle.suptitle(f"File: {str(fn):s}, \nNote: {note:s}", fontsize=12)
+    if pdfpath is not None:
+        print(str(Path(pdfpath, fn.stem).with_suffix('.pdf')))
+        mpl.savefig(Path(pdfpath, fn.stem).with_suffix('.pdf'))
+    # mpl.show()
+
+def main():
+
+    path = ''
+    datadir = '/Volumes/Pegasus/ManisLab_Data3/Rich_Alex/Rich_Acq3/'
+#    fn = '/Users/pbmanis/Documents/data/RX_CCdata/13jul09a.mat'
+    fn = '/Volumes/Pegasus/ManisLab_Data3/Rich_Alex/Rich_Acq3/01may09c.mat'
+    fn = '/Volumes/Pegasus/ManisLab_Data3/Rich_Alex/Rich_Acq3/29may09e.mat'
+    bp = '/Volumes/Pegasus/ManisLab_Data3/Rich_Alex/Rich_Acq3/'
+    pdfpath = '/Users/pbmanis/Desktop/Python/awrdata'
+    files = Path(bp).glob('*.mat')
+    for f in sorted(list(files)):
+        blks, prots = get_blocks(f, 'an')
+        note = get_note(f)
+        if note.find('PTS') >= 0 and len(blks) > 0:
+            print('PTS: ', f, prots, note)
+            plot_blocks(f, Path(pdfpath, 'PTS'))
+        elif note.find('TTS') >= 0 and len(blks) > 0:
+            print('TTS: ', f, prots, note)
+            plot_blocks(f, Path(pdfpath, 'TTS'))
+        elif len(blks) > 0:
+            print('CTL: ', f, prots, note)
+            plot_blocks(f, Path(pdfpath, 'CTL'))
+        else:
+            pass
+            # plot_blocks(f, Path(pdfpath, 'CTL'))
+    exit()
+    plot_blocks(fn)
+    # if fn is None:
+    #     sel = FS.FileSelector(dialogtype='file', startingdir=datadir)
+    #     print(sel.fileName)
+    #     if sel.fileName is None:
+    #         return
+    #     # fn = '/Volumes/Samsung_T5/data/Rich_Alex/Acq3Files/10dec08a.mat'
+    #         show_block(sel.fileName[0], 0)
+    # else:
+    #     show_block(fn, 4)
+if __name__ == '__main__':
+    main()
+   #  df = DatacFile(os.path.join(fn))  # get the matdatac file
+   #  # for it in df.items:
+   #  #     if isinstance(it, Block):
+   #  #         print(it.summary())
+   #  #
+   #  blocksel = 2
+   #  GC = GetClamps(df)  # make an instance of the clamp converter
+   #  GC.setProtocol(blocksel)
+   #  GC.getData()  # convert the data to acq4 Clamp object
+   #  # print(dir(GC))
+   #  # print(dir(GC.datac))
+   #  # print(GC.datac.data.keys())
+   #  block = 2
+   #  dfn = 'df%d' % block
+   # # print('dfn: ', GC.datac.data[dfn][0][0])
+   #  print(len(GC.datac.data[dfn]))
+   #  dbn = 'db_%d' % block
+   #  kx = list(GC.datac.data[dbn][0][0].keys())[0]
+   #  print('kx: ', kx)
+   #  V = GC.datac.data[dbn][0][0][kx]['data']
+   #  print(GC.datac.data[dbn][0][0][kx].keys())
+   #  T = GC.time_base
+   #  print(GC.protocol)
+   #  sf = GC.datac.data['sf2']
+   # # print(sf[0][0])
+   #  #mpl.ion()
+   #  f, ax = mpl.subplots(1,1)
+   #  print(V.shape)
+   #  print(T.shape)
+   #  for i in range(int(V[:, 0].shape[0]/T.shape[0])):
+   #      ax.plot(T, V[i*len(T):i*len(T)+len(T)], 'k-', linewidth=0.5)
+   #  mpl.draw()
+   #  mpl.show()
+   #  print('aaa')# print(GC.tstart, GC.tend)
     # IV = IVS.IVSummary(2)
     # IV.AR = GC
     # IV.compute_iv()
