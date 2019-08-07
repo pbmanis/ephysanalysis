@@ -890,7 +890,7 @@ class Acq4Read():
 
     def getAverageScannerImages(self, dataname='Camera/frames.ma', mode='average', firstonly=False, limit=None):
         """
-        Average the images across the scanner camera files
+        Average (or max or std) the images across the scanner camera files
         the images are collected into a stack prior to any operation
         
         Parameters
@@ -903,6 +903,8 @@ class Acq4Read():
             average : compute the average image
             max : compute the max projection across the stack
             std : compute the standard deviation across the stack
+        
+        limit : maximum # of images in stack to combine (starting with first)
         
         Returns
         -------
@@ -950,13 +952,14 @@ class Acq4Read():
                 resultframe = imageframed.view(np.ndarray)
                 return resultframe
             if i == 0:
-                scannerImages = np.zeros((limit, int(frsize[2]/binning[0]), int(frsize[3]/binning[1])))
+                scannerImages = np.zeros((nmax, int(frsize[2]/binning[0]), int(frsize[3]/binning[1])))
             scannerImages[i] = imageframed.view(np.ndarray)
 
         resultframe = np.zeros((scannerImages.shape[1], scannerImages.shape[2]))
         # simple maximum projection
         print('mode: %s' % mode)
         print('scanner images: ', scannerImages.shape)
+        print('binning: ', binning)
         if mode == 'max':
             for i in range(scannerImages.shape[0]):
                 resultframe = np.maximum(resultframe, scannerImages[i])
@@ -964,7 +967,7 @@ class Acq4Read():
             resultframe = np.mean(scannerImages, axis=0)
         elif mode == 'std':
             resultframe = np.std(scannerImages, axis=0)
-        return resultframe
+        return resultframe.T  # must transpose to match other data... 
 
     def plotClampData(self, all=True):
         import matplotlib.pyplot as mpl
@@ -977,22 +980,29 @@ class Acq4Read():
             ax[0].plot(self.time_base, np.array(self.data_array).mean(axis=0))
         mpl.show()
 
+
+    
 def one_test():
+    import boundrect as BR
     BRI = BR.BoundRect()
     #    a.setProtocol('/Users/pbmanis/Documents/data/MRK_Pyramidal/2018.01.26_000/slice_000/cell_000/CCIV_1nA_max_000/')
         # this won't work in the wild, need appropriate data for testing.
     import matplotlib
-    matplotlib.use('Agg')
+    # matplotlib.use('')
     import matplotlib.pyplot as mpl
     # test on a big file    
     a = Acq4Read()
-    cell = '/Users/pbmanis/Documents/data/mrk/2017.09.12_000/slice_000/cell_001'
-    datasets = Path(cell.glob('*'))
+    #cell = '/Users/pbmanis/Documents/data/mrk/2017.09.12_000/slice_000/cell_001'
+    cell = '/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.06_000/slice_002/cell_000'
+    if not Path(cell).is_dir():
+        raise ValueError
+    datasets = Path(cell).glob('*')
     imageplotted = False
     imagetimes = []
     imagename = []
     maptimes = []
     mapname = []
+    print(list(datasets))
     supindex = a.readDirIndex(currdir=cell)
     for k in supindex:
         if k.startswith('image_'):
@@ -1074,11 +1084,12 @@ def one_test():
     mpl.show()
     
 if __name__ == '__main__':
-
-    AR = Acq4Read()
+    one_test()
     
-    datapath = '/Users/pbmanis/Documents/Lab/data/Maness_PFC_stim/2019.03.19_000/slice_000/cell_001'
-    d = AR.subDirs(datapath)
+    # AR = Acq4Read()
+    #
+    # datapath = '/Users/pbmanis/Documents/Lab/data/Maness_PFC_stim/2019.03.19_000/slice_000/cell_001'
+    # d = AR.subDirs(datapath)
 
     
     
