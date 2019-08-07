@@ -59,7 +59,7 @@ optional arguments:
                         Specify depth for --dry-run
 
 Example:
-python ephysanalysis/dataSummary.py   /Volumes/Pegasus/ManisLab_Data3/Kasten_Michael/NF107ai32Het/ -a 2017.04.16 -o pandas -f NF107_after_2018.04.16 -a 2018.04.16 -w -d all --dry-run
+python ephysanalysis/dataSummary.py   /Volumes/Pegasus/ManisLab_Data3/Kasten_Michael/NF107ai32Het/ -a 2017.04.16 -o pandas -f NF107_after_2018.04.16 -w --depth all --dry-run
 
 Note: the -w is essential for the process to actually occur...
 
@@ -265,8 +265,8 @@ class DataSummary():
                 mindayx = (dt.year, dt.month, dt.day)
                 maxdayx = (dt.year, dt.month, dt.day)
             
-        print(self.after, self.before, mindayx, maxdayx)
-        print(self.daylistfile)
+        print('after, before, mindayx, maxdayx: ', self.after, self.before, mindayx, maxdayx)
+        print('daylistfile: ', self.daylistfile)
         if self.daylistfile is None:  # get from command line
             self.minday = mindayx[0]*1e4+mindayx[1]*1e2+mindayx[2]
             self.maxday = maxdayx[0]*1e4+maxdayx[1]*1e2+maxdayx[2]
