@@ -77,6 +77,7 @@ class MapTraces(object):
         self.basezero = True
         self.xscale = 1.0
         self.yscale = 1.0
+        self.twin = [0, 0.6]
         self.averageScannerImages = False # normally, would not do
         self.calbar = [0.1, 5e-7]  # 100 ms, 500 pA
 
@@ -115,6 +116,9 @@ class MapTraces(object):
             if k == 'calbar':
                 self.calbar[0] = pdict[k][0]
                 self.calbar[1] = pdict[k][1]
+            if k == 'twin':
+                self.twin[0] = pdict[k][0]
+                self.twin[1] = pdict[k][1]
 
     def show_traces(self):
 
@@ -166,15 +170,16 @@ class MapTraces(object):
             voff = self.ioff
         print(len(self.AR.traces))
         tb = self.AR.time_base
-        im = np.argmin(np.fabs(tb - 0.6))
-        tb = tb[:im]
+        im0 = np.argmin(np.fabs(tb - self.twin[0]))
+        im1 = np.argmin(np.fabs(tb - self.twin[1]))
+        tb = tb[im0:im1]-tb[im0]
         for p in range(scp.shape[0]):
-            vdat = FILT.SignalFilter_LPFBessel(self.AR.data_array[p, :im], 2000.,
+            vdat = FILT.SignalFilter_LPFBessel(self.AR.data_array[p, :], 2000.,
                             samplefreq=self.AR.sample_rate[0], NPole=8)
             zero = 0.
             if self.basezero:
-                zero = np.mean(vdat[0:20])
-            ax.plot(self.xscale*3.5e-5*self.AR.time_base[:im]+scp[p,0], (self.yscale*vscale*(vdat-zero))+voff*vscale+scp[p, 1], 'r-', linewidth=0.3)
+                zero = np.mean(vdat[im0:im0+20])
+            ax.plot(self.xscale*3.5e-5*tb+scp[p,0], (self.yscale*vscale*(vdat[im0:im1]-zero))+voff*vscale+scp[p, 1], 'r-', linewidth=0.3)
         xcal = self.xscale*3.5e-5*self.calbar[0]*1.25
         ycal = self.yscale*vscale*self.calbar[1]*0.5
         ax.plot(self.xscale*3.5e-5*np.array([0., 0., self.calbar[0]])+xmin - xcal, 
@@ -203,6 +208,15 @@ if __name__ == '__main__':
     cell = Path(basepath, '2017.08.22_000/slice_000/cell_001/Map_NewBlueLaser_VC_10Hz_000')  # pyr
     image = '../image_008.tif'
     MT.setPars({'invert': False, 'vmax': 30000, 'xscale': 1.5, 'yscale': 1.5, 'calbar': [0.5, 200.e-12]})  # calbar in ms, pA
+
+    cell = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.08_000/slice_001/cell_000/LSPS_dendrite_VC_testmap_MAX_000')
+    image = '../image_002.tif'
+    MT.setPars({'invert': True, 'vmax': 30000, 'xscale': 6, 'yscale': 1.5, 'calbar': [0.5, 200.e-12], 'twin': [0.25, 0.4]})  # calbar in ms, pA
+
+    # cell = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.08_000/slice_001/cell_000/LSPS_dendrite_CC_testmap_MAX_003')
+    # image = '../image_002.tif'
+    # MT.setPars({'invert': True, 'vmax': 30000, 'xscale': 6, 'yscale': 1.5, 'calbar': [0.5, 20e-3], 'twin': [0.25, 0.4], 'voff': -0.0})  # calbar in ms, pA
+
     # bushy
     # cell = Path(basepath, '2017.03.01_000/slice_000/cell_001/Map_NewBlueLaser_VC_single_test_001')  # pyr
     # image = '../image_001.tif'
