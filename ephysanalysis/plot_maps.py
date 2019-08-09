@@ -80,7 +80,7 @@ class MapTraces(object):
         self.averageScannerImages = False # normally, would not do
         self.calbar = [0.1, 5e-7]  # 100 ms, 500 pA
 
-    def setProtocol(self, cell, image, videos=None):
+    def setProtocol(self, cell, image=None, , videos=None):
         self.cell = Path(cell)
         if not self.cell.is_dir():
             print(f"did not find directory: {str(cell):s}")
@@ -116,7 +116,23 @@ class MapTraces(object):
                 self.calbar[0] = pdict[k][0]
                 self.calbar[1] = pdict[k][1]
 
-    def show_traces(self):
+    def plot_maps(self, protocols):
+        """
+        Plot map or superimposed maps...
+        """
+        f, ax = mpl.subplots(1, 1)
+        cols = ['r', 'b', 'c', 'g']
+        for i, p in enumerate(protocols):
+            if i == 0:
+                self.setProtocol(p['file'], p['image'])
+                self.show-traces(f, ax, pcolor=cols[i])
+        cp = self.cell.parts
+        cellname = '/'.join(cp[-4:])
+        f.suptitle(cellname, fontsize=11)
+        mpl.show()
+        
+        
+    def show_traces(self, f, ax, pcolor='r'):
 
         datasets = self.cell.glob('*')
         # imageplotted = False
@@ -125,7 +141,6 @@ class MapTraces(object):
         # maptimes = []
         # mapname = []
         supindex = self.AR.readDirIndex(currdir=self.cell)
-        f, ax = mpl.subplots(1, 1)
     
         SI = ScannerInfo(self.AR)
         if self.invert:
@@ -174,17 +189,14 @@ class MapTraces(object):
             zero = 0.
             if self.basezero:
                 zero = np.mean(vdat[0:20])
-            ax.plot(self.xscale*3.5e-5*self.AR.time_base[:im]+scp[p,0], (self.yscale*vscale*(vdat-zero))+voff*vscale+scp[p, 1], 'r-', linewidth=0.3)
+            ax.plot(self.xscale*3.5e-5*self.AR.time_base[:im]+scp[p,0], 
+                   (self.yscale*vscale*(vdat-zero))+voff*vscale+scp[p, 1], pcolor+'-', linewidth=0.3)
         xcal = self.xscale*3.5e-5*self.calbar[0]*1.25
         ycal = self.yscale*vscale*self.calbar[1]*0.5
         ax.plot(self.xscale*3.5e-5*np.array([0., 0., self.calbar[0]])+xmin - xcal, 
                (self.yscale*vscale*(np.array([self.calbar[1],  0., 0. ])-zero))+voff*vscale+ymin - ycal, 'k-', linewidth=1)
         ax.text(xmin-xcal, ymin-ycal, f"{self.calbar[0]*1e3} ms\n{self.calbar[1]*1e12} pA", 
         verticalalignment='top', horizontalalignment='center', fontsize=8)
-        cp = self.cell.parts
-        cellname = '/'.join(cp[-4:])
-        f.suptitle(cellname, fontsize=11)
-        mpl.show()
 
 
 if __name__ == '__main__':
