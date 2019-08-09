@@ -18,6 +18,7 @@ import matplotlib.pyplot as mpl
 import ephysanalysis.acq4read as ARC
 import ephysanalysis.metaarray as EM
 from pyqtgraph import configfile
+from pylibrary import picker
 import scipy.ndimage
 import numpy as np
 import datetime
@@ -59,7 +60,13 @@ class ScannerInfo(object):
                [pos[0] + scale[0]*region[0], pos[1] + scale[1]*region[1]]
            ]
         scannerbox = BRI.getRectangle(self.AR.scannerpositions)
-        fp = np.array([scannerbox[0][0], scannerbox[1][1]]).reshape(2,1)
+        if scannerbox is None:  # likely just one point
+            pt = self.AR.scannerpositions
+            fp = np.array([[pt[0][0]], [pt[0][1]]])
+            scannerbox = fp
+        else:
+            fp = np.array([scannerbox[0][0], scannerbox[1][1]]).reshape(2,1)
+        print('fp: ', fp)
         scannerbox = np.append(scannerbox, fp, axis=1)
         self.scboxw = np.array(scannerbox)        
         self.boxw = np.swapaxes(np.array(self.camerabox), 0, 1)
@@ -80,6 +87,7 @@ class MapTraces(object):
         self.twin = [0, 0.6]
         self.averageScannerImages = False # normally, would not do
         self.calbar = [0.1, 5e-7]  # 100 ms, 500 pA
+        self.picker = picker.Picker()
 
     def setProtocol(self, cell, image=None, videos=None):
         self.cell = Path(cell)
@@ -124,19 +132,31 @@ class MapTraces(object):
         """
         Plot map or superimposed maps...
         """
-        f, ax = mpl.subplots(1, 1)
+        self.figure = mpl.figure()
+        self.ax = self.figure.add_subplot('121')
+        self.ax2 = self.figure.add_subplot('122')
+        
         cols = ['r', 'b', 'c', 'g']
         for i, p in enumerate(protocols):
             if i == 0:
                 self.setProtocol(p, image)
-                self.show_traces(f, ax, pcolor=cols[i])
+                self.show_traces(self.figure, self.ax, pcolor=cols[i])
             else:
                 self.setProtocol(p)
-                self.show_traces(f, ax, pcolor=cols[i])
-                
+                self.show_traces(self.figure, self.ax, pcolor=cols[i])
+
+        self.picker = picker.Picker()
+        self.picker.setData(2, self.scp)
+        self.picker.setAction(self.handle_event)
+
+        # self.figure.canvas.mpl_connect('button_press_event', self.picker.pickEvent)
+        self.figure.canvas.mpl_connect('pick_event', self.picker.pickEvent)
+        # self.figure.canvas.mpl_connect('motion_notify_event', self.picker.onMouseMotion)
+
         cp = self.cell.parts
         cellname = '/'.join(cp[-4:])
-        f.suptitle(cellname, fontsize=11)
+        self.figure.suptitle(cellname, fontsize=11)
+        self.fig2 = None
         mpl.show()
         
         
@@ -150,7 +170,7 @@ class MapTraces(object):
         # mapname = []
         supindex = self.AR.readDirIndex(currdir=self.cell)
     
-        SI = ScannerInfo(self.AR)
+        self.SI = ScannerInfo(self.AR)
         if self.invert:
             cmap = 'gist_gray_r'
         else:
@@ -161,51 +181,72 @@ class MapTraces(object):
         if self.averageScannerImages:
             max_camera = self.AR.getAverageScannerImages(dataname='Camera/frames.ma', mode='max', firstonly=False, limit=None)
             ax.imshow(max_camera, aspect='equal', cmap='Reds', alpha=0.7, vmin = 1000, vmax=self.vmax,
-                extent=[np.min(SI.boxw[0]), np.max(SI.boxw[0]), np.min(SI.boxw[1]), np.max(SI.boxw[1])])
+                extent=[np.min(self.SI.boxw[0]), np.max(self.SI.boxw[0]), np.min(self.SI.boxw[1]), np.max(self.SI.boxw[1])])
         # max_camera = scipy.ndimage.gaussian_filter(max_camera, sigma=256/(4.*10))
         if len(self.videos) > 0:
             self.process_videos()
             ax.imshow(self.merged_image, aspect='equal', cmap=cmap, alpha=0.75, vmin = 0, vmax=self.vmax,
-            extent=[np.min(SI.boxw[0]), np.max(SI.boxw[0]), np.min(SI.boxw[1]), np.max(SI.boxw[1])])
+            extent=[np.min(self.SI.boxw[0]), np.max(self.SI.boxw[0]), np.min(self.SI.boxw[1]), np.max(self.SI.boxw[1])])
             
         else:
             ax.imshow(self.image_data, aspect='equal', cmap=cmap, alpha=0.75, vmin = 0, vmax=self.vmax,
-            extent=[np.min(SI.boxw[0]), np.max(SI.boxw[0]), np.min(SI.boxw[1]), np.max(SI.boxw[1])])
+            extent=[np.min(self.SI.boxw[0]), np.max(self.SI.boxw[0]), np.min(self.SI.boxw[1]), np.max(self.SI.boxw[1])])
 
-        scp = SI.scannerpositions
+        self.scp = self.SI.scannerpositions
+        scp = self.scp
         xmin = np.min(scp[:,0])
         xmax = np.max(scp[:,0])
         ymin = np.min(scp[:,1])
         ymax = np.max(scp[:,1])
-        print(xmin, ymin, xmax, ymax)
-        ax.plot(scp[:,0], scp[:,1], 'co', alpha=0.3, markersize=4, markeredgecolor='c')
+        # print(xmin, ymin, xmax, ymax)
+        ax.scatter(scp[:,0], scp[:,1], s=4, c='c', marker='o', alpha=0.3, picker=5)
         d = self.AR.getData()
 
         if self.AR.mode in ['v', 'V', 'VC']:
-            vscale = 1e5
-            voff = self.voff
+            self.vscale = 1e5
+            self.off = self.voff
         else:
-            vscale = 1e-3
-            voff = self.ioff
-        print(len(self.AR.traces))
+            self.vscale = 1e-3
+            self.off = self.ioff
+        # print(len(self.AR.traces))
         tb = self.AR.time_base
         im0 = np.argmin(np.fabs(tb - self.twin[0]))
         im1 = np.argmin(np.fabs(tb - self.twin[1]))
-        tb = tb[im0:im1]-tb[im0]
-        for p in range(scp.shape[0]):
-            vdat = FILT.SignalFilter_LPFBessel(self.AR.data_array[p, :], 2000.,
-                            samplefreq=self.AR.sample_rate[0], NPole=8)
-            zero = 0.
-            if self.basezero:
-                zero = np.mean(vdat[im0:im0+20])
-            ax.plot(self.xscale*3.5e-5*tb+scp[p,0], (self.yscale*vscale*(vdat[im0:im1]-zero))+voff*vscale+scp[p, 1], pcolor+'-', linewidth=0.3)
+        self.im0 = im0
+        self.im1 = im1
+        self.tb = tb[im0:im1]-tb[im0]
+        # just plot as many as we have!
+        dshape = self.AR.data_array.shape
+        for p in range(dshape[0]): # scp.shape[0]):
+            self._plot_one(ax, p, pcolor)
         xcal = self.xscale*3.5e-5*self.calbar[0]*1.25
-        ycal = self.yscale*vscale*self.calbar[1]*0.5
+        ycal = self.yscale*self.vscale*self.calbar[1]*0.5
+        zero = 0
         ax.plot(self.xscale*3.5e-5*np.array([0., 0., self.calbar[0]])+xmin - xcal, 
-               (self.yscale*vscale*(np.array([self.calbar[1],  0., 0. ])-zero))+voff*vscale+ymin - ycal, 'k-', linewidth=1)
+               (self.yscale*self.vscale*(np.array([self.calbar[1],  0., 0. ])-zero))+self.off*self.vscale+ymin - ycal, 'k-', linewidth=1)
         ax.text(xmin-xcal, ymin-ycal, f"{self.calbar[0]*1e3} ms\n{self.calbar[1]*1e12} pA", 
         verticalalignment='top', horizontalalignment='center', fontsize=8)
 
+    def _plot_one(self, ax, p, pcolor, offflag = True):
+        zero = 0.
+        vdat = FILT.SignalFilter_LPFBessel(self.AR.data_array[p, :], 2000.,
+                        samplefreq=self.AR.sample_rate[0], NPole=8)
+        if self.basezero:
+            zero = np.mean(vdat[self.im0:self.im0+20])
+        if offflag:
+            xoff = self.scp[p,0]
+            yoff = self.off*self.vscale+self.scp[p, 1]
+        else:
+            xoff = 0.
+            yoff = 0.
+        ax.plot(self.xscale*3.5e-5*self.tb+xoff, (self.yscale*self.vscale*(vdat[self.im0:self.im1]-zero))+yoff, pcolor+'-', linewidth=0.3)
+
+    def handle_event(self, index):
+        print('handle event index: ', index)
+        print(self.SI.scannerpositions[index,:])
+        self._plot_one(self.ax2, index, 'k', offflag = False)
+        mpl.draw()
+        
 
 if __name__ == '__main__':
 
@@ -244,15 +285,30 @@ if __name__ == '__main__':
     # MT.setPars({'invert': False, 'vmax': 30000, 'xscale': 1.5, 'yscale': 0.05, 'calbar': [0.5, 5000.e-12]})  # calbar in ms, pA
     MT.setPars({'invert': True, 'vmin': 1000, 'vmax': 18000, 'xscale': 6, 'yscale': 1.5, 'calbar': [0.5, 20.e-3], 'twin': [0.25, 0.5],
              'ioff': -0.0})  # calbar in ms, pA
-    cell1 = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.08_000/slice_001/cell_000/LSPS_dendrite_CC_testmap_MAX_000')
-    cell2 = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.08_000/slice_001/cell_000/LSPS_dendrite_CC_testmap_MAX_001')
-    cell3 = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.08_000/slice_001/cell_000/LSPS_dendrite_CC_testmap_MAX_002')
-    cell_vc = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.08_000/slice_001/cell_000/LSPS_dendrite_VC_testmap_MAX_000')
-    MT.setPars({'invert': True, 'vmin': 1000, 'vmax': 18000, 'xscale': 6, 'yscale': 1.5, 'calbar': [0.5, 200e-12], 'twin': [0.25, 0.5],
-             })
-    image = '../image_002.tif'
-    prots = [cell1, cell2, cell3]
-    prots = [cell_vc]
+    # cell1 = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.08_000/slice_001/cell_000/LSPS_dendrite_CC_testmap_MAX_000')
+    # cell2 = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.08_000/slice_001/cell_000/LSPS_dendrite_CC_testmap_MAX_001')
+    # cell3 = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.08_000/slice_001/cell_000/LSPS_dendrite_CC_testmap_MAX_002')
+    # cell_vc = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.08_000/slice_001/cell_000/LSPS_dendrite_VC_testmap_MAX_000')
+    # MT.setPars({'invert': True, 'vmin': 1000, 'vmax': 18000, 'xscale': 6, 'yscale': 1.5, 'calbar': [0.5, 200e-12], 'twin': [0.25, 0.5],
+    #          })
+    # image = '../image_002.tif'
+    # prots = [cell1, cell2, cell3]
+    # prots = [cell_vc]
+
+    cell = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.05_000/slice_002/cell_000/LSPS_dendrite_VC_testmap_MAX_001')  # pyr
+    image = '../image_001.tif'
+    MT.setPars({'invert': True, 'vmax': 30000, 'xscale': 1.5, 'yscale': 1.5, 'calbar': [0.5, 200.e-12]})  # calbar in ms, pA
+    prots = [cell]
+
+    # cell1 = Path('/Users/pbmanis/Desktop/Data/CN Glu uncaging CBA/2017.12.01_000/slice_003/cell_000/Map_NewBlueLaser_VC_Single_008')
+    # # cell2 = Path('/Users/pbmanis/Desktop/Data/CN Glu uncaging CBA/2017.12.01_000/slice_003/cell_000/Map_NewBlueLaser_VC_Single_009')
+    # # cell2 = Path('/Users/pbmanis/Desktop/Data/CN Glu uncaging CBA/2017.12.01_000/slice_003/cell_000/Map_NewBlueLaser_VC_Single_010')
+    # # cell3 = Path('/Users/pbmanis/Desktop/Data/CN Glu uncaging CBA/2017.12.01_000/slice_003/cell_000/Map_NewBlueLaser_VC_Single_011')
+    # # cell4 = Path('/Users/pbmanis/Desktop/Data/CN Glu uncaging CBA/2017.12.01_000/slice_003/cell_000/Map_NewBlueLaser_VC_Single_012')
+    # image = '../../image_001.tif'
+    # MT.setPars({'invert': False, 'vmax': 30000, 'xscale': 6, 'yscale': 1.5, 'calbar': [0.5, 200.e-12], 'twin': [0.25, 0.4]})  # calbar in ms, pA
+    # prots = [cell1] #, cell2, cell3, cell4]
+
     MT.setProtocol(cell, image)
     MT.plot_maps(prots)
     
