@@ -820,20 +820,25 @@ class Acq4Read():
     def getScannerPositions(self, dataname='Laser-Blue-raw.ma'):
         dirs = self.subDirs(self.protocol)
         self.scannerpositions = np.zeros((len(dirs), 2))
+        self.scannerCamera = {}
+        self.scannerinfo = {}
+        self.sequenceparams = {}
         self.targets = [[]]*len(dirs)
         self.spotsize = 0.
         rep = 0
         tar = 0
         supindex = self._readIndex()  # get protocol index (top level, dirType=ProtocolSequence)
       #  print('supindex in getScannerPositions: ', supindex, self.protocol)
-        if not 'sequenceParams' in supindex['.'].keys():  # should have this key, along with (scanner, targets)
+        if not 'sequenceParams' in list(supindex['.'].keys()):  # should have this key, along with (scanner, targets)
             print('no sequenceParams key in top level protocol directory; in getScannerPosition')
             return(False)
         try:
             ntargets = len(supindex['.']['sequenceParams'][('Scanner', 'targets')])
         except:
-            print('Cannot access (Scanner, targets) in getScannerPosition')
-            return(False)
+            ntargets = 1
+            # print('Cannot access (Scanner, targets) in getScannerPosition')
+            # return(False)
+
         pars={}
         pars['sequence1'] = {}
         pars['sequence2'] = {}
@@ -844,13 +849,12 @@ class Acq4Read():
         pars['sequence1']['index'] = reps
         pars['sequence2']['index'] = ntargets
         self.sequenceparams = pars
-        self.scannerCamera = {}
-        self.scannerinfo = {}
         for i, d in enumerate(dirs):  # now run through the subdirectories : all of dirType 'Protocol'
             index = self._readIndex(currdir=Path(self.protocol, Path(d).name))  # subdirectories _nnn or _nnn_mmm or ... 
             if index is not None and 'Scanner' in index['.'].keys():
                 self.scannerpositions[i] = index['.']['Scanner']['position']
-                self.targets[i] = index['.'][('Scanner', 'targets')]
+                if ntargets > 1:
+                    self.targets[i] = index['.'][('Scanner', 'targets')]
                 self.spotsize = index['.']['Scanner']['spotSize']
                 self.scannerinfo[(rep, tar)] = {'directory': d, 'rep': rep, 'pos': self.scannerpositions[i]}
             # elif ('Scanner', 'targets') in index['.']:
