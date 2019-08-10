@@ -11,10 +11,14 @@ Takes advantage of acq4read code to access all data and attributes.
 """
 import os
 import re
+import itertools
+from collections import OrderedDict
 from pathlib import Path
 import matplotlib
 matplotlib.use('Qt4Agg')
 import matplotlib.pyplot as mpl
+from pylibrary import PlotHelpers as PH
+import seaborn as sns
 import ephysanalysis.acq4read as ARC
 import ephysanalysis.metaarray as EM
 from pyqtgraph import configfile
@@ -75,6 +79,7 @@ class ScannerInfo(object):
 class MapTraces(object):
     def __init__(self):
         self.cell = None
+        self.datasets = OrderedDict()
         self.image = None
         self.AR = ARC.Acq4Read()
         self.invert = True
@@ -84,10 +89,18 @@ class MapTraces(object):
         self.basezero = True
         self.xscale = 1.0
         self.yscale = 1.0
+        self.nspots = 0
+        self.overlay = True
+        self.indicesplotted = []
         self.twin = [0, 0.6]
         self.averageScannerImages = False # normally, would not do
         self.calbar = [0.1, 5e-7]  # 100 ms, 500 pA
         self.picker = picker.Picker()
+        sns.set()
+        sns.color_palette("colorblind", 10)
+        self.palette = itertools.cycle(sns.color_palette("colorblind", 10))
+        sns.set_style("white")
+        sns.set_style("ticks")        
 
     def setProtocol(self, cell, image=None, videos=None):
         self.cell = Path(cell)
@@ -106,6 +119,7 @@ class MapTraces(object):
             for v in videos:
                 self.videos.append(Path(self.cell, f"video_0{v:02d}"))
         self.AR.setProtocol(self.cell)
+        
     
     def setPars(self, pdict):
         for k in list(pdict.keys()):
@@ -128,26 +142,40 @@ class MapTraces(object):
                 self.twin[0] = pdict[k][0]
                 self.twin[1] = pdict[k][1]
 
-    def plot_maps(self, protocols):
+    def plot_maps(self, protocols, traces=None):
         """
         Plot map or superimposed maps...
         """
         self.figure = mpl.figure()
-        self.ax = self.figure.add_subplot('121')
-        self.ax2 = self.figure.add_subplot('122')
-        
+        # print(dir(self.figure))
+        self.figure.set_size_inches(14., 8.)
+        self.ax = self.figure.add_subplot('131')
+        self.ax2 = self.figure.add_subplot('132')
+        sns.despine(ax=self.ax2, left=True, bottom=True, right=True, top=True)
+        # self.ax3 = self.figure.add_subplot('133')
+        self.data = dict.fromkeys(list(protocols.keys()))
         cols = ['r', 'b', 'c', 'g']
-        for i, p in enumerate(protocols):
-            if i == 0:
-                self.setProtocol(p, image)
-                self.show_traces(self.figure, self.ax, pcolor=cols[i])
-            else:
-                self.setProtocol(p)
-                self.show_traces(self.figure, self.ax, pcolor=cols[i])
+        self.traces = traces
 
-        self.picker = picker.Picker()
-        self.picker.setData(2, self.scp)
-        self.picker.setAction(self.handle_event)
+        for i, p in enumerate(protocols):
+            prot = protocols[p]
+            self.datasets[p] = []
+            if i == 0:
+                self.setProtocol(prot, image)
+                self.show_traces(self.figure, self.ax, pcolor=cols[i], name=p)
+            else:
+                self.setProtocol(prot)
+                self.show_traces(self.figure, self.ax, pcolor=cols[i], name=p)
+        if self.traces is not None:
+            for tr in self.traces:
+                self.handle_event(index=tr)
+            PH.calbar(self.ax2, calbar=[0, -6., 50, 5.], scale=[1.0, 1.0],
+                axesoff=True, orient='left', unitNames=None, fontsize=11, weight='normal', color='k', font='Arial')
+
+        else:
+            self.picker = picker.Picker()
+            self.picker.setData(2, self.scp)
+            self.picker.setAction(self.handle_event)
 
         # self.figure.canvas.mpl_connect('button_press_event', self.picker.pickEvent)
         self.figure.canvas.mpl_connect('pick_event', self.picker.pickEvent)
@@ -160,9 +188,9 @@ class MapTraces(object):
         mpl.show()
         
         
-    def show_traces(self, f, ax, pcolor='r'):
+    def show_traces(self, f, ax, pcolor='r', name=None):
 
-        datasets = self.cell.glob('*')
+        self.cell.glob('*')
         # imageplotted = False
         # imagetimes = []
         # imagename = []
@@ -200,7 +228,10 @@ class MapTraces(object):
         ymax = np.max(scp[:,1])
         # print(xmin, ymin, xmax, ymax)
         ax.scatter(scp[:,0], scp[:,1], s=4, c='c', marker='o', alpha=0.3, picker=5)
+        print('getdata: ', name, self.datasets)
         d = self.AR.getData()
+        if name is not None:
+            self.datasets[name] = self.AR.data_array
 
         if self.AR.mode in ['v', 'V', 'VC']:
             self.vscale = 1e5
@@ -216,20 +247,21 @@ class MapTraces(object):
         self.im1 = im1
         self.tb = tb[im0:im1]-tb[im0]
         # just plot as many as we have!
-        dshape = self.AR.data_array.shape
-        for p in range(dshape[0]): # scp.shape[0]):
-            self._plot_one(ax, p, pcolor)
+        dshape = self.datasets[name].shape
+        # for p in range(dshape[0]): # scp.shape[0]):
+        #     self._plot_one(ax, p, pcolor, name=name)
         xcal = self.xscale*3.5e-5*self.calbar[0]*1.25
         ycal = self.yscale*self.vscale*self.calbar[1]*0.5
         zero = 0
-        ax.plot(self.xscale*3.5e-5*np.array([0., 0., self.calbar[0]])+xmin - xcal, 
-               (self.yscale*self.vscale*(np.array([self.calbar[1],  0., 0. ])-zero))+self.off*self.vscale+ymin - ycal, 'k-', linewidth=1)
-        ax.text(xmin-xcal, ymin-ycal, f"{self.calbar[0]*1e3} ms\n{self.calbar[1]*1e12} pA", 
-        verticalalignment='top', horizontalalignment='center', fontsize=8)
 
-    def _plot_one(self, ax, p, pcolor, offflag = True):
+        # ax.plot(self.xscale*3.5e-5*np.array([0., 0., self.calbar[0]])+xmin - xcal,
+        #        (self.yscale*self.vscale*(np.array([self.calbar[1],  0., 0. ])-zero))+self.off*self.vscale+ymin - ycal, 'k-', linewidth=1)
+        # ax.text(xmin-xcal, ymin-ycal, f"{self.calbar[0]*1e3} ms\n{self.calbar[1]*1e12} pA",
+        # verticalalignment='top', horizontalalignment='center', fontsize=8)
+
+    def _plot_one(self, ax, p, pcolor, name=None, yscaleflag=True, tscale=True, offflag=True, ystep = 0., ythick=0.3):
         zero = 0.
-        vdat = FILT.SignalFilter_LPFBessel(self.AR.data_array[p, :], 2000.,
+        vdat = FILT.SignalFilter_LPFBessel(self.datasets[name][p, :], 2000.,
                         samplefreq=self.AR.sample_rate[0], NPole=8)
         if self.basezero:
             zero = np.mean(vdat[self.im0:self.im0+20])
@@ -239,15 +271,42 @@ class MapTraces(object):
         else:
             xoff = 0.
             yoff = 0.
-        ax.plot(self.xscale*3.5e-5*self.tb+xoff, (self.yscale*self.vscale*(vdat[self.im0:self.im1]-zero))+yoff, pcolor+'-', linewidth=0.3)
+        if yscaleflag:
+            y_scale = self.yscale*self.vscale
+        else:
+            y_scale = 1e3
+        yoff += ystep
+        if tscale:
+            ts = self.xscale*3.5e-5
+        else:
+            ts = 1e3
+        ax.plot(ts*self.tb+xoff, (y_scale*(vdat[self.im0:self.im1]-zero))+yoff, color=pcolor, linewidth=ythick)
 
     def handle_event(self, index):
-        print('handle event index: ', index)
-        print(self.SI.scannerpositions[index,:])
-        self._plot_one(self.ax2, index, 'k', offflag = False)
+        # print('handle event index: ', index)
+        # print(self.SI.scannerpositions[index,:])
+        if index in self.indicesplotted:
+            return
+        if self.overlay:
+            ystep = -self.nspots*10.
+        self.palette = itertools.cycle(sns.color_palette("colorblind", 10))
+        for i, name in enumerate(list(self.datasets.keys())):
+            c = next(self.palette)
+            self._plot_one(self.ax2, index, pcolor=c, name=name, yscaleflag=False, offflag=False,
+                ystep=ystep, ythick=1.3-(i+1)*0.3, tscale=False)
+            # if i == 1:
+            #     self._plot_one(self.ax3, index, pcolor=c, name=name, yscaleflag=False, offflag=False,
+            #         ystep=ystep, ythick=0.5, tscale=False)
+        # self.xscale*3.5e-5*self.tb+xoff, (y_scale*(vdat[self.im0:self.im1]-zero))+yoff, color=pcolor, linewidth=0.3)
+        trn = self.traces.index(index)+1
+        self.ax.text(self.SI.scannerpositions[index][0], self.SI.scannerpositions[index][1],
+                f"{trn:d}", fontsize=9, horizontalalignment='center')
+        self.ax2.text(0., ystep,
+                f"{trn:d}", fontsize=9, horizontalalignment='right')
+        self.nspots += 1
+        self.indicesplotted.append(index)
         mpl.draw()
         
-
 if __name__ == '__main__':
 
     basepath = '/Volumes/Pegasus/ManisLab_Data3/Kasten_Michael/NF107ai32Het/'
@@ -256,19 +315,24 @@ if __name__ == '__main__':
         # this won't work in the wild, need appropriate data for testing.
     # test on a big file    
     #cell = '/Users/pbmanis/Documents/data/mrk/2017.09.12_000/slice_000/cell_001'
-    cell = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.06_000/slice_002/cell_000/LSPS_dendrite_VC_testmap_MAX_000_001')
-    image = 'image_002.tif'
-    # cell = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.06_000/slice_002/cell_000/LSPS_dendrite_CC_testmap_strongest_000')
-    # cell = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.05_000/slice_002/cell_000/LSPS_dendrite_VC_testmap_MAX_004')
-    # image = Path(cell.parent, 'image_001.tif')
-    cell = Path(basepath, '2017.08.22_000/slice_000/cell_001/Map_NewBlueLaser_VC_10Hz_000')  # pyr
-    image = '../image_008.tif'
-    MT.setPars({'invert': False, 'vmax': 30000, 'xscale': 1.5, 'yscale': 1.5, 'calbar': [0.5, 200.e-12]})  # calbar in ms, pA
+    # cell = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.06_000/slice_002/cell_000/LSPS_dendrite_VC_testmap_MAX_000_001')
+    # image = 'image_002.tif'
+    # # cell = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.06_000/slice_002/cell_000/LSPS_dendrite_CC_testmap_strongest_000')
+    # # cell = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.05_000/slice_002/cell_000/LSPS_dendrite_VC_testmap_MAX_004')
+    # # image = Path(cell.parent, 'image_001.tif')
+    # cell = Path(basepath, '2017.08.22_000/slice_000/cell_001/Map_NewBlueLaser_VC_10Hz_000')  # pyr
+    # image = '../image_008.tif'
+    # MT.setPars({'invert': False, 'vmax': 30000, 'xscale': 1.5, 'yscale': 1.5, 'calbar': [0.5, 200.e-12]})  # calbar in ms, pA
 
-    cell = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.08_000/slice_001/cell_000/LSPS_dendrite_VC_testmap_MAX_000')
+    ctl = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.08_000/slice_001/cell_000/LSPS_dendrite_CC_testmap_MAX_000')
+    apv = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.08_000/slice_001/cell_000/LSPS_dendrite_CC_testmap_MAX_002')
     image = '../image_002.tif'
-    MT.setPars({'invert': True, 'vmax': 30000, 'xscale': 6, 'yscale': 1.5, 'calbar': [0.5, 200.e-12], 'twin': [0.25, 0.4]})  # calbar in ms, pA
-
+    # tr = [111,148,28,36,96,117,140,61,85,165,65,173,89,119]
+    tr = [111, 148, 140, 65, 89, 85, 36]
+    tr = [111, 148, 36, 140, 85, 65, 89]  # reorder more or less top to bottom
+    MT.setPars({'invert': True, 'vmax': 30000, 'xscale': 6, 'yscale': 1.5, 'ioff': -0.00,
+            'calbar': [0.5, 200.e-12], 'twin': [0.25, 0.5]})  # calbar in ms, pA
+    prots = {'ctl': ctl, 'apv': apv}
     # cell = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.08_000/slice_001/cell_000/LSPS_dendrite_CC_testmap_MAX_003')
     # image = '../image_002.tif'
     # MT.setPars({'invert': True, 'vmax': 30000, 'xscale': 6, 'yscale': 1.5, 'calbar': [0.5, 20e-3], 'twin': [0.25, 0.4], 'voff': -0.0})  # calbar in ms, pA
@@ -283,8 +347,8 @@ if __name__ == '__main__':
     # cell = Path(basepath, '2017.03.24_000/slice_001/cell_001/Map_NewBlueLaser_VC_2mW_005')  # pyr
     # image = '../image_001.tif'
     # MT.setPars({'invert': False, 'vmax': 30000, 'xscale': 1.5, 'yscale': 0.05, 'calbar': [0.5, 5000.e-12]})  # calbar in ms, pA
-    MT.setPars({'invert': True, 'vmin': 1000, 'vmax': 18000, 'xscale': 6, 'yscale': 1.5, 'calbar': [0.5, 20.e-3], 'twin': [0.25, 0.5],
-             'ioff': -0.0})  # calbar in ms, pA
+    # MT.setPars({'invert': True, 'vmin': 1000, 'vmax': 18000, 'xscale': 6, 'yscale': 1.5, 'calbar': [0.5, 20.e-3], 'twin': [0.25, 0.5],
+             # 'ioff': -0.0})  # calbar in ms, pA
     # cell1 = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.08_000/slice_001/cell_000/LSPS_dendrite_CC_testmap_MAX_000')
     # cell2 = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.08_000/slice_001/cell_000/LSPS_dendrite_CC_testmap_MAX_001')
     # cell3 = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.08_000/slice_001/cell_000/LSPS_dendrite_CC_testmap_MAX_002')
@@ -295,10 +359,10 @@ if __name__ == '__main__':
     # prots = [cell1, cell2, cell3]
     # prots = [cell_vc]
 
-    cell = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.05_000/slice_002/cell_000/LSPS_dendrite_VC_testmap_MAX_001')  # pyr
-    image = '../image_001.tif'
-    MT.setPars({'invert': True, 'vmax': 30000, 'xscale': 1.5, 'yscale': 1.5, 'calbar': [0.5, 200.e-12]})  # calbar in ms, pA
-    prots = [cell]
+    # cell = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.05_000/slice_002/cell_000/LSPS_dendrite_VC_testmap_MAX_001')  # pyr
+ #    image = '../image_001.tif'
+ #    MT.setPars({'invert': True, 'vmax': 30000, 'xscale': 1.5, 'yscale': 1.5, 'calbar': [0.5, 200.e-12]})  # calbar in ms, pA
+ #    prots = [cell]
 
     # cell1 = Path('/Users/pbmanis/Desktop/Data/CN Glu uncaging CBA/2017.12.01_000/slice_003/cell_000/Map_NewBlueLaser_VC_Single_008')
     # # cell2 = Path('/Users/pbmanis/Desktop/Data/CN Glu uncaging CBA/2017.12.01_000/slice_003/cell_000/Map_NewBlueLaser_VC_Single_009')
@@ -309,6 +373,5 @@ if __name__ == '__main__':
     # MT.setPars({'invert': False, 'vmax': 30000, 'xscale': 6, 'yscale': 1.5, 'calbar': [0.5, 200.e-12], 'twin': [0.25, 0.4]})  # calbar in ms, pA
     # prots = [cell1] #, cell2, cell3, cell4]
 
-    MT.setProtocol(cell, image)
-    MT.plot_maps(prots)
+    MT.plot_maps(prots, traces=tr)
     
