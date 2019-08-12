@@ -22,6 +22,7 @@ setup(name='ephysanalysis',
                'bridge=ephysanalysis.bridge:main',
                'notch=ephysanalysis.test_notch:main',
                'matread=ephysanalysis.MatdatacRead:main',
+               'plotmaps=ephysanalysis.plot_maps:main',
           ]
       },
       classifiers = [
