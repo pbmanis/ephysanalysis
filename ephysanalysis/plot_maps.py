@@ -26,7 +26,7 @@ import pprint
 import textwrap as WR
 import collections
 import tifffile as tf
-import boundrect as BR
+import ephysanalysis.boundrect as BR
 import mapanalysistools.digital_filters as FILT
 import mahotas as MH
 
@@ -139,7 +139,7 @@ class MapTraces(object):
         cols = ['r', 'b', 'c', 'g']
         for i, p in enumerate(protocols):
             if i == 0:
-                self.setProtocol(p, image)
+                self.setProtocol(p, self.image)
                 self.show_traces(self.figure, self.ax, pcolor=cols[i])
             else:
                 self.setProtocol(p)
@@ -247,59 +247,64 @@ class MapTraces(object):
         self._plot_one(self.ax2, index, 'k', offflag = False)
         mpl.draw()
         
-
-if __name__ == '__main__':
-
+def main():
     basepath = '/Volumes/Pegasus/ManisLab_Data3/Kasten_Michael/NF107ai32Het/'
     MT = MapTraces()
-    #    AR.setProtocol('/Users/pbmanis/Documents/data/MRK_Pyramidal/2018.01.26_000/slice_000/cell_000/CCIV_1nA_max_000/')
-        # this won't work in the wild, need appropriate data for testing.
-    # test on a big file    
-    #cell = '/Users/pbmanis/Documents/data/mrk/2017.09.12_000/slice_000/cell_001'
-    cell = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.06_000/slice_002/cell_000/LSPS_dendrite_VC_testmap_MAX_000_001')
-    image = 'image_002.tif'
-    # cell = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.06_000/slice_002/cell_000/LSPS_dendrite_CC_testmap_strongest_000')
-    # cell = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.05_000/slice_002/cell_000/LSPS_dendrite_VC_testmap_MAX_004')
-    # image = Path(cell.parent, 'image_001.tif')
-    cell = Path(basepath, '2017.08.22_000/slice_000/cell_001/Map_NewBlueLaser_VC_10Hz_000')  # pyr
-    image = '../image_008.tif'
-    MT.setPars({'invert': False, 'vmax': 30000, 'xscale': 1.5, 'yscale': 1.5, 'calbar': [0.5, 200.e-12]})  # calbar in ms, pA
-
-    cell = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.08_000/slice_001/cell_000/LSPS_dendrite_VC_testmap_MAX_000')
-    image = '../image_002.tif'
-    MT.setPars({'invert': True, 'vmax': 30000, 'xscale': 6, 'yscale': 1.5, 'calbar': [0.5, 200.e-12], 'twin': [0.25, 0.4]})  # calbar in ms, pA
-
-    # cell = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.08_000/slice_001/cell_000/LSPS_dendrite_CC_testmap_MAX_003')
-    # image = '../image_002.tif'
-    # MT.setPars({'invert': True, 'vmax': 30000, 'xscale': 6, 'yscale': 1.5, 'calbar': [0.5, 20e-3], 'twin': [0.25, 0.4], 'voff': -0.0})  # calbar in ms, pA
-
-    # bushy
-    # cell = Path(basepath, '2017.03.01_000/slice_000/cell_001/Map_NewBlueLaser_VC_single_test_001')  # pyr
-    # image = '../image_001.tif'
+    # #    AR.setProtocol('/Users/pbmanis/Documents/data/MRK_Pyramidal/2018.01.26_000/slice_000/cell_000/CCIV_1nA_max_000/')
+    #     # this won't work in the wild, need appropriate data for testing.
+    # # test on a big file
+    # #cell = '/Users/pbmanis/Documents/data/mrk/2017.09.12_000/slice_000/cell_001'
+    # cell = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.06_000/slice_002/cell_000/LSPS_dendrite_VC_testmap_MAX_000_001')
+    # image = 'image_002.tif'
+    # # cell = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.06_000/slice_002/cell_000/LSPS_dendrite_CC_testmap_strongest_000')
+    # # cell = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.05_000/slice_002/cell_000/LSPS_dendrite_VC_testmap_MAX_004')
+    # # image = Path(cell.parent, 'image_001.tif')
+    # cell = Path(basepath, '2017.08.22_000/slice_000/cell_001/Map_NewBlueLaser_VC_10Hz_000')  # pyr
+    # image = '../image_008.tif'
+    # MT.setPars({'invert': False, 'vmax': 30000, 'xscale': 1.5, 'yscale': 1.5, 'calbar': [0.5, 200.e-12]})  # calbar in ms, pA
     #
-    # cell = Path(basepath, '2017.03.22_000/slice_000/cell_000/Map_NewBlueLaser_VC_pt2mW_000')  # pyr
-    # image = '../image_000.tif'
-    # # videos = [0, 1, 2, 3, 4]
-    # cell = Path(basepath, '2017.03.24_000/slice_001/cell_001/Map_NewBlueLaser_VC_2mW_005')  # pyr
-    # image = '../image_001.tif'
-    # MT.setPars({'invert': False, 'vmax': 30000, 'xscale': 1.5, 'yscale': 0.05, 'calbar': [0.5, 5000.e-12]})  # calbar in ms, pA
-    MT.setPars({'invert': True, 'vmin': 1000, 'vmax': 18000, 'xscale': 6, 'yscale': 1.5, 'calbar': [0.5, 20.e-3], 'twin': [0.25, 0.5],
-             'ioff': -0.0})  # calbar in ms, pA
-    # cell1 = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.08_000/slice_001/cell_000/LSPS_dendrite_CC_testmap_MAX_000')
-    # cell2 = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.08_000/slice_001/cell_000/LSPS_dendrite_CC_testmap_MAX_001')
-    # cell3 = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.08_000/slice_001/cell_000/LSPS_dendrite_CC_testmap_MAX_002')
-    # cell_vc = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.08_000/slice_001/cell_000/LSPS_dendrite_VC_testmap_MAX_000')
-    # MT.setPars({'invert': True, 'vmin': 1000, 'vmax': 18000, 'xscale': 6, 'yscale': 1.5, 'calbar': [0.5, 200e-12], 'twin': [0.25, 0.5],
-    #          })
+    # cell = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.08_000/slice_001/cell_000/LSPS_dendrite_VC_testmap_MAX_000')
     # image = '../image_002.tif'
-    # prots = [cell1, cell2, cell3]
-    # prots = [cell_vc]
+    # MT.setPars({'invert': True, 'vmax': 30000, 'xscale': 6, 'yscale': 1.5, 'calbar': [0.5, 200.e-12], 'twin': [0.25, 0.4]})  # calbar in ms, pA
+    #
+    # # cell = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.08_000/slice_001/cell_000/LSPS_dendrite_CC_testmap_MAX_003')
+    # # image = '../image_002.tif'
+    # # MT.setPars({'invert': True, 'vmax': 30000, 'xscale': 6, 'yscale': 1.5, 'calbar': [0.5, 20e-3], 'twin': [0.25, 0.4], 'voff': -0.0})  # calbar in ms, pA
+    #
+    # # bushy
+    # # cell = Path(basepath, '2017.03.01_000/slice_000/cell_001/Map_NewBlueLaser_VC_single_test_001')  # pyr
+    # # image = '../image_001.tif'
+    # #
+    # # cell = Path(basepath, '2017.03.22_000/slice_000/cell_000/Map_NewBlueLaser_VC_pt2mW_000')  # pyr
+    # # image = '../image_000.tif'
+    # # # videos = [0, 1, 2, 3, 4]
+    # # cell = Path(basepath, '2017.03.24_000/slice_001/cell_001/Map_NewBlueLaser_VC_2mW_005')  # pyr
+    # # image = '../image_001.tif'
+    # # MT.setPars({'invert': False, 'vmax': 30000, 'xscale': 1.5, 'yscale': 0.05, 'calbar': [0.5, 5000.e-12]})  # calbar in ms, pA
+    # MT.setPars({'invert': True, 'vmin': 1000, 'vmax': 18000, 'xscale': 6, 'yscale': 1.5, 'calbar': [0.5, 20.e-3], 'twin': [0.25, 0.5],
+    #          'ioff': -0.0})  # calbar in ms, pA
+    # # cell1 = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.08_000/slice_001/cell_000/LSPS_dendrite_CC_testmap_MAX_000')
+    # # cell2 = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.08_000/slice_001/cell_000/LSPS_dendrite_CC_testmap_MAX_001')
+    # # cell3 = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.08_000/slice_001/cell_000/LSPS_dendrite_CC_testmap_MAX_002')
+    # # cell_vc = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.08_000/slice_001/cell_000/LSPS_dendrite_VC_testmap_MAX_000')
+    # # MT.setPars({'invert': True, 'vmin': 1000, 'vmax': 18000, 'xscale': 6, 'yscale': 1.5, 'calbar': [0.5, 200e-12], 'twin': [0.25, 0.5],
+    # #          })
+    # # image = '../image_002.tif'
+    # # prots = [cell1, cell2, cell3]
+    # # prots = [cell_vc]
+    #
+    # cell = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.05_000/slice_002/cell_000/LSPS_dendrite_VC_testmap_MAX_001')  # pyr
+    # image = '../image_001.tif'
+    # MT.setPars({'invert': True, 'vmax': 30000, 'xscale': 1.5, 'yscale': 1.5, 'calbar': [0.5, 200.e-12]})  # calbar in ms, pA
+    # prots = [cell]
 
-    cell = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.05_000/slice_002/cell_000/LSPS_dendrite_VC_testmap_MAX_001')  # pyr
-    image = '../image_001.tif'
-    MT.setPars({'invert': True, 'vmax': 30000, 'xscale': 1.5, 'yscale': 1.5, 'calbar': [0.5, 200.e-12]})  # calbar in ms, pA
+
+    nf107 = '/Volumes/Pegasus/ManisLab_Data3/Kasten_Michael/NF107Ai32Het'
+    cell = Path(nf107, '2018.02.16_000/slice_000/cell_001', 'Map_NewBlueLaser_VC_10Hz_001')
+    image = '../image_003.tif'
+    MT.setPars({'invert': True, 'vmin': 000, 'vmax': 18000, 'xscale': 6, 'yscale': 1.5, 'calbar': [0.5, 20.e-12], 'twin': [0.08, 0.12],
+             'ioff': -0.0})  # calbar in ms, pA
     prots = [cell]
-
     # cell1 = Path('/Users/pbmanis/Desktop/Data/CN Glu uncaging CBA/2017.12.01_000/slice_003/cell_000/Map_NewBlueLaser_VC_Single_008')
     # # cell2 = Path('/Users/pbmanis/Desktop/Data/CN Glu uncaging CBA/2017.12.01_000/slice_003/cell_000/Map_NewBlueLaser_VC_Single_009')
     # # cell2 = Path('/Users/pbmanis/Desktop/Data/CN Glu uncaging CBA/2017.12.01_000/slice_003/cell_000/Map_NewBlueLaser_VC_Single_010')
@@ -309,6 +314,10 @@ if __name__ == '__main__':
     # MT.setPars({'invert': False, 'vmax': 30000, 'xscale': 6, 'yscale': 1.5, 'calbar': [0.5, 200.e-12], 'twin': [0.25, 0.4]})  # calbar in ms, pA
     # prots = [cell1] #, cell2, cell3, cell4]
 
-    MT.setProtocol(cell, image)
-    MT.plot_maps(prots)
+    MT.setProtocol(cell, image=image)
+    MT.plot_maps(prots)  
+      
+if __name__ == '__main__':
+    main()
+
     
