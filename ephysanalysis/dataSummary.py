@@ -337,7 +337,7 @@ class DataSummary():
                 id = idl[0]*1e4+idl[1]*1e2+idl[2]
 
                 if self.daylist is None:
-                    print('id, self.minday, self.maxday: ', id, self.minday, self.maxday)
+                    # print('id, self.minday, self.maxday: ', id, self.minday, self.maxday)
                     if id >= self.minday and id <= self.maxday:
                         days.append(thisfile)  # was [0:10]
                 else:
@@ -355,7 +355,11 @@ class DataSummary():
                     print('\nAppend mode: day already in list: {0:s}'.format(day))
                     continue  # skip
                 else:
-                    self.pddata = self.pddata.drop(self.pddata['date'] == day)  # remove the day and update it
+                    print(self.pddata['date'])
+                    print(day)
+                    k = self.pddata.index[self.pddata['date'] == day]
+                    print(k)
+                    self.pddata = self.pddata.drop(index=k)  # remove the day and update it
             else:
                 print('Day to do: ', day)
             if self.verbose:
@@ -421,13 +425,13 @@ class DataSummary():
         slices = []
         for thisfile in list(allfiles):
             # print(slsp + 'slicefile: ', thisfile)
+            thisfile = str(thisfile)
             m = slicetype.search(str(thisfile))
             if m is None:
                 print(slsp + 'm is none')
                 continue
             if len(m.groups()) == 2:
-                slices.append(thisfile)
-        # print(slsp + 'slices: ', slices)
+                slices.append(''.join(m.groups(2))) # Path(thisfile).parts[-1])
         for slicen in slices:
             slicen = str(slicen)
             self.sstring = day + ' ' + self.pstring + ' %s' % slicen
@@ -472,6 +476,7 @@ class DataSummary():
         """
         print(clsp + 'docells')
         allfiles = Path(thisslice).glob('*')
+        # print('in doCells, allfiles: ', list(allfiles))
         cell_re = re.compile("(cell_)(\d{3,3})")
         cells = []
         for thisfile in allfiles:
@@ -480,7 +485,8 @@ class DataSummary():
             if m is None:
                 continue
             if len(m.groups()) == 2:
-                cells.append(thisfile)
+                print('thisfile: ', thisfile)
+                cells.append(''.join(m.groups(2)))
         for cell in cells:
             print(clsp + 'cell: ', cell)
             self.cstring = self.sstring + " %s" % cell
@@ -548,9 +554,12 @@ class DataSummary():
         if self.verbose:
             print('\n'+prsp+'Investigating Protocols')
         for np, protocol in enumerate(protocols):  # all protocols on the cell
+            mp = Path(protocol).parts
+            protocol = mp[-1]
             protocol = str(protocol)
             if protocol.startswith('Patch'):
                 continue
+
             Printer(self.cstring + ' Prot[%2d/%2d]: %s' % (np, len(protocols), protocol))
             self.allprotocols += protocol + ', '
             protocolpath = Path(thiscell, protocol)
