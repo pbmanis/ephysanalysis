@@ -37,6 +37,7 @@ class TraceAnalyzer(pg.QtGui.QWidget):
         self.RM = EP.RmTauAnalysis.RmTauAnalysis()
         self.LPF = 5000.
         self.HPF = 0.
+        self.tb = None
         self.notch_freqs = [60., 120., 180., 240.]
         self.notch_Q = 30.
         self.curves = []
@@ -47,8 +48,10 @@ class TraceAnalyzer(pg.QtGui.QWidget):
         self.tau2 = 0.4
         self.thresh = 3.0
         self.sign = -1
+        self.scalar = 1
         self.n_adjusted = 0
         self.curve_set = False
+        self.last_method = 'cb'
         self.MA = minis_methods.MiniAnalyses()  # get a minianalysis instance
         
     
@@ -62,10 +65,13 @@ class TraceAnalyzer(pg.QtGui.QWidget):
                 self.clampfiles.append(p)
                 # print(p)
         self.w1.slider.setValue(0)
-        self.w1.slider.setMinimum(0)
-        self.w1.slider.setMaximum(len(self.clampfiles))
+        # print('# clamp files: ', len(self.clampfiles))
+        self.w1.slider.setRange(0, len(self.clampfiles))
+        self.w1.slider.setMaximum(len(self.clampfiles)*self.scalar)
+        # setMinimum(0)
+        # self.w1.slider.setMaximum(len(self.clampfiles))
         self.protocolPath = sel.fileName
-        print('protocolpath: ', sel.fileName)
+        # print('protocolpath: ', sel.fileName)
         self.updateTraces()
 
     def setProtocol(self, date, sliceno, cellno, protocolName):
@@ -94,15 +100,16 @@ class TraceAnalyzer(pg.QtGui.QWidget):
             self.update_traces()
 
     def _getpars(self):
-        pars = self.minis_values.text()
-        sv = pars.split(',')
-        self.tau1 = float(sv[0])
-        self.tau2 = float(sv[1])
-        self.thresh = float(sv[2])
-        self.sign = float(sv[3])
-        print(self.tau1, self.tau2, self.thresh, self.sign)
+        signdict = {'-': -1, '+':1}
+        self.tau1 = self.minis_risetau.value()*1e-3
+        self.tau2 = self.minis_falltau.value()*1e-3
+        self.thresh = self.minis_thresh.value()
+        sign = self.minis_sign.currentText()
+        self.sign = signdict[sign]
+        # print(self.tau1, self.tau2, self.thresh, self.sign)
         
     def CB(self):
+
         self._getpars()
         cb = minis_methods.ClementsBekkers()
         rate = np.mean(np.diff(self.tb))
@@ -114,6 +121,7 @@ class TraceAnalyzer(pg.QtGui.QWidget):
         cb.cbTemplateMatch(self.current_data,  threshold=self.thresh)
         self.decorate(cb)
         self.method = cb
+        self.last_method = 'cb'
         
     def AJ(self):
         self._getpars()
@@ -127,11 +135,12 @@ class TraceAnalyzer(pg.QtGui.QWidget):
                 thresh=self.thresh, llambda=1., order=7)  # note threshold scaling...
         self.decorate(aj)
         self.method = aj
+        self.last_method = 'aj'
     
     def decorate(self, minimethod):
         if not self.curve_set:
             return
-        print('decorate')
+        # print('decorating', )
         for s in self.scatter:
             s.clear()
         for c in self.crits:
@@ -139,17 +148,16 @@ class TraceAnalyzer(pg.QtGui.QWidget):
         self.scatter = []
         self.crits = []
         if len(minimethod.onsets) is not None:
-            print('A')
-            self.scatter.append(self.dataplot.plot(self.tb[minimethod.smpkindex]*1e3,  np.array(minimethod.smoothed_peaks),
+            self.scatter.append(self.dataplot.plot(self.tb[minimethod.peaks]*1e3,  self.current_data[minimethod.peaks],
                       pen = None, symbol='o', symbolPen=None, symbolSize=5, symbolBrush=(255, 0, 0, 255)))
             # self.scatter.append(self.dataplot.plot(self.tb[minimethod.peaks]*1e3,  np.array(minimethod.amplitudes),
             #           pen = None, symbol='o', symbolPen=None, symbolSize=5, symbolBrush=(255, 0, 0, 255)))
 
-            print('b')
             self.crits.append(self.dataplot2.plot(self.tb[:len(minimethod.Crit)]*1e3, minimethod.Crit, pen='r'))
-            print('c')
+            # print(' ... decorated')
     
     def update_traces(self):
+        trmap = {'cb': self.CB, 'aj': self.AJ}
         if len(self.AR.traces) == 0:
             return
         self.current_trace = int(self.w1.x)
@@ -182,10 +190,9 @@ class TraceAnalyzer(pg.QtGui.QWidget):
                            pen=pg.intColor(1)))
         self.current_data = mod_data
         self.tb = self.AR.time_base[:imax]
+        # print(self.tb.shape, imax)
         self.curve_set = True
-        self.CB()
-        
-
+        trmap[self.last_method]()
 
     def quit(self):
         exit(0)
@@ -250,8 +257,37 @@ class TraceAnalyzer(pg.QtGui.QWidget):
         self.buttons.addWidget(self.aj_button)
         self.aj_button.clicked.connect(self.AJ)
         
-        self.minis_values = pg.QtGui.QLineEdit("0.001, 0.004, 3, -1")
-        self.buttons.addWidget(self.minis_values)
+        self.minis_risetau = pg.QtGui.QDoubleSpinBox()
+        self.minis_risetau.setRange(0.1, 10.)
+        self.minis_risetau.setValue(0.2)
+        self.minis_risetau.setDecimals(2)
+        self.minis_risetau.setSingleStep(0.1)
+        self.minis_risetau.setSuffix(' ms')
+        self.buttons.addWidget(self.minis_risetau)
+        self.minis_risetau.valueChanged.connect(self.update_traces)
+        
+        self.minis_falltau = pg.QtGui.QDoubleSpinBox()
+        self.minis_falltau.setRange(0.2, 20.)
+        self.minis_falltau.setSingleStep(0.1)
+        self.minis_falltau.setSuffix(' ms')
+        self.minis_falltau.setValue(1.0)
+        self.minis_falltau.setDecimals(2)
+        self.buttons.addWidget(self.minis_falltau)
+        self.minis_falltau.valueChanged.connect(self.update_traces)
+        
+        self.minis_thresh = pg.QtGui.QDoubleSpinBox()
+        self.minis_thresh.setRange(1.0, 12.)
+        self.minis_thresh.setValue(3.5)
+        self.minis_thresh.setDecimals(2)
+        self.minis_thresh.setSingleStep(0.1)
+        self.minis_thresh.setSuffix(' n SD')
+        self.buttons.addWidget(self.minis_thresh)
+        self.minis_thresh.valueChanged.connect(self.update_traces)
+        
+        self.minis_sign = pg.QtGui.QComboBox()
+        self.minis_sign.addItems(['-', '+'])
+        self.buttons.addWidget(self.minis_sign)
+        self.minis_sign.currentIndexChanged.connect(self.update_traces)
         
         
         spacerItem1 = pg.QtGui.QSpacerItem(0, 400, pg.QtGui.QSizePolicy.Expanding, pg.QtGui.QSizePolicy.Minimum)
@@ -269,10 +305,10 @@ class TraceAnalyzer(pg.QtGui.QWidget):
 
         self.dataplot = pg.PlotWidget()
         self.dataplot2 = pg.PlotWidget()
-        layout.addLayout(self.buttons, 0, 0, 7, 1)
+        layout.addLayout(self.buttons,   0, 0, 7, 1)
         layout.addWidget(self.dataplot,  0, 1, 1, 6)
         layout.addWidget(self.dataplot2, 6, 1, 4, 6)
-        layout.addWidget(self.w1,        7, 1, 1, 6)
+        layout.addWidget(self.w1,        11, 1, 1, 6)
         layout.setColumnStretch(0, 1)  # reduce width of LHS column of buttons
         layout.setColumnStretch(1, 7)  # and stretch out the data dispaly
         
