@@ -113,7 +113,7 @@ class DataSummary():
 
     def __init__(self, basedir, outputMode='terminal', outputFile=None, daylistfile=None,
                  after=None, before=None, day=None, dryrun=False, depth='all', inspect=True,
-                 deep=False, append=False, verbose=False, update=False):
+                 deep=False, append=False, verbose=False, update=False, pairflag=False):
         """
         Note that the init is just setup - you have to call getDay the object to do anything
     
@@ -189,6 +189,7 @@ class DataSummary():
         self.verbose = verbose
         self.update = update
         self.deep_check = deep
+        self.pairflag = pairflag
         self.append = append
  
         self.daylist = None
@@ -270,6 +271,7 @@ class DataSummary():
         if self.daylistfile is None:  # get from command line
             self.minday = mindayx[0]*1e4+mindayx[1]*1e2+mindayx[2]
             self.maxday = maxdayx[0]*1e4+maxdayx[1]*1e2+maxdayx[2]
+            print(self.minday, self.maxday)
         else:
             self.daylist = []
             with open(self.daylistfile, 'r') as f:
@@ -283,11 +285,13 @@ class DataSummary():
         self.tw['day'] = textwrap.TextWrapper(initial_indent="", subsequent_indent=" "*2)  # used to say "initial_indent ="Description: ""
         self.tw['slice'] = textwrap.TextWrapper(initial_indent="", subsequent_indent=" "*2)
         self.tw['cell'] = textwrap.TextWrapper(initial_indent="", subsequent_indent=" "*2)
+        self.tw['pair'] = textwrap.TextWrapper(initial_indent="", subsequent_indent=" "*2)
 
         self.twd = {}  # for description
         self.twd['day'] = textwrap.TextWrapper(initial_indent="", subsequent_indent=" "*2)  # used to ays initial_indent ="Notes: ""
         self.twd['slice'] = textwrap.TextWrapper(initial_indent="", subsequent_indent=" "*2)
         self.twd['cell'] = textwrap.TextWrapper(initial_indent="", subsequent_indent=" "*2)
+        self.twd['pair'] = textwrap.TextWrapper(initial_indent="", subsequent_indent=" "*2)
         
         self.img_re = re.compile('^[Ii]mage_(\d{3,3}).tif')  # make case insensitive - for some reason in Xuying's data
         self.s2p_re = re.compile('^2pStack_(\d{3,3}).ma')
@@ -387,8 +391,8 @@ class DataSummary():
                 if isinstance(self.day_index[k], bool):
                     self.day_index[k] = str(self.day_index[k])
                 if k in 'sex':
-                    if self.day_index[k] not in ['M', 'F', None, '', ' ']:
-                        print('<'+self.day_index[k]+'>')
+                    if self.day_index[k] not in ['M', 'F', 'm', 'f', None, '', ' ']:
+                        print('? sex: <'+self.day_index[k]+'>')
                         exit()
                 if k in 'age':
                     chrs = str.maketrans('pPdDmMyY', '        ')
@@ -424,7 +428,7 @@ class DataSummary():
         slicetype = re.compile("(slice\_)(\d{3,3})")
         slices = []
         for thisfile in list(allfiles):
-            # print(slsp + 'slicefile: ', thisfile)
+            print(slsp + 'slicefile: ', thisfile)
             thisfile = str(thisfile)
             m = slicetype.search(str(thisfile))
             if m is None:
@@ -457,7 +461,7 @@ class DataSummary():
             self._doCells(Path(self.basedir, day, slicen))
             gc.collect()
 
-    def _doCells(self, thisslice):
+    def _doCells(self, thisslice, pair=False):
         """
         process all of the cells from a slice
         This will usually be called from dataSummary.day()
@@ -477,15 +481,20 @@ class DataSummary():
         print(clsp + 'docells')
         allfiles = Path(thisslice).glob('*')
         # print('in doCells, allfiles: ', list(allfiles))
-        cell_re = re.compile("(cell_)(\d{3,3})")
+        if not self.pairflag:
+            cell_re = re.compile("(cell_)(\d{3,3})")
+        else:
+            cell_re = re.compile("(pair_)(\d{3,3})")
         cells = []
         for thisfile in allfiles:
             thisfile = str(thisfile)
             m = cell_re.search(thisfile)
+            # print('docells: thisfile: ', thisfile)
             if m is None:
+                # print('docells: m is None')
                 continue
             if len(m.groups()) == 2:
-                print('thisfile: ', thisfile)
+                # print('thisfile: ', thisfile)
                 cells.append(''.join(m.groups(2)))
         for cell in cells:
             print(clsp + 'cell: ', cell)
@@ -740,6 +749,7 @@ class DataSummary():
         if self.outputMode == 'pandas' and not self.append:
             print('\nOUTPUTTING DIRECTLY VIA PANDAS')
           #  self.colprint()
+            print('pandstring: ', self.panda_string)
             df = pd.read_csv(pandas.compat.StringIO(self.panda_string), delimiter='\t')
            # print('Head write: \n', df.head(5), '\n')
             df.to_pickle(self.outFilename)
@@ -828,11 +838,14 @@ def main():
                         help='Specify depth for --dry-run')
     parser.add_argument('-A', '--append', action='store_true', dest='append',
                         help='update new/missing entries to specified output file')
+    parser.add_argument('-p', '--pairs', action='store_true', dest='pairflag',
+                        help='handle pairs')
+                    
     args = parser.parse_args()
     ds = DataSummary(basedir=args.basedir, daylistfile=args.daylist, outputMode=args.output, outputFile=args.outputFilename,
             after=args.after, before=args.before, day=args.day, dryrun=args.dryrun, depth=args.depth, inspect=args.noinspect,
             deep=args.deep, append=args.append,
-            verbose=args.verbose, update=args.update)
+            verbose=args.verbose, update=args.update, pairflag=args.pairflag)
 
     if args.write:
         ds.getDay()
