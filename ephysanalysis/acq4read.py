@@ -828,8 +828,9 @@ class Acq4Read():
         rep = 0
         tar = 0
         supindex = self._readIndex()  # get protocol index (top level, dirType=ProtocolSequence)
-      #  print('supindex in getScannerPositions: ', supindex, self.protocol)
-        if not 'sequenceParams' in list(supindex['.'].keys()):  # should have this key, along with (scanner, targets)
+        # print('supindex in getScannerPositions: ', supindex, self.protocol)
+            
+        if supindex is None or 'sequenceParams' not in list(supindex['.'].keys()):  # should have this key, along with (scanner, targets)
             print('no sequenceParams key in top level protocol directory; in getScannerPosition')
             return(False)
         try:

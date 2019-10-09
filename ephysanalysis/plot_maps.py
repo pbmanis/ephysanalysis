@@ -15,9 +15,14 @@ import itertools
 import argparse
 from collections import OrderedDict
 from pathlib import Path
+import pandas as pd
 import matplotlib
-matplotlib.use('Qt4Agg')
+matplotlib.use('Qt5Agg')
 import matplotlib.pyplot as mpl
+from matplotlib.widgets import RectangleSelector
+import matplotlib.backend_bases as MBB
+import scipy.ndimage as SND
+
 from pylibrary import PlotHelpers as PH
 import seaborn as sns
 import ephysanalysis.acq4read as ARC
@@ -93,6 +98,8 @@ class MapTraces(object):
         self.voff = 0.
         self.ioff = 0.050
         self.basezero = True
+        self.ax = None
+        self.ax2 = None
         self.xscale = 1.0
         self.yscale = 1.0
         self.nspots = 0
@@ -101,14 +108,21 @@ class MapTraces(object):
         self.indicesplotted = []
         self.twin = [0, 0.6]
         self.averageScannerImages = False # normally, would not do
-        self.calbar = [0.1, 5e-7]  # 100 ms, 500 pA
+        self.calbar = [20, 500]  # 20 ms, 500 pA
         self.picker = picker.Picker()
         sns.set()
         sns.color_palette("colorblind", 10)
         self.palette = itertools.cycle(sns.color_palette("colorblind", 10))
         sns.set_style("white")
         sns.set_style("ticks")
-        self.window = None
+        self.window = False
+        self.XY = [[None, None]]
+        self.XYdepth = 0
+        self.calbarobj = None
+        self.calbartext = None
+        self.mx = 0
+        self.my = 0
+        
 
     def setProtocol(self, cell, image=None, videos=None):
         self.cell = Path(cell)
@@ -131,7 +145,11 @@ class MapTraces(object):
     def setWindow(self, x0, x1, y0, y1):
          self.xlim = (x0, x1)
          self.ylim = (y0, y1)
-         self.window = True
+         if not pd.isnull(x0):
+             self.window = True
+             print('window set!!!!!')
+         else:
+            self.window = False
     
     def setOutputFile(self, filename):
         self.outputfn = filename
@@ -151,27 +169,30 @@ class MapTraces(object):
             if k == 'yscale':
                 self.yscale = pdict[k]
             if k == 'calbar':
-                self.calbar[0] = pdict[k][0]
-                self.calbar[1] = pdict[k][1]
+                self.calbar[0] = pdict[k][0]*1e-3
+                self.calbar[1] = pdict[k][1]*1e-12
             if k == 'twin':
                 self.twin[0] = pdict[k][0]
                 self.twin[1] = pdict[k][1]
             if k == 'ticks':
                 self.ticks = pdict[k]
 
-    def plot_maps(self, protocols, traces=None):
+    def plot_maps(self, protocols, traces=None, linethickness=1.0):
         """
         Plot map or superimposed maps...
         """
+        print('plot_maps')
         self.figure = mpl.figure()
         # print(dir(self.figure))
         self.figure.set_size_inches(14., 8.)
         if traces is None:
             self.ax = self.figure.add_subplot('111')
+            print('set ax')
         else:
             self.ax = self.figure.add_subplot('121')
             self.ax2 = self.figure.add_subplot('122')
             sns.despine(ax=self.ax2, left=True, bottom=True, right=True, top=True)
+            print('set ax and ax2')
         # self.ax3 = self.figure.add_subplot('133')
         self.data = dict.fromkeys(list(protocols.keys()))
         cols = ['r', 'b', 'c', 'g']
@@ -182,10 +203,10 @@ class MapTraces(object):
             self.datasets[p] = []
             if i == 0:
                 self.setProtocol(prot, self.image)
-                self.show_traces(self.figure, self.ax, pcolor=cols[i], name=p)
+                self.show_traces(self.figure, self.ax, pcolor=cols[i], name=p, linethickness=linethickness)
             else:
                 self.setProtocol(prot)
-                self.show_traces(self.figure, self.ax, pcolor=cols[i], name=p)
+                self.show_traces(self.figure, self.ax, pcolor=cols[i], name=p, linethickness=linethickness)
         if self.traces is not None:
             for tr in self.traces:
                 self.handle_event(index=tr)
@@ -198,19 +219,25 @@ class MapTraces(object):
             self.picker.setAction(self.handle_event)
 
         # self.figure.canvas.mpl_connect('button_press_event', self.picker.pickEvent)
-        self.figure.canvas.mpl_connect('pick_event', self.picker.pickEvent)
+        # self.figure.canvas.mpl_connect('pick_event', self.picker.pickEvent)
         # self.figure.canvas.mpl_connect('motion_notify_event', self.picker.onMouseMotion)
-
+        x1, x2 = self.ax.get_xlim()
+        y1, y2 = self.ax.get_ylim()
+        self.XY = [self.get_XYlims()]
         cp = self.cell.parts
         cellname = '/'.join(cp[-4:])
         self.figure.suptitle(cellname, fontsize=11)
         self.fig2 = None
         if self.outputfn is not None:
             mpl.savefig(self.outputfn)
-        mpl.show()
+        # mpl.show()
+
+    def get_XYlims(self):
+        x1, x2 = self.ax.get_xlim()
+        y1, y2 = self.ax.get_ylim()
+        return([x1, y1, x2, y2])
         
-        
-    def show_traces(self, f, ax, pcolor='r', name=None):
+    def show_traces(self, f, ax, pcolor='r', linethickness=0.5, name=None):
 
         self.cell.glob('*')
         # imageplotted = False
@@ -221,25 +248,34 @@ class MapTraces(object):
         supindex = self.AR.readDirIndex(currdir=self.cell)
     
         self.SI = ScannerInfo(self.AR)
+        print(self.SI.boxw)
+        
         if self.invert:
             cmap = 'gist_gray_r'
         else:
             cmap = 'gist_gray'
-
+        self.imageax = None
         max_camera = None
         if self.averageScannerImages:
             max_camera = self.AR.getAverageScannerImages(dataname='Camera/frames.ma', mode='max', firstonly=False, limit=None)
-            ax.imshow(max_camera, aspect='equal', cmap='Reds', alpha=0.7, vmin = 1000, vmax=self.vmax,
+            self.imageax = ax.imshow(max_camera, aspect='equal', cmap='Reds', alpha=0.7, vmin = 1000, vmax=self.vmax,
                 extent=[np.min(self.SI.boxw[0]), np.max(self.SI.boxw[0]), np.min(self.SI.boxw[1]), np.max(self.SI.boxw[1])])
         # max_camera = scipy.ndimage.gaussian_filter(max_camera, sigma=256/(4.*10))
+            self.cmin = SND.minimum(self.max_camera)
+            self.cmax = SND.maximum(self.max_camera)
         if len(self.videos) > 0:
             self.process_videos()
-            ax.imshow(self.merged_image, aspect='equal', cmap=cmap, alpha=0.75, vmin = 0, vmax=self.vmax,
+            self.imageax = ax.imshow(self.merged_image, aspect='equal', cmap=cmap, alpha=0.75, vmin = 0, vmax=self.vmax,
             extent=[np.min(self.SI.boxw[0]), np.max(self.SI.boxw[0]), np.min(self.SI.boxw[1]), np.max(self.SI.boxw[1])])
+            self.cmin = SND.minimum(self.merged_image)
+            self.cmax = SND.maximum(self.merged_image)
             
         else:
-            ax.imshow(self.image_data, aspect='equal', cmap=cmap, alpha=0.75, vmin = 0, vmax=self.vmax,
+            self.imageax = ax.imshow(self.image_data, aspect='equal', cmap=cmap, alpha=0.75, vmin = 0, vmax=self.vmax,
             extent=[np.min(self.SI.boxw[0]), np.max(self.SI.boxw[0]), np.min(self.SI.boxw[1]), np.max(self.SI.boxw[1])])
+            self.cmin = SND.minimum(self.image_data)
+            self.cmax = SND.maximum(self.image_data)
+        print('self.window: ', self.window)
         if self.window:
             ax.set_xlim(self.xlim)
             ax.set_ylim(self.ylim)
@@ -272,16 +308,56 @@ class MapTraces(object):
         # just plot as many as we have!
         dshape = self.datasets[name].shape
         for p in range(dshape[0]): # scp.shape[0]):
-            self._plot_one(ax, p, pcolor, name=name)
+            self._plot_one(ax, p, pcolor, name=name, ythick=linethickness)
+        self.plot_calbar(ax, xmin, ymin)
+        print(dir(self.imageax))
+        
+    def plot_calbar(self, ax, x0, y0):
         xcal = self.xscale*3.5e-5*self.calbar[0]*1.25
         ycal = self.yscale*self.vscale*self.calbar[1]*0.5
         zero = 0
 
-        ax.plot(self.xscale*3.5e-5*np.array([0., 0., self.calbar[0]])+xmin - xcal,
-               (self.yscale*self.vscale*(np.array([self.calbar[1],  0., 0. ])-zero))+self.off*self.vscale+ymin - ycal, 'k-', linewidth=1)
-        ax.text(xmin-xcal, ymin-ycal, f"{self.calbar[0]*1e3} ms\n{self.calbar[1]*1e12} pA",
+        self.calbarobj = ax.plot(self.xscale*3.5e-5*np.array([0., 0., self.calbar[0]])+x0 - xcal,
+               (self.yscale*self.vscale*(np.array([self.calbar[1],  0., 0. ])-zero))+self.off*self.vscale+y0 - ycal, 'k-', linewidth=1)
+        self.calbartext = ax.text(x0-xcal, y0-ycal, f"{int(self.calbar[0]*1e3):d} ms\n{int(self.calbar[1]*1e12):d} pA",
         verticalalignment='top', horizontalalignment='center', fontsize=8)
+        self.calx_zero = self.calbarobj[0].get_xdata()
+        self.caly_zero = self.calbarobj[0].get_ydata()
+        self.reposition_cal()
 
+    def reposition_cal(self, movex=0, movey=0, home=False):
+        if not home:
+            calxdata = self.calbarobj[0].get_xdata()
+            calydata = self.calbarobj[0].get_ydata()
+        else:
+            calxdata = self.calx_zero
+            calydata = self.caly_zero
+            self.mx = 0
+            self.my = 0
+        # print('xdata: ', calxdata)
+        # print('ydata: ', calydata)
+        xd = calxdata[2] - calxdata[1]
+        yd = calydata[0] - calydata[1]
+        xl = sorted(self.ax.get_xlim())
+        yl = sorted(self.ax.get_ylim())
+        # print(xl, yl)
+        x0 = xl[0] + (movex+self.mx)*0.001*xl[1]
+        y0 = yl[0] + (movey+self.my)*0.001*yl[1]
+        self.calbarobj[0].set_xdata([x0, x0, x0+xd])
+        self.calbarobj[0].set_ydata([y0+yd, y0, y0])
+        # print([x0, x0, x0+xd])
+       #  print([y0+yd, y0, y0])
+        self.mx += movex
+        self.my += movey
+        
+        # print(dir(MT.calbartext))
+        # calxy = MT.calbartext.get_position()
+        calxy = [0, 0]
+        calxy[0] = x0 + xl[1]*(movex+self.mx)*0.001
+        calxy[1] = y0 + yl[1]*(movey+self.my)*0.001 - yl[1]*0.015
+        self.calbartext.set_position(calxy)
+        print('reposition : ', movex, movey)
+        
     def _plot_one(self, ax, p, pcolor, name=None, yscaleflag=True, tscale=True, offflag=True, ystep = 0., ythick=0.3):
         zero = 0.
         vdat = FILT.SignalFilter_LPFBessel(self.datasets[name][p, :], 2000.,
@@ -306,11 +382,13 @@ class MapTraces(object):
         ax.plot(ts*self.tb+xoff, (y_scale*(vdat[self.im0:self.im1]-zero))+yoff, color=pcolor, linewidth=ythick)
         if self.ticks is not None:
             for t in self.ticks:
-                ax.plot(ts*np.array([t, t])+xoff,  y_scale*np.array([-20e-12, 20e-12])+yoff, color='k', linewidth=0.8)
+                ax.plot(ts*np.array([t, t])+xoff,  y_scale*np.array([-20e-12, 20e-12])+yoff, color='k',  linewidth=0.8)
 
     def handle_event(self, index):
         # print('handle event index: ', index)
         # print(self.SI.scannerpositions[index,:])
+        if self.ax2 is None:
+            return
         if index in self.indicesplotted:
             return
         if self.overlay:
@@ -334,16 +412,32 @@ class MapTraces(object):
         mpl.draw()
         
 def main():
-    parser = argparse.ArgumentParser(description='Mapping data analysis: make excel table with maps')
+    cellchoices = ['bushy',
+                        'tstellate', 
+                        'dstellate',
+                        'tuberculoventral', 
+                        'pyr1', 
+                        'giant', 
+                        'cartwheel',
+                        'unknown', 'all']
+    parser = argparse.ArgumentParser(description='Plot maps with traces on top')
     parser.add_argument('-E', '--experiment', type=str, dest='experiment',
                         choices = list(set_expt_paths.experiments.keys()), default='None', nargs='?', const='None',
                         help='Select Experiment to analyze')
     parser.add_argument('-c', '--celltype', type=str, default=None, dest='celltype',
+<<<<<<< HEAD
                         choices=['bushy', 't-stellate', 'd-stellate', 'cartwheel', 'tuberculoventral', 'pyramidal', 
                         'pyramidal-nr', 'tuberculoventral-nr', 'giant', 'unknown'],
                         help='Set celltype for figure')
     # nr's are "no response" cells
                     
+=======
+                        choices=cellchoices,
+                        help='Set celltype for figure')
+    parser.add_argument('-n', '--number', type=str, default='*', dest='number',
+                        help='ID number of the cell')
+                        
+>>>>>>> bb7ec3f46fe6271b1e9a10aa5d3ce3784a33bbb7
     args = parser.parse_args()
     experimentname = args.experiment 
     basepath = Path(experiments[experimentname]['disk'])
@@ -351,47 +445,6 @@ def main():
 
     MT = MapTraces()
 
-    #cell = '/Users/pbmanis/Documents/data/mrk/2017.09.12_000/slice_000/cell_001'
-    # cell = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.06_000/slice_002/cell_000/LSPS_dendrite_VC_testmap_MAX_000_001')
-    # image = 'image_002.tif'
-    # # cell = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.06_000/slice_002/cell_000/LSPS_dendrite_CC_testmap_strongest_000')
-    # # cell = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.05_000/slice_002/cell_000/LSPS_dendrite_VC_testmap_MAX_004')
-    # # image = Path(cell.parent, 'image_001.tif')
-    # cell = Path(basepath, '2017.08.22_000/slice_000/cell_001/Map_NewBlueLaser_VC_10Hz_000')  # pyr
-    # image = '../image_008.tif'
-    # MT.setPars({'invert': False, 'vmax': 30000, 'xscale': 1.5, 'yscale': 1.5, 'calbar': [0.5, 200.e-12]})  # calbar in ms, pA
-    #
-    # cell = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.08_000/slice_001/cell_000/LSPS_dendrite_VC_testmap_MAX_000')
-
-    # image = '../image_002.tif'
-    # MT.setPars({'invert': True, 'vmax': 30000, 'xscale': 6, 'yscale': 1.5, 'calbar': [0.5, 200.e-12], 'twin': [0.25, 0.4]})  # calbar in ms, pA
-    #
-    # # cell = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.08_000/slice_001/cell_000/LSPS_dendrite_CC_testmap_MAX_003')
-    # # image = '../image_002.tif'
-    # # MT.setPars({'invert': True, 'vmax': 30000, 'xscale': 6, 'yscale': 1.5, 'calbar': [0.5, 20e-3], 'twin': [0.25, 0.4], 'voff': -0.0})  # calbar in ms, pA
-    #
-    # # bushy
-    # # cell = Path(basepath, '2017.03.01_000/slice_000/cell_001/Map_NewBlueLaser_VC_single_test_001')  # pyr
-    # # image = '../image_001.tif'
-    # #
-    # # cell = Path(basepath, '2017.03.22_000/slice_000/cell_000/Map_NewBlueLaser_VC_pt2mW_000')  # pyr
-    # # image = '../image_000.tif'
-    # # # videos = [0, 1, 2, 3, 4]
-    # # cell = Path(basepath, '2017.03.24_000/slice_001/cell_001/Map_NewBlueLaser_VC_2mW_005')  # pyr
-    # # image = '../image_001.tif'
-    # # MT.setPars({'invert': False, 'vmax': 30000, 'xscale': 1.5, 'yscale': 0.05, 'calbar': [0.5, 5000.e-12]})  # calbar in ms, pA
-    # MT.setPars({'invert': True, 'vmin': 1000, 'vmax': 18000, 'xscale': 6, 'yscale': 1.5, 'calbar': [0.5, 20.e-3], 'twin': [0.25, 0.5],
-    #          'ioff': -0.0})  # calbar in ms, pA
-    # # cell1 = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.08_000/slice_001/cell_000/LSPS_dendrite_CC_testmap_MAX_000')
-    # # cell2 = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.08_000/slice_001/cell_000/LSPS_dendrite_CC_testmap_MAX_001')
-    # # cell3 = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.08_000/slice_001/cell_000/LSPS_dendrite_CC_testmap_MAX_002')
-    # # cell_vc = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.08_000/slice_001/cell_000/LSPS_dendrite_VC_testmap_MAX_000')
-    # # MT.setPars({'invert': True, 'vmin': 1000, 'vmax': 18000, 'xscale': 6, 'yscale': 1.5, 'calbar': [0.5, 200e-12], 'twin': [0.25, 0.5],
-    # #          })
-    # # image = '../image_002.tif'
-    # # prots = [cell1, cell2, cell3]
-    # # prots = [cell_vc]
-    #
     if args.celltype == 'lsps':
         cell = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.05_000/slice_002/cell_000/LSPS_dendrite_VC_testmap_MAX_001')  # pyr
         image = '../image_001.tif'
@@ -420,44 +473,117 @@ def main():
     Cells for paper
  
     """
-    #
-    # Cartwheel
-    #
-    if args.celltype == 'cartwheel':
-        cell = Path(basepath, '2018.02.16_000/slice_000/cell_001', 'Map_NewBlueLaser_VC_10Hz_001')
-        image = '../image_003.tif'
-        MT.setPars({'invert': True, 'vmin': 1000, 'vmax': 12000, 'xscale': 12, 'yscale': 3, 'calbar': [0.1, 50.e-12], 'twin': [0.08, 0.15],
-                 'ioff': -0.0})  # calbar in ms, pA
-        MT.setWindow(0.00175, 0.0024, 0.00675, 0.00735)
-        MT.setOutputFile(Path(experiments[experimentname]['directory'], f"{args.celltype:s}_map.pdf"))
-        prots = {'ctl': cell}
+    if args.celltype == 'all':
+        docell = cellchoices
+    else:
+        docell = [args.celltype]
+    
+    if docell in ['unknown', 'all']:
+        return
 
-    if args.celltype == 'bushy':
-        cell = Path(basepath, '2017.10.04_000/slice_002/cell_000', 'Map_NewBlueLaser_VC_10Hz_002')
-        image = '../image_008.tif'
-        MT.setPars({'invert': True, 'vmin': 1000, 'vmax': 12000, 'xscale': 60, 'yscale': 0.5, 'calbar': [0.02, 500.e-12], 'twin': [0.095, 0.110],
-                 'ioff': -0.0, 'ticks': [0.005]})  # calbar in ms, pA, ticks is relative to twin[0]
-        MT.setWindow(0.0411, 0.0419, 0.00595, 0.00675)
-        MT.setOutputFile(Path(experiments[experimentname]['directory'], f"{args.celltype:s}_map.pdf"))
-        prots = {'ctl': cell}
+    table = pd.read_excel('NF107Ai32_Het/SelectedMapsTable.xlsx')
 
-    if args.celltype == 't-stellate1':
-        cell = Path(basepath, '2017.12.04_000/slice_001/cell_001', 'Map_NewBlueLaser_VC_10Hz_000')
-        image = '../image_001.tif'
-        MT.setPars({'invert': True, 'vmin': 1000, 'vmax': 12000, 'xscale': 30, 'yscale': 0.5, 'calbar': [0.02, 500.e-12], 'twin': [0.295, 0.320],
-                 'ioff': -0.0, 'ticks': [0.005]})  # calbar in ms, pA, ticks is relative to twin[0]
-        # MT.setWindow(0.0411, 0.0419, 0.00595, 0.00675)
-        MT.setOutputFile(Path(experiments[experimentname]['directory'], f"{args.celltype:s}_map.pdf"))
-        prots = {'ctl': cell}
+    def makepars(dc):
+        parnames = ['invert', 'vmin', 'vmax', 'xscale', 'yscale', 'calbar', 'twin', 'ioff', 'ticks']
+        pars = dict()
+        for n in parnames:
+            if n in ['calbar', 'twin']:
+                pars[n] = eval('['+dc[n].values[0]+']')
+            elif n in ['ticks']:
+                pars[n] = [dc[n].values[0]]
+            else:
+                pars[n] = dc[n].values[0]
+        return pars
 
-    if args.celltype == 't-stellate':
-        cell = Path(basepath, '2017.03.29_000/slice_000/cell_002', 'Map_NewBlueLaser_VC_1mW_002')
-        image = '../image_003.tif'
-        MT.setPars({'invert': True, 'vmin': 1000, 'vmax': 20000, 'xscale': 30, 'yscale': 1.5, 'calbar': [0.02, 500.e-12], 'twin': [0.290, 0.340],
-                 'ioff': -0.0, 'ticks': [0.010]})  # calbar in ms, pA, ticks is relative to twin[0]
-        MT.setWindow(0.0541, 0.0549, 0.00285, 0.00350)
-        MT.setOutputFile(Path(experiments[experimentname]['directory'], f"{args.celltype:s}_map.pdf"))
+
+        
+    def line_select_callback(eclick, erelease):
+        'eclick and erelease are the press and release events'
+        
+        
+        if eclick.button == MBB.MouseButton.LEFT and erelease.button== MBB.MouseButton.LEFT:
+            x1, y1 = eclick.xdata, eclick.ydata
+            x2, y2 = erelease.xdata, erelease.ydata
+            print(f"Corners: {x1:.6f}, {x2:.6f}) --> {y1:.6f}, {y2:.6f})")
+            print(" The button you used were: %s %s" % (eclick.button, erelease.button))
+            MT.XY.append([x1, y1, x2, y2])
+        elif eclick.button == MBB.MouseButton.RIGHT:
+            if len(MT.XY) == 0:
+                return
+            # print(MT.XY)
+            x1, y1, x2, y2 = MT.XY.pop()
+        xl = sorted([x1, x2])
+        yl = sorted([y1, y2])
+        MT.ax.set_xlim(xl)
+        MT.ax.set_ylim(yl)
+        MT.reposition_cal()
+        mpl.draw()
+
+
+        
+
+    def toggle_selector(event):
+        print(event.key, event.key in ['\x1b[A', '\x1b[B','\x1b[C','\x1b[C',])
+        if event.key in ['Q', 'q'] and toggle_selector.RS.active:
+            print(' RectangleSelector deactivated.')
+            toggle_selector.RS.set_active(False)
+        elif event.key in ['A', 'a'] and not toggle_selector.RS.active:
+            print(' RectangleSelector activated.')
+            toggle_selector.RS.set_active(True)
+        elif event.key in ['p', 'P']:
+            xylims = MT.get_XYlims()
+            print(f"{xylims[0]:.5f}\t{xylims[1]:.5f}\t{xylims[2]:.5f}\t{xylims[3]:.5f}")
+            if MT.calbarobj is not None:
+                print(dir(MT.calbarobj[0]))
+                print(MT.calbarobj[0].get_xydata())
+        elif event.key in ['s', 'S']:
+            mpl.savefig(MT.outputfn)
+            exit()
+        elif event.key in ['z', 'Z']:
+            MT.cmin = SND.minimum(MT.image_data)
+            MT.cmax = SND.maximum(MT.image_data)
+            MT.imageax.set_clim(MT.cmin, MT.cmax)
+            mpl.draw()
+
+        elif event.key in ['d', 'D']:
+            MT.cmax -= 500
+            MT.imageax.set_clim(MT.cmin, MT.cmax)
+            mpl.draw()
+
+        elif event.key in ['u', 'U']:
+            MT.cmin += 200
+            MT.imageax.set_clim(MT.cmin, MT.cmax)
+            mpl.draw()
+        
+        elif event.key in ['right', '\x1b[C']:
+            MT.reposition_cal(movex=-1)  # move right
+        elif event.key in ['left', '\x1b[D']:
+            MT.reposition_cal(movex=1)  # move left
+        elif event.key in ['up', '\x1b[A']:
+            MT.reposition_cal(movey=1)
+        elif event.key in ['down', '\x1b[B']:
+            MT.reposition_cal(movey=-1)
+        elif event.key in ['h', 'H']: 
+            MT.reposition_cal(home=True)  # home
+        else:
+            pass
+        mpl.draw()
+            
+
+    def plot_a_cell(cellname, cellno):
+        dc = table.loc[(table['cellname'] == cellname) & (table['cellno'] == cellno)]
+        if len(dc) == 0:
+            print(f"Did not find cellname: {cellname:s}  with no: {cellno:s}")
+            return
+        # print('cellname: ', cellname)
+        cell = Path(basepath, str(dc['cellID'].values[0]), str(dc['map'].values[0]))
+        image = '../' + str(dc['image'].values[0]) + '.tif'
+        pars = makepars(dc)
+        MT.setPars(pars)
+        MT.setWindow(dc['x0'].values[0], dc['x1'].values[0], dc['y0'].values[0], dc['y1'].values[0])
+        MT.setOutputFile(Path(experiments[experimentname]['directory'], f"{cellname:s}{int(cellno):d}_map.pdf"))
         prots = {'ctl': cell}
+<<<<<<< HEAD
 
     if args.celltype == 'd-stellate':
         cell = Path(basepath, '2017.03.29_000/slice_000/cell_002', 'Map_NewBlueLaser_VC_1mW_002')
@@ -511,6 +637,42 @@ def main():
     MT.setProtocol(cell, image=image)
     MT.plot_maps(prots)  
       
+=======
+        MT.setProtocol(cell, image=image)
+        print('calling plot_maps')
+        MT.plot_maps(prots, linethickness=1.0)
+
+    for cellname in docell:
+        if cellname in ['unknown', 'all']:
+            continue
+        if args.number == '*':  # all of a type
+            cs = table.loc[table['cellname'] == cellname]
+            print (cs)
+            for i, indx in enumerate(cs.index):
+                print(i)
+                print(cs.iloc[i]['cellname'], cs.iloc[i]['cellno'])
+                plot_a_cell(cs.iloc[i]['cellname'], cs.iloc[i]['cellno'])
+                mpl.close()
+        else:
+            plot_a_cell(cellname, cellno=int(args.number))
+            # drawtype is 'box' or 'line' or 'none'
+            # print(dir(MT))
+            rectprops = dict(facecolor='yellow', edgecolor = 'black',
+                             alpha=0.2, fill=True)
+            toggle_selector.RS = RectangleSelector(MT.ax, line_select_callback,
+                                                   drawtype='box', useblit=True,
+                                                   button=[1, 3],  # don't use middle button
+                                                   minspanx=1e-5, minspany=1e-5,
+                                                   spancoords='data',
+                                                   interactive=True, 
+                                                   rectprops=rectprops)
+
+            mpl.connect('key_press_event', toggle_selector)
+
+        mpl.show()
+
+    
+>>>>>>> bb7ec3f46fe6271b1e9a10aa5d3ce3784a33bbb7
 if __name__ == '__main__':
     main()
 
