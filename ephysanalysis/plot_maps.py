@@ -425,19 +425,11 @@ def main():
                         choices = list(set_expt_paths.experiments.keys()), default='None', nargs='?', const='None',
                         help='Select Experiment to analyze')
     parser.add_argument('-c', '--celltype', type=str, default=None, dest='celltype',
-<<<<<<< HEAD
-                        choices=['bushy', 't-stellate', 'd-stellate', 'cartwheel', 'tuberculoventral', 'pyramidal', 
-                        'pyramidal-nr', 'tuberculoventral-nr', 'giant', 'unknown'],
-                        help='Set celltype for figure')
-    # nr's are "no response" cells
-                    
-=======
                         choices=cellchoices,
                         help='Set celltype for figure')
     parser.add_argument('-n', '--number', type=str, default='*', dest='number',
                         help='ID number of the cell')
                         
->>>>>>> bb7ec3f46fe6271b1e9a10aa5d3ce3784a33bbb7
     args = parser.parse_args()
     experimentname = args.experiment 
     basepath = Path(experiments[experimentname]['disk'])
@@ -594,61 +586,7 @@ def main():
         MT.setWindow(dc['x0'].values[0], dc['x1'].values[0], dc['y0'].values[0], dc['y1'].values[0])
         MT.setOutputFile(Path(experiments[experimentname]['directory'], f"{cellname:s}{int(cellno):d}_map.pdf"))
         prots = {'ctl': cell}
-<<<<<<< HEAD
 
-    if args.celltype == 'd-stellate':
-        cell = Path(basepath, '2017.03.29_000/slice_000/cell_002', 'Map_NewBlueLaser_VC_1mW_002')
-        image = '../image_003.tif'
-        MT.setPars({'invert': True, 'vmin': 1000, 'vmax': 20000, 'xscale': 30, 'yscale': 1.5, 'calbar': [0.02, 500.e-12], 'twin': [0.290, 0.340],
-                 'ioff': -0.0, 'ticks': [0.010]})  # calbar in ms, pA, ticks is relative to twin[0]
-        MT.setWindow(0.0541, 0.0549, 0.00285, 0.00350)
-        MT.setOutputFile(Path(experiments[experimentname]['directory'], f"{args.celltype:s}_map.pdf"))
-        prots = {'ctl': cell}
-
-    """
-    Possibilities:
-        2017.02.28 S1 C0 : weak response; 2017.02.18.s1c1 (paired) strong response
-        
-    """
-    if args.celltype == 'pyramidal':
-        cell = Path(basepath, '2017.02.28_000/slice_001/cell_000', 'Map_NewBlueLaser_VC_1mW_002')
-        image = '../image_003.tif'
-        MT.setPars({'invert': True, 'vmin': 1000, 'vmax': 20000, 'xscale': 30, 'yscale': 1.5, 'calbar': [0.02, 500.e-12], 'twin': [0.290, 0.340],
-                 'ioff': -0.0, 'ticks': [0.010]})  # calbar in ms, pA, ticks is relative to twin[0]
-        MT.setWindow(0.0541, 0.0549, 0.00285, 0.00350)
-        MT.setOutputFile(Path(experiments[experimentname]['directory'], f"{args.celltype:s}_map.pdf"))
-        prots = {'ctl': cell}
-
-    if args.celltype == 'pyramidal-nr':
-        cell = Path(basepath, '2017.03.29_000/slice_000/cell_002', 'Map_NewBlueLaser_VC_1mW_002')
-        image = '../image_003.tif'
-        MT.setPars({'invert': True, 'vmin': 1000, 'vmax': 20000, 'xscale': 30, 'yscale': 1.5, 'calbar': [0.02, 500.e-12], 'twin': [0.290, 0.340],
-                 'ioff': -0.0, 'ticks': [0.010]})  # calbar in ms, pA, ticks is relative to twin[0]
-        MT.setWindow(0.0541, 0.0549, 0.00285, 0.00350)
-        MT.setOutputFile(Path(experiments[experimentname]['directory'], f"{args.celltype:s}_map.pdf"))
-        prots = {'ctl': cell}
-
-    if args.celltype == 'tuberculventral':
-        cell = Path(basepath, '2017.03.29_000/slice_000/cell_002', 'Map_NewBlueLaser_VC_1mW_002')
-        image = '../image_003.tif'
-        MT.setPars({'invert': True, 'vmin': 1000, 'vmax': 20000, 'xscale': 30, 'yscale': 1.5, 'calbar': [0.02, 500.e-12], 'twin': [0.290, 0.340],
-                 'ioff': -0.0, 'ticks': [0.010]})  # calbar in ms, pA, ticks is relative to twin[0]
-        MT.setWindow(0.0541, 0.0549, 0.00285, 0.00350)
-        MT.setOutputFile(Path(experiments[experimentname]['directory'], f"{args.celltype:s}_map.pdf"))
-        prots = {'ctl': cell}
-    # cell1 = Path('/Users/pbmanis/Desktop/Data/CN Glu uncaging CBA/2017.12.01_000/slice_003/cell_000/Map_NewBlueLaser_VC_Single_008')
-    # # cell2 = Path('/Users/pbmanis/Desktop/Data/CN Glu uncaging CBA/2017.12.01_000/slice_003/cell_000/Map_NewBlueLaser_VC_Single_009')
-    # # cell2 = Path('/Users/pbmanis/Desktop/Data/CN Glu uncaging CBA/2017.12.01_000/slice_003/cell_000/Map_NewBlueLaser_VC_Single_010')
-    # # cell3 = Path('/Users/pbmanis/Desktop/Data/CN Glu uncaging CBA/2017.12.01_000/slice_003/cell_000/Map_NewBlueLaser_VC_Single_011')
-    # # cell4 = Path('/Users/pbmanis/Desktop/Data/CN Glu uncaging CBA/2017.12.01_000/slice_003/cell_000/Map_NewBlueLaser_VC_Single_012')
-    # image = '../../image_001.tif'
-    # MT.setPars({'invert': False, 'vmax': 30000, 'xscale': 6, 'yscale': 1.5, 'calbar': [0.5, 200.e-12], 'twin': [0.25, 0.4]})  # calbar in ms, pA
-    # prots = [cell1] #, cell2, cell3, cell4]
-
-    MT.setProtocol(cell, image=image)
-    MT.plot_maps(prots)  
-      
-=======
         MT.setProtocol(cell, image=image)
         print('calling plot_maps')
         MT.plot_maps(prots, linethickness=1.0)
@@ -683,7 +621,6 @@ def main():
         mpl.show()
 
     
->>>>>>> bb7ec3f46fe6271b1e9a10aa5d3ce3784a33bbb7
 if __name__ == '__main__':
     main()
 
