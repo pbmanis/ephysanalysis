@@ -515,7 +515,7 @@ def main():
         
 
     def toggle_selector(event):
-        print(event.key, event.key in ['\x1b[A', '\x1b[B','\x1b[C','\x1b[C',])
+        # print(event.key, event.key in ['\x1b[A', '\x1b[B','\x1b[C','\x1b[C',])
         if event.key in ['Q', 'q'] and toggle_selector.RS.active:
             print(' RectangleSelector deactivated.')
             toggle_selector.RS.set_active(False)
@@ -524,11 +524,12 @@ def main():
             toggle_selector.RS.set_active(True)
         elif event.key in ['p', 'P']:
             xylims = MT.get_XYlims()
-            print(f"{xylims[0]:.5f}\t{xylims[1]:.5f}\t{xylims[2]:.5f}\t{xylims[3]:.5f}")
+            print(f"{xylims[0]:.5f}\t{xylims[2]:.5f}\t{xylims[1]:.5f}\t{xylims[3]:.5f}")
             if MT.calbarobj is not None:
-                print(dir(MT.calbarobj[0]))
                 print(MT.calbarobj[0].get_xydata())
         elif event.key in ['s', 'S']:
+            xylims = MT.get_XYlims()
+            print(f"Position: {xylims[0]:.5f}\t{xylims[2]:.5f}\t{xylims[1]:.5f}\t{xylims[3]:.5f}")
             mpl.savefig(MT.outputfn)
             exit()
         elif event.key in ['z', 'Z']:
@@ -537,8 +538,12 @@ def main():
             MT.imageax.set_clim(MT.cmin, MT.cmax)
             mpl.draw()
 
-        elif event.key in ['d', 'D']:
+        elif event.key in ['+']:
             MT.cmax -= 500
+            MT.imageax.set_clim(MT.cmin, MT.cmax)
+            mpl.draw()
+        elif event.key in ['-']:
+            MT.cmax += 500
             MT.imageax.set_clim(MT.cmin, MT.cmax)
             mpl.draw()
 
@@ -546,6 +551,12 @@ def main():
             MT.cmin += 200
             MT.imageax.set_clim(MT.cmin, MT.cmax)
             mpl.draw()
+
+        elif event.key in ['d', 'D']:
+            MT.cmin -= 200
+            MT.imageax.set_clim(MT.cmin, MT.cmax)
+            mpl.draw()
+
         
         elif event.key in ['right', '\x1b[C']:
             MT.reposition_cal(movex=-1)  # move right
