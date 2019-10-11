@@ -8,7 +8,6 @@ __version__ = "%d.%d.%d%s" % version_info
 
 import ephysanalysis.Fitting as Fitting
 import ephysanalysis.Utility as Utility
-
 import ephysanalysis.acq4read
 import ephysanalysis.MatdatacRead
 import ephysanalysis.DatacReader
