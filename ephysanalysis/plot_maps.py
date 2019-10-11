@@ -515,7 +515,7 @@ def main():
         
 
     def toggle_selector(event):
-        print(event.key, event.key in ['\x1b[A', '\x1b[B','\x1b[C','\x1b[C',])
+        # print(event.key, event.key in ['\x1b[A', '\x1b[B','\x1b[C','\x1b[C',])
         if event.key in ['Q', 'q'] and toggle_selector.RS.active:
             print(' RectangleSelector deactivated.')
             toggle_selector.RS.set_active(False)
@@ -524,11 +524,12 @@ def main():
             toggle_selector.RS.set_active(True)
         elif event.key in ['p', 'P']:
             xylims = MT.get_XYlims()
-            print(f"{xylims[0]:.5f}\t{xylims[1]:.5f}\t{xylims[2]:.5f}\t{xylims[3]:.5f}")
+            print(f"{xylims[0]:.5f}\t{xylims[2]:.5f}\t{xylims[1]:.5f}\t{xylims[3]:.5f}")
             if MT.calbarobj is not None:
-                print(dir(MT.calbarobj[0]))
                 print(MT.calbarobj[0].get_xydata())
         elif event.key in ['s', 'S']:
+            xylims = MT.get_XYlims()
+            print(f"Position: {xylims[0]:.5f}\t{xylims[2]:.5f}\t{xylims[1]:.5f}\t{xylims[3]:.5f}")
             mpl.savefig(MT.outputfn)
             exit()
         elif event.key in ['z', 'Z']:
@@ -537,8 +538,12 @@ def main():
             MT.imageax.set_clim(MT.cmin, MT.cmax)
             mpl.draw()
 
-        elif event.key in ['d', 'D']:
+        elif event.key in ['+']:
             MT.cmax -= 500
+            MT.imageax.set_clim(MT.cmin, MT.cmax)
+            mpl.draw()
+        elif event.key in ['-']:
+            MT.cmax += 500
             MT.imageax.set_clim(MT.cmin, MT.cmax)
             mpl.draw()
 
@@ -546,6 +551,12 @@ def main():
             MT.cmin += 200
             MT.imageax.set_clim(MT.cmin, MT.cmax)
             mpl.draw()
+
+        elif event.key in ['d', 'D']:
+            MT.cmin -= 200
+            MT.imageax.set_clim(MT.cmin, MT.cmax)
+            mpl.draw()
+
         
         elif event.key in ['right', '\x1b[C']:
             MT.reposition_cal(movex=-1)  # move right
@@ -575,61 +586,7 @@ def main():
         MT.setWindow(dc['x0'].values[0], dc['x1'].values[0], dc['y0'].values[0], dc['y1'].values[0])
         MT.setOutputFile(Path(experiments[experimentname]['directory'], f"{cellname:s}{int(cellno):d}_map.pdf"))
         prots = {'ctl': cell}
-# <<<<<<< HEAD
-#
-#     if args.celltype == 'd-stellate':
-#         cell = Path(basepath, '2017.03.29_000/slice_000/cell_002', 'Map_NewBlueLaser_VC_1mW_002')
-#         image = '../image_003.tif'
-#         MT.setPars({'invert': True, 'vmin': 1000, 'vmax': 20000, 'xscale': 30, 'yscale': 1.5, 'calbar': [0.02, 500.e-12], 'twin': [0.290, 0.340],
-#                  'ioff': -0.0, 'ticks': [0.010]})  # calbar in ms, pA, ticks is relative to twin[0]
-#         MT.setWindow(0.0541, 0.0549, 0.00285, 0.00350)
-#         MT.setOutputFile(Path(experiments[experimentname]['directory'], f"{args.celltype:s}_map.pdf"))
-#         prots = {'ctl': cell}
-#
-#     """
-#     Possibilities:
-#         2017.02.28 S1 C0 : weak response; 2017.02.18.s1c1 (paired) strong response
-#
-#     """
-#     if args.celltype == 'pyramidal':
-#         cell = Path(basepath, '2017.02.28_000/slice_001/cell_000', 'Map_NewBlueLaser_VC_1mW_002')
-#         image = '../image_003.tif'
-#         MT.setPars({'invert': True, 'vmin': 1000, 'vmax': 20000, 'xscale': 30, 'yscale': 1.5, 'calbar': [0.02, 500.e-12], 'twin': [0.290, 0.340],
-#                  'ioff': -0.0, 'ticks': [0.010]})  # calbar in ms, pA, ticks is relative to twin[0]
-#         MT.setWindow(0.0541, 0.0549, 0.00285, 0.00350)
-#         MT.setOutputFile(Path(experiments[experimentname]['directory'], f"{args.celltype:s}_map.pdf"))
-#         prots = {'ctl': cell}
-#
-#     if args.celltype == 'pyramidal-nr':
-#         cell = Path(basepath, '2017.03.29_000/slice_000/cell_002', 'Map_NewBlueLaser_VC_1mW_002')
-#         image = '../image_003.tif'
-#         MT.setPars({'invert': True, 'vmin': 1000, 'vmax': 20000, 'xscale': 30, 'yscale': 1.5, 'calbar': [0.02, 500.e-12], 'twin': [0.290, 0.340],
-#                  'ioff': -0.0, 'ticks': [0.010]})  # calbar in ms, pA, ticks is relative to twin[0]
-#         MT.setWindow(0.0541, 0.0549, 0.00285, 0.00350)
-#         MT.setOutputFile(Path(experiments[experimentname]['directory'], f"{args.celltype:s}_map.pdf"))
-#         prots = {'ctl': cell}
-#
-#     if args.celltype == 'tuberculventral':
-#         cell = Path(basepath, '2017.03.29_000/slice_000/cell_002', 'Map_NewBlueLaser_VC_1mW_002')
-#         image = '../image_003.tif'
-#         MT.setPars({'invert': True, 'vmin': 1000, 'vmax': 20000, 'xscale': 30, 'yscale': 1.5, 'calbar': [0.02, 500.e-12], 'twin': [0.290, 0.340],
-#                  'ioff': -0.0, 'ticks': [0.010]})  # calbar in ms, pA, ticks is relative to twin[0]
-#         MT.setWindow(0.0541, 0.0549, 0.00285, 0.00350)
-#         MT.setOutputFile(Path(experiments[experimentname]['directory'], f"{args.celltype:s}_map.pdf"))
-#         prots = {'ctl': cell}
-#     # cell1 = Path('/Users/pbmanis/Desktop/Data/CN Glu uncaging CBA/2017.12.01_000/slice_003/cell_000/Map_NewBlueLaser_VC_Single_008')
-#     # # cell2 = Path('/Users/pbmanis/Desktop/Data/CN Glu uncaging CBA/2017.12.01_000/slice_003/cell_000/Map_NewBlueLaser_VC_Single_009')
-#     # # cell2 = Path('/Users/pbmanis/Desktop/Data/CN Glu uncaging CBA/2017.12.01_000/slice_003/cell_000/Map_NewBlueLaser_VC_Single_010')
-#     # # cell3 = Path('/Users/pbmanis/Desktop/Data/CN Glu uncaging CBA/2017.12.01_000/slice_003/cell_000/Map_NewBlueLaser_VC_Single_011')
-#     # # cell4 = Path('/Users/pbmanis/Desktop/Data/CN Glu uncaging CBA/2017.12.01_000/slice_003/cell_000/Map_NewBlueLaser_VC_Single_012')
-#     # image = '../../image_001.tif'
-#     # MT.setPars({'invert': False, 'vmax': 30000, 'xscale': 6, 'yscale': 1.5, 'calbar': [0.5, 200.e-12], 'twin': [0.25, 0.4]})  # calbar in ms, pA
-#     # prots = [cell1] #, cell2, cell3, cell4]
-#
-#     MT.setProtocol(cell, image=image)
-#     MT.plot_maps(prots)
-      
-# =======
+
         MT.setProtocol(cell, image=image)
         print('calling plot_maps')
         MT.plot_maps(prots, linethickness=1.0)
@@ -664,7 +621,6 @@ def main():
         mpl.show()
 
     
-# >>>>>>> bb7ec3f46fe6271b1e9a10aa5d3ce3784a33bbb7
 if __name__ == '__main__':
     main()
 
