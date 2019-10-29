@@ -11,6 +11,7 @@ import matplotlib
 
 import matplotlib.pyplot as mpl
 import pylibrary.PlotHelpers as PH
+from pylibrary.Params import Params
 import ephysanalysis.metaarray as EM 
 
 
@@ -56,6 +57,7 @@ class MakeClamps():
         # print('\nbasename: ', df['basename'])
         # print('\nruninfo: ', df['runInfo'])
         """
+        The runInfo dictionary holds somethign like this:
         runinfo:  {'folder': PosixPath('VCN_Cells/VCN_c08/Simulations/IV'), 'fileName': 'Normal', 'runName': 'Run', 
         'manipulation': 'Canonical', 'preMode': 'cc', 'postMode': 'cc', 'TargetCellType': 'Bushy', 
         'electrodeSection': 'soma', 'dendriticElectrodeSection': 'dendrite', 
@@ -72,6 +74,7 @@ class MakeClamps():
         """
         # print('\nmodelPars: ', df['modelPars'])
         """
+        The modelPars dict holds the following:
         modelPars:  {'species': 'mouse', 'cellClass': 'bushy', 'modelType': 'II', 
         'modelName': 'mGBC', 'soma': True, 'axon': False, 
         'dendrites': False, 'pumps': False, 'hillock': False, 
@@ -79,18 +82,26 @@ class MakeClamps():
         'unmyelinatedaxon': False, 'na': 'nav11', 'ttx': False, 
         'name': 'bushy', 'morphology': 'VCN_Cells/VCN_c08/Morphology/VCN_c08.hoc', 
         'temperature': 34.0}
+        
+        Note 10/28/2019 changed structure so that runInfo and modelPars are both 
+        subdictionaries of Params
         """
-        dur = df['runInfo']['stimDur']
-        delay = df['runInfo']['stimDelay']
-        mode = df['runInfo']['postMode'].upper()
+        if 'runInfo' not in list(df.keys()):  # handle data structure change 10/28/2019
+            dinfo = df['Params']['runInfo']
+        else:
+            dinfo = df['runInfo']
+        if isinstance(dinfo, Params):
+            dinfo = dinfo.todict()
+        print(dinfo)
+        dur = dinfo['stimDur']
+        delay = dinfo['stimDelay']
+        mode = dinfo['postMode'].upper()
         ntr = len(df['Results'])
         V = [[]]*ntr
         I = [[]]*ntr
         for i in range(len(df['Results'])):
             fk = list(df['Results'][i].keys())[0]
-        # print('\nresults: ', df['Results'][i][fk])
             dfx = df['Results'][i][fk]['monitor']
-        
             timebase = dfx['time']
             V[i] = dfx['postsynapticV']
             I[i] = dfx['i_stim0']
@@ -98,8 +109,6 @@ class MakeClamps():
         I = np.array(I)
         self.set_clamps(dmode=mode, time=timebase, data=V, cmddata=I, tstart_tdur=[delay, dur])
         self.getClampData()
-        
-    
 
     def getClampData(self, verbose=False):
         """

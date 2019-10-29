@@ -412,7 +412,7 @@ class MapTraces(object):
         mpl.draw()
         
 def main():
-    cellchoices = ['bushy',
+    cellchoices = [     'bushy',
                         'tstellate', 
                         'dstellate',
                         'tuberculoventral', 
