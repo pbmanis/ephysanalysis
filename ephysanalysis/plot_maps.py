@@ -50,6 +50,7 @@ class ScannerInfo(object):
     Do this as a class to encapsulate the data and make reusable.
     """
     def __init__(self, AR):
+        # print('ScannerInfo called')
         BRI = BR.BoundRect()
         self.AR = AR  # save the acq4read instance for access to the data
         self.AR.getScannerPositions()
@@ -58,21 +59,26 @@ class ScannerInfo(object):
         scale = self.AR.scannerCamera['frames.ma']['transform']['scale']
         region = self.AR.scannerCamera['frames.ma']['region']
         self.binning = self.AR.scannerCamera['frames.ma']['binning']
+        # print('Scanner pos, scale, region: ', pos, scale, region)
+        # print('Scanner binning: ', self.binning)
+        binning = self.binning
         scale = list(scale)
-        scale[0] = scale[0]/self.binning[0]
-        scale[1] = scale[1]/self.binning[1]
         self.scale = scale
         if self.AR.spotsize is not None:
             print ('Spot Size: {0:0.3f} microns'.format(self.AR.spotsize*1e6))
         else:
             self.AR.spotsize=50.
-
-        self.camerabox = [[pos[0] + scale[0]*region[0], pos[1] + scale[1]*region[1]],
-               [pos[0] + scale[0]*region[0], pos[1] + scale[1]*region[3]],
-               [pos[0] + scale[0]*region[2], pos[1] + scale[1]*region[3]],
-               [pos[0] + scale[0]*region[2], pos[1] + scale[1]*region[1]],
-               [pos[0] + scale[0]*region[0], pos[1] + scale[1]*region[1]]
-           ]
+        x0 = pos[0] + scale[0]*region[0]/binning[0]
+        x1 = pos[0] + scale[0]*(region[0]+region[2])/binning[0]
+        y0 = pos[1] + scale[1]*region[1]/binning[1]
+        y1 = pos[1] + scale[1]*(region[1]+region[3])/binning[1]
+        self.camerabox = [[x0, y0], [x0, y1], [x1, y1], [x1, y0], [x0, y0]]
+        # self.camerabox = [[pos[0] + scale[0]*region[0]/binning[0], pos[1] + scale[1]*region[1]/binning[1]],
+        #        [pos[0] + scale[0]*region[0]/binning[0], pos[1] + scale[1]*region[3]/binning[1]],
+        #        [pos[0] + scale[0]*region[2]/binning[0], pos[1] + scale[1]*region[3]/binning[1]],
+        #        [pos[0] + scale[0]*region[2]/binning[0], pos[1] + scale[1]*region[1]/binning[1]],
+        #        [pos[0] + scale[0]*region[0]/binning[0], pos[1] + scale[1]*region[1]/binning[1]]
+        #    ]
         scannerbox = BRI.getRectangle(self.AR.scannerpositions)
         if scannerbox is None:  # likely just one point
             pt = self.AR.scannerpositions
@@ -82,9 +88,41 @@ class ScannerInfo(object):
             fp = np.array([scannerbox[0][0], scannerbox[1][1]]).reshape(2,1)
         # print('fp: ', fp)
         scannerbox = np.append(scannerbox, fp, axis=1)
-        self.scboxw = np.array(scannerbox)        
+        self.scboxw = np.array(scannerbox)
+        # print('scanner camerabox: ', self.camerabox)
         self.boxw = np.swapaxes(np.array(self.camerabox), 0, 1)
-        
+        print('scanner box: ', self.boxw)
+
+class ImageInfo(object):
+    """
+    Get Image information, compute the scanner box and some additional parameters
+    Do this as a class to encapsulate the data and make reusable.
+    """
+    def __init__(self, AR):
+        BRI = BR.BoundRect()
+        self.AR = AR  # save the acq4read instance for access to the data
+        # self.AR.getImage()
+        pos = self.AR.Image_pos
+        scale = self.AR.Image_scale
+        region = self.AR.Image_region
+        self.binning = self.AR.Image_binning
+        binning = self.binning
+        print('Image pos, scale, region: ', pos, scale, region)
+        print('Image binning: ', self.binning)
+        scale = list(scale)
+        self.scale = scale
+        self.filename = self.AR.Image_filename
+
+        x0 = pos[0] # + scale[0]*region[0]/binning[0]
+        x1 = pos[0] + scale[0]*(region[2])/binning[0]
+        y0 = pos[1] #+ scale[1]*region[1]/binning[1]
+        y1 = pos[1] + scale[1]*(region[3])/binning[1]
+        self.camerabox = [[x0, y0], [x0, y1], [x1, y1], [x1, y0], [x0, y0]]
+        # print('image camerabox: ', self.camerabox)
+        self.boxw = np.swapaxes(np.array(self.camerabox), 0, 1)
+        # self.boxw = np.array(self.camerabox)
+        print('Image boxw: ', self.boxw)
+
 
 class MapTraces(object):
     def __init__(self):
@@ -131,9 +169,9 @@ class MapTraces(object):
             raise ValueError
         if image is not None:
             self.image = Path(self.cell, image)
-            print(self.image)
-            print(self.cell)
             self.image_data = self.AR.getImage(self.image)
+            self.ImgInfo = ImageInfo(self.AR)
+
         else:
             self.image = None
         self.videos = []
@@ -177,22 +215,26 @@ class MapTraces(object):
             if k == 'ticks':
                 self.ticks = pdict[k]
 
-    def plot_maps(self, protocols, traces=None, linethickness=1.0):
+    def plot_maps(self, protocols, ax=None, traces=None, linethickness=1.0):
         """
         Plot map or superimposed maps...
         """
         print('plot_maps')
-        self.figure = mpl.figure()
-        # print(dir(self.figure))
-        self.figure.set_size_inches(14., 8.)
-        if traces is None:
-            self.ax = self.figure.add_subplot('111')
-            print('set ax')
+        if ax is None:
+            self.figure = mpl.figure()
+            # print(dir(self.figure))
+            self.figure.set_size_inches(14., 8.)
+            if traces is None:
+                self.ax = self.figure.add_subplot('111')
+                print('set ax')
+            else:
+                self.ax = self.figure.add_subplot('121')
+                self.ax2 = self.figure.add_subplot('122')
+                sns.despine(ax=self.ax2, left=True, bottom=True, right=True, top=True)
+                print('set ax and ax2')
         else:
-            self.ax = self.figure.add_subplot('121')
-            self.ax2 = self.figure.add_subplot('122')
-            sns.despine(ax=self.ax2, left=True, bottom=True, right=True, top=True)
-            print('set ax and ax2')
+            self.ax = ax
+            print('ax: ', ax)
         # self.ax3 = self.figure.add_subplot('133')
         self.data = dict.fromkeys(list(protocols.keys()))
         cols = ['r', 'b', 'c', 'g']
@@ -203,10 +245,10 @@ class MapTraces(object):
             self.datasets[p] = []
             if i == 0:
                 self.setProtocol(prot, self.image)
-                self.show_traces(self.figure, self.ax, pcolor=cols[i], name=p, linethickness=linethickness)
+                self.show_traces(self.ax, pcolor=cols[i], name=p, linethickness=linethickness)
             else:
                 self.setProtocol(prot)
-                self.show_traces(self.figure, self.ax, pcolor=cols[i], name=p, linethickness=linethickness)
+                self.show_traces(self.ax, pcolor=cols[i], name=p, linethickness=linethickness)
         if self.traces is not None:
             for tr in self.traces:
                 self.handle_event(index=tr)
@@ -226,10 +268,11 @@ class MapTraces(object):
         self.XY = [self.get_XYlims()]
         cp = self.cell.parts
         cellname = '/'.join(cp[-4:])
-        self.figure.suptitle(cellname, fontsize=11)
-        self.fig2 = None
-        if self.outputfn is not None:
-            mpl.savefig(self.outputfn)
+        if self.ax is None:
+            self.figure.suptitle(cellname, fontsize=11)
+            self.fig2 = None
+            if self.outputfn is not None:
+                mpl.savefig(self.outputfn)
         # mpl.show()
 
     def get_XYlims(self):
@@ -237,7 +280,7 @@ class MapTraces(object):
         y1, y2 = self.ax.get_ylim()
         return([x1, y1, x2, y2])
         
-    def show_traces(self, f, ax, pcolor='r', linethickness=0.5, name=None):
+    def show_traces(self, ax, pcolor='r', linethickness=0.5, name=None):
 
         self.cell.glob('*')
         # imageplotted = False
@@ -248,8 +291,8 @@ class MapTraces(object):
         supindex = self.AR.readDirIndex(currdir=self.cell)
     
         self.SI = ScannerInfo(self.AR)
-        print(self.SI.boxw)
         
+        self.extent = np.array([-1, 1, -1, 1])*7e-2
         if self.invert:
             cmap = 'gist_gray_r'
         else:
@@ -257,28 +300,38 @@ class MapTraces(object):
         self.imageax = None
         max_camera = None
         if self.averageScannerImages:
+            self.extentSI = [np.min(self.SI.boxw[0]), np.max(self.SI.boxw[0]), np.min(self.SI.boxw[1]), np.max(self.SI.boxw[1])]
             max_camera = self.AR.getAverageScannerImages(dataname='Camera/frames.ma', mode='max', firstonly=False, limit=None)
             self.imageax = ax.imshow(max_camera, aspect='equal', cmap='Reds', alpha=0.7, vmin = 1000, vmax=self.vmax,
-                extent=[np.min(self.SI.boxw[0]), np.max(self.SI.boxw[0]), np.min(self.SI.boxw[1]), np.max(self.SI.boxw[1])])
+                extent=self.extentSI)
         # max_camera = scipy.ndimage.gaussian_filter(max_camera, sigma=256/(4.*10))
             self.cmin = SND.minimum(self.max_camera)
             self.cmax = SND.maximum(self.max_camera)
-        if len(self.videos) > 0:
+        elif len(self.videos) > 0:
             self.process_videos()
+            self.extentV = [np.min(self.SI.boxw[0]), np.max(self.SI.boxw[0]), np.min(self.SI.boxw[1]), np.max(self.SI.boxw[1])]
             self.imageax = ax.imshow(self.merged_image, aspect='equal', cmap=cmap, alpha=0.75, vmin = 0, vmax=self.vmax,
-            extent=[np.min(self.SI.boxw[0]), np.max(self.SI.boxw[0]), np.min(self.SI.boxw[1]), np.max(self.SI.boxw[1])])
+                extent=self.extentV)
             self.cmin = SND.minimum(self.merged_image)
             self.cmax = SND.maximum(self.merged_image)
             
         else:
+            self.extentI = [np.min(self.ImgInfo.boxw[0]), np.max(self.ImgInfo.boxw[0]), np.min(self.ImgInfo.boxw[1]), np.max(self.ImgInfo.boxw[1])]
             self.imageax = ax.imshow(self.image_data, aspect='equal', cmap=cmap, alpha=0.75, vmin = 0, vmax=self.vmax,
-            extent=[np.min(self.SI.boxw[0]), np.max(self.SI.boxw[0]), np.min(self.SI.boxw[1]), np.max(self.SI.boxw[1])])
+                extent=self.extentI)
             self.cmin = SND.minimum(self.image_data)
             self.cmax = SND.maximum(self.image_data)
-        print('self.window: ', self.window)
         if self.window:
-            ax.set_xlim(self.xlim)
-            ax.set_ylim(self.ylim)
+            if self.xlim == (0., 0.) and self.ylim == (0., 0.):
+                xylims = self.extent
+                ax.set_xlim(xylims[0:2])
+                ax.set_ylim(xylims[2:4])
+                print('autoset: ', xylims)
+            else:    
+                ax.set_xlim(self.xlim)
+                ax.set_ylim(self.ylim)
+                print('self set: ', self.xlim, self.ylim)
+            
         self.scp = self.SI.scannerpositions
         scp = self.scp
         xmin = np.min(scp[:,0])
@@ -287,7 +340,7 @@ class MapTraces(object):
         ymax = np.max(scp[:,1])
         # print(xmin, ymin, xmax, ymax)
         ax.scatter(scp[:,0], scp[:,1], s=4, c='c', marker='o', alpha=0.3, picker=5)
-        print('getdata: ', name, self.datasets)
+        # print('getdata: ', name, self.datasets)
         d = self.AR.getData()
         if name is not None:
             self.datasets[name] = self.AR.data_array
@@ -310,9 +363,11 @@ class MapTraces(object):
         for p in range(dshape[0]): # scp.shape[0]):
             self._plot_one(ax, p, pcolor, name=name, ythick=linethickness)
         self.plot_calbar(ax, xmin, ymin)
-        print(dir(self.imageax))
+        # print(dir(self.imageax))
         
     def plot_calbar(self, ax, x0, y0):
+        x0 += 0.5e-4
+        y0 += 0.5e-4
         xcal = self.xscale*3.5e-5*self.calbar[0]*1.25
         ycal = self.yscale*self.vscale*self.calbar[1]*0.5
         zero = 0
@@ -323,7 +378,7 @@ class MapTraces(object):
         verticalalignment='top', horizontalalignment='center', fontsize=8)
         self.calx_zero = self.calbarobj[0].get_xdata()
         self.caly_zero = self.calbarobj[0].get_ydata()
-        self.reposition_cal()
+        # self.reposition_cal()
 
     def reposition_cal(self, movex=0, movey=0, home=False):
         if not home:
@@ -357,6 +412,7 @@ class MapTraces(object):
         calxy[1] = y0 + yl[1]*(movey+self.my)*0.001 - yl[1]*0.015
         self.calbartext.set_position(calxy)
         print('reposition : ', movex, movey)
+        print(calxy, self.calx_zero, self.caly_zero)
         
     def _plot_one(self, ax, p, pcolor, name=None, yscaleflag=True, tscale=True, offflag=True, ystep = 0., ythick=0.3):
         zero = 0.
@@ -416,7 +472,7 @@ def main():
                         'tstellate', 
                         'dstellate',
                         'tuberculoventral', 
-                        'pyr1', 
+                        'pyramidal', 
                         'giant', 
                         'cartwheel',
                         'unknown', 'all']
@@ -427,7 +483,7 @@ def main():
     parser.add_argument('-c', '--celltype', type=str, default=None, dest='celltype',
                         choices=cellchoices,
                         help='Set celltype for figure')
-    parser.add_argument('-n', '--number', type=str, default='*', dest='number',
+    parser.add_argument('-n', '--number', type=int, default='1', dest='number',
                         help='ID number of the cell')
                         
     args = parser.parse_args()
@@ -466,14 +522,14 @@ def main():
  
     """
     if args.celltype == 'all':
-        docell = cellchoices
+        docell = args.celltype
     else:
         docell = [args.celltype]
     
     if docell in ['unknown', 'all']:
         return
-
-    table = pd.read_excel('NF107Ai32_Het/SelectedMapsTable.xlsx')
+    print('args number: ', args.number)
+    table = pd.read_excel('NF107Ai32_Het/Example Maps/SelectedMapsTable.xlsx')
 
     def makepars(dc):
         parnames = ['invert', 'vmin', 'vmax', 'xscale', 'yscale', 'calbar', 'twin', 'ioff', 'ticks']
@@ -488,7 +544,6 @@ def main():
         return pars
 
 
-        
     def line_select_callback(eclick, erelease):
         'eclick and erelease are the press and release events'
         
@@ -497,7 +552,8 @@ def main():
             x1, y1 = eclick.xdata, eclick.ydata
             x2, y2 = erelease.xdata, erelease.ydata
             print(f"Corners: {x1:.6f}, {x2:.6f}) --> {y1:.6f}, {y2:.6f})")
-            print(" The button you used were: %s %s" % (eclick.button, erelease.button))
+            print(f"Copy:    {x1:.6f}\t{y1:.6f}\t{x2:.6f}\t{y2:.6f}")
+            print(" The buttons you used were: %s %s" % (eclick.button, erelease.button))
             MT.XY.append([x1, y1, x2, y2])
         elif eclick.button == MBB.MouseButton.RIGHT:
             if len(MT.XY) == 0:
@@ -511,8 +567,6 @@ def main():
         MT.reposition_cal()
         mpl.draw()
 
-
-        
 
     def toggle_selector(event):
         # print(event.key, event.key in ['\x1b[A', '\x1b[B','\x1b[C','\x1b[C',])
@@ -556,7 +610,8 @@ def main():
             MT.cmin -= 200
             MT.imageax.set_clim(MT.cmin, MT.cmax)
             mpl.draw()
-
+        elif event.key in ['v', 'V']:
+            print(f'Cmin, max: {MT.cmin:.1f}\t{MT.cmax:.1f}')
         
         elif event.key in ['right', '\x1b[C']:
             MT.reposition_cal(movex=-1)  # move right
@@ -571,9 +626,9 @@ def main():
         else:
             pass
         mpl.draw()
-            
+    
 
-    def plot_a_cell(cellname, cellno):
+    def plot_a_cell(cellname, cellno, ax=None):
         dc = table.loc[(table['cellname'] == cellname) & (table['cellno'] == cellno)]
         if len(dc) == 0:
             print(f"Did not find cellname: {cellname:s}  with no: {cellno:s}")
@@ -589,21 +644,32 @@ def main():
 
         MT.setProtocol(cell, image=image)
         print('calling plot_maps')
-        MT.plot_maps(prots, linethickness=1.0)
+        MT.plot_maps(prots, ax=ax, linethickness=1.0)
 
-    for cellname in docell:
-        if cellname in ['unknown', 'all']:
-            continue
-        if args.number == '*':  # all of a type
-            cs = table.loc[table['cellname'] == cellname]
-            print (cs)
+    def plot_cells(cellname, cellno):
+        
+        if args.number == 0:  # all of a type
+            cs = table.loc[table['cellname'] == cellname[0]]
+            print ('cs: ', cs)
+            c, r = PH.getLayoutDimensions(len(cs), pref='height')
+            P = PH.regular_grid(r, c, order='columnsfirst', figsize=(10., 12.), showgrid=False,
+                verticalspacing=0.08, horizontalspacing=0.08,
+                margins={'leftmargin': 0.07, 'rightmargin': 0.05, 'topmargin': 0.12, 'bottommargin': 0.1},
+                labelposition=(0., 0.), parent_figure=None, panel_labels=None)
+            axarr = P.axarr.ravel()
             for i, indx in enumerate(cs.index):
-                print(i)
                 print(cs.iloc[i]['cellname'], cs.iloc[i]['cellno'])
-                plot_a_cell(cs.iloc[i]['cellname'], cs.iloc[i]['cellno'])
-                mpl.close()
+                plot_a_cell(cs.iloc[i]['cellname'], cs.iloc[i]['cellno'], ax=axarr[i])
+                axarr[i].set_title(f"{cs.iloc[i]['cellID']:s} {cs.iloc[i]['map']:s}", fontsize=9)
+            P.figure_handle.suptitle(f"Celltype: {cellname[0]:s}", fontsize=14)
+                # mpl.close()
         else:
-            plot_a_cell(cellname, cellno=int(args.number))
+            c, r = PH.getLayoutDimensions(1, pref='height')
+            P = PH.regular_grid(r, c, order='columnsfirst', figsize=(8., 10), showgrid=False,
+                verticalspacing=0.08, horizontalspacing=0.08,
+                margins={'leftmargin': 0.07, 'rightmargin': 0.05, 'topmargin': 0.03, 'bottommargin': 0.1},
+                labelposition=(0., 0.), parent_figure=None, panel_labels=None)
+            plot_a_cell(cellname[0], cellno=int(args.number), ax=P.axarr[0,0])
             # drawtype is 'box' or 'line' or 'none'
             # print(dir(MT))
             rectprops = dict(facecolor='yellow', edgecolor = 'black',
@@ -617,9 +683,10 @@ def main():
                                                    rectprops=rectprops)
 
             mpl.connect('key_press_event', toggle_selector)
-
+    
         mpl.show()
-
+    print(docell, args.number)
+    plot_cells(docell, args.number)
     
 if __name__ == '__main__':
     main()
