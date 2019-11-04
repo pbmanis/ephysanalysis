@@ -889,8 +889,13 @@ class Acq4Read():
         Requires full path to the data
         """
         self.imageData = tf.imread(str(filename))
-        # imageframe = EM.MetaArray(file=dataname)
-#         img = imageframe.view(np.ndarray)
+        d = str(filename.name)
+        self.Image_filename = d
+        cindex = self._readIndex(Path(filename.parent))
+        self.Image_pos = cindex[d]['transform']['pos']
+        self.Image_scale = cindex[d]['transform']['scale']
+        self.Image_region = cindex[d]['region']
+        self.Image_binning = cindex[d]['binning']
         return(self.imageData)
 
     def getAverageScannerImages(self, dataname='Camera/frames.ma', mode='average', firstonly=False, limit=None):
