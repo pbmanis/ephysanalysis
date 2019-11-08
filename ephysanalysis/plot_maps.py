@@ -13,6 +13,7 @@ import os
 import re
 import itertools
 import argparse
+import json
 from collections import OrderedDict
 from pathlib import Path
 import pandas as pd
@@ -24,6 +25,7 @@ import matplotlib.backend_bases as MBB
 import scipy.ndimage as SND
 
 from pylibrary import PlotHelpers as PH
+import pylibrary.Utility as PU
 import seaborn as sns
 import ephysanalysis.acq4read as ARC
 import ephysanalysis.metaarray as EM
@@ -38,6 +40,7 @@ import collections
 import tifffile as tf
 import ephysanalysis.boundrect as BR
 import mapanalysistools.digital_filters as FILT
+import montage
 import mahotas as MH
 import nf107.set_expt_paths as set_expt_paths
 set_expt_paths.get_computer()
@@ -64,10 +67,9 @@ class ScannerInfo(object):
         binning = self.binning
         scale = list(scale)
         self.scale = scale
-        if self.AR.spotsize is not None:
-            print ('Spot Size: {0:0.3f} microns'.format(self.AR.spotsize*1e6))
-        else:
+        if self.AR.spotsize is None:
             self.AR.spotsize=50.
+            print ('Spot Size reset to: {0:0.3f} microns'.format(self.AR.spotsize*1e6))
         x0 = pos[0] + scale[0]*region[0]/binning[0]
         x1 = pos[0] + scale[0]*(region[0]+region[2])/binning[0]
         y0 = pos[1] + scale[1]*region[1]/binning[1]
@@ -91,7 +93,7 @@ class ScannerInfo(object):
         self.scboxw = np.array(scannerbox)
         # print('scanner camerabox: ', self.camerabox)
         self.boxw = np.swapaxes(np.array(self.camerabox), 0, 1)
-        print('scanner box: ', self.boxw)
+        # print('scanner box: ', self.boxw)
 
 class ImageInfo(object):
     """
@@ -107,8 +109,8 @@ class ImageInfo(object):
         region = self.AR.Image_region
         self.binning = self.AR.Image_binning
         binning = self.binning
-        print('Image pos, scale, region: ', pos, scale, region)
-        print('Image binning: ', self.binning)
+        # print('Image pos, scale, region: ', pos, scale, region)
+        # print('Image binning: ', self.binning)
         scale = list(scale)
         self.scale = scale
         self.filename = self.AR.Image_filename
@@ -121,9 +123,72 @@ class ImageInfo(object):
         # print('image camerabox: ', self.camerabox)
         self.boxw = np.swapaxes(np.array(self.camerabox), 0, 1)
         # self.boxw = np.array(self.camerabox)
-        print('Image boxw: ', self.boxw)
+        # print('Image boxw: ', self.boxw)
 
 
+class MosaicReader(object):
+    """
+    Read a mosaic editor mosaic file
+    """
+    def __init__(self, filename, basepath):
+        self.basepath = basepath
+        self._saveVersion = (2, 0)  # default.
+        state = json.load(open(filename, 'r'))
+        if state.get('contents', None) != 'MosaicEditor_save':
+            raise TypeError("This does not appear to be MosaicEditor save data.")
+        if state['version'][0] > self._saveVersion[0]:
+            raise TypeError("Save data has version %d.%d, but this MosaicEditor only supports up to version %d.x." % (state['version'][0], state['version'][1], self._saveVersion[0]))
+
+        root = state['rootPath']
+
+        loadfail = []
+        for itemState in state['items']:
+            fname = itemState.get('filename')
+            fname = Path(root, Path(fname).name)
+            # print('fname: ', fname.is_file())
+            # print(root)
+            # print('itemstate: ', itemState)
+            if fname is None:
+                # create item from scratch and restore state
+                itemtype = itemState.get('type')
+                if itemtype not in items.itemTypes():
+                    # warn the user later on that we could not load this item
+                    loadfail.append((itemState.get('name'), 'Unknown item type "%s"' % itemtype))
+                    continue
+                item = self.addItem(type=itemtype, name=itemState['name'])
+            else:
+                # create item by loading file and restore state
+                # if root is None:
+                #     fh = DataManager.getHandle(fh)
+                # else:
+                if str(fname.name).startswith('image_'):
+                    image_data = self.AR.getImage(fname)
+                elif str(fname.name).startswith('video_'):
+                    image_data = EM.MetaArray(file=fname)
+                    
+                fh = root[fname]
+                item = self.addFile(fh, name=itemState['name'], inheritTransform=False)
+            item.restoreState(itemState)
+
+        self.canvas.view.setState(state['view'])
+        if len(loadfail) > 0:
+            msg = "\n".join(["%s: %s" % m for m in loadfail])
+            raise Exception("Failed to load some items:\n%s" % msg)
+
+    def addItem(self, item=None, type=None, **kwds):
+        """Add an item to the MosaicEditor canvas.
+
+        May provide either *item* which is a CanvasItem or QGraphicsItem instance, or
+        *type* which is a string specifying the type of item to create and add.
+        """
+        if isinstance(item, Qt.QGraphicsItem):
+            print('was qt')
+            return self.canvas.addGraphicsItem(item, **kwds)
+        else:
+            print('not qt')
+            return self.canvas.addItem(item, type, **kwds)
+
+    
 class MapTraces(object):
     def __init__(self):
         self.cell = None
@@ -146,6 +211,9 @@ class MapTraces(object):
         self.indicesplotted = []
         self.twin = [0, 0.6]
         self.averageScannerImages = False # normally, would not do
+        self.image = None
+        self.mosaic = None
+        self.mosaics = []
         self.calbar = [20, 500]  # 20 ms, 500 pA
         self.picker = picker.Picker()
         sns.set()
@@ -162,7 +230,7 @@ class MapTraces(object):
         self.my = 0
         
 
-    def setProtocol(self, cell, image=None, videos=None):
+    def setProtocol(self, cell, image=None, videos=None, mosaic=None):
         self.cell = Path(cell)
         if not self.cell.is_dir():
             print(f"Did not find directory: {str(cell):s}")
@@ -174,11 +242,29 @@ class MapTraces(object):
 
         else:
             self.image = None
+        
+        if mosaic is not None:
+            # print('mosaic: ', mosaic)
+            self._saveVersion = (2, 0)  # default.
+            state = json.load(open(Path(self.cell, mosaic), 'r'))
+            if state.get('contents', None) != 'MosaicEditor_save':
+                raise TypeError("This does not appear to be MosaicEditor save data.")
+            if state['version'][0] > self._saveVersion[0]:
+                raise TypeError("Save data has version %d.%d, but this MosaicEditor only supports up to version %d.x." % (state['version'][0], state['version'][1], self._saveVersion[0]))
+            self.mosaics = []
+            root = state['rootPath']
+            # for i in state['items']:
+            #     print(i['name'], i['alpha'], i['userTransform'])
+            for v in state['items']:  # just copy the items that are relevant
+                if v['name'].startswith('video_') or v['name'].startswith('image_'):
+                    self.mosaics.append(v)
+
         self.videos = []
         if videos is not None:
             for v in videos:
                 self.videos.append(Path(self.cell, f"video_0{v:02d}"))
         self.AR.setProtocol(self.cell)
+        # print('mosaics: ', self.mosaics)
     
     def setWindow(self, x0, x1, y0, y1):
          self.xlim = (x0, x1)
@@ -226,12 +312,12 @@ class MapTraces(object):
             self.figure.set_size_inches(14., 8.)
             if traces is None:
                 self.ax = self.figure.add_subplot('111')
-                print('set ax')
+                # print('set ax')
             else:
                 self.ax = self.figure.add_subplot('121')
                 self.ax2 = self.figure.add_subplot('122')
                 sns.despine(ax=self.ax2, left=True, bottom=True, right=True, top=True)
-                print('set ax and ax2')
+                # print('set ax and ax2')
         else:
             self.ax = ax
             print('ax: ', ax)
@@ -308,29 +394,51 @@ class MapTraces(object):
             self.cmin = SND.minimum(self.max_camera)
             self.cmax = SND.maximum(self.max_camera)
         elif len(self.videos) > 0:
-            self.process_videos()
-            self.extentV = [np.min(self.SI.boxw[0]), np.max(self.SI.boxw[0]), np.min(self.SI.boxw[1]), np.max(self.SI.boxw[1])]
+            self.Montager = montage.Montager(celldir=self.cell)
+            self.Montager.run()
+            # M.list_images_and_videos()
+            self.Montager.process_videos(window='mpl', show=True, gamma=1.5, merge_gamma=-1., sigma=2.5)
+            # bounds are in  self.Montager.bounds: (minx, miny, maxx, maxy)
+            bounds = self.Montager.bounds
+            self.extentV = [bounds[0], bounds[2], bounds[1], bounds[3]]
             self.imageax = ax.imshow(self.merged_image, aspect='equal', cmap=cmap, alpha=0.75, vmin = 0, vmax=self.vmax,
                 extent=self.extentV)
             self.cmin = SND.minimum(self.merged_image)
             self.cmax = SND.maximum(self.merged_image)
             
-        else:
+        elif self.image is not None:
             self.extentI = [np.min(self.ImgInfo.boxw[0]), np.max(self.ImgInfo.boxw[0]), np.min(self.ImgInfo.boxw[1]), np.max(self.ImgInfo.boxw[1])]
             self.imageax = ax.imshow(self.image_data, aspect='equal', cmap=cmap, alpha=0.75, vmin = 0, vmax=self.vmax,
                 extent=self.extentI)
             self.cmin = SND.minimum(self.image_data)
             self.cmax = SND.maximum(self.image_data)
+        
+        if self.mosaics:
+            self.Montager = montage.montager.Montager(celldir=self.cell)
+            self.Montager.setup(self.mosaics)
+            # M.list_images_and_videos()
+            # should pass some info to process_videos to balance alpha etc from the mosaic.
+            self.Montager.process_videos(window=None, show=True, gamma=1.5, merge_gamma=-1., sigma=2.5, register=False, mosaic_data=self.mosaics)
+            # bounds are in  self.Montager.bounds: (minx, miny, maxx, maxy)
+            bounds = self.Montager.image_boundary
+            print('bounds: ', bounds)
+            self.extentV = [bounds[0], bounds[2], bounds[1], bounds[3]]
+            mpl.imshow(self.Montager.merged_image)
+            self.imageax = ax.imshow(self.Montager.merged_image, aspect='equal', cmap=cmap, alpha=0.75, vmin = 0, vmax=self.vmax,
+                extent=self.extentV)
+            self.cmin = SND.minimum(self.Montager.merged_image)
+            self.cmax = SND.maximum(self.Montager.merged_image)
+            
         if self.window:
             if self.xlim == (0., 0.) and self.ylim == (0., 0.):
                 xylims = self.extent
                 ax.set_xlim(xylims[0:2])
                 ax.set_ylim(xylims[2:4])
-                print('autoset: ', xylims)
+                # print('autoset: ', xylims)
             else:    
                 ax.set_xlim(self.xlim)
                 ax.set_ylim(self.ylim)
-                print('self set: ', self.xlim, self.ylim)
+                # print('self set: ', self.xlim, self.ylim)
             
         self.scp = self.SI.scannerpositions
         scp = self.scp
@@ -411,8 +519,8 @@ class MapTraces(object):
         calxy[0] = x0 + xl[1]*(movex+self.mx)*0.001
         calxy[1] = y0 + yl[1]*(movey+self.my)*0.001 - yl[1]*0.015
         self.calbartext.set_position(calxy)
-        print('reposition : ', movex, movey)
-        print(calxy, self.calx_zero, self.caly_zero)
+        # print('reposition : ', movex, movey)
+        # print(calxy, self.calx_zero, self.caly_zero)
         
     def _plot_one(self, ax, p, pcolor, name=None, yscaleflag=True, tscale=True, offflag=True, ystep = 0., ythick=0.3):
         zero = 0.
@@ -483,8 +591,8 @@ def main():
     parser.add_argument('-c', '--celltype', type=str, default=None, dest='celltype',
                         choices=cellchoices,
                         help='Set celltype for figure')
-    parser.add_argument('-n', '--number', type=int, default='1', dest='number',
-                        help='ID number of the cell')
+    parser.add_argument('-s', '--sequence', type=str, default='1', dest='sequence',
+                        help='sequence of ID numbers of the cells to plot')
                         
     args = parser.parse_args()
     experimentname = args.experiment 
@@ -528,7 +636,10 @@ def main():
     
     if docell in ['unknown', 'all']:
         return
-    print('args number: ', args.number)
+    sequence, target = PU.recparse(args.sequence)
+    if sequence is None:  # invoked help
+        return
+
     table = pd.read_excel('NF107Ai32_Het/Example Maps/SelectedMapsTable.xlsx')
 
     def makepars(dc):
@@ -553,7 +664,7 @@ def main():
             x2, y2 = erelease.xdata, erelease.ydata
             print(f"Corners: {x1:.6f}, {x2:.6f}) --> {y1:.6f}, {y2:.6f})")
             print(f"Copy:    {x1:.6f}\t{y1:.6f}\t{x2:.6f}\t{y2:.6f}")
-            print(" The buttons you used were: %s %s" % (eclick.button, erelease.button))
+            # print(" The buttons you used were: %s %s" % (eclick.button, erelease.button))
             MT.XY.append([x1, y1, x2, y2])
         elif eclick.button == MBB.MouseButton.RIGHT:
             if len(MT.XY) == 0:
@@ -629,47 +740,90 @@ def main():
     
 
     def plot_a_cell(cellname, cellno, ax=None):
-        dc = table.loc[(table['cellname'] == cellname) & (table['cellno'] == cellno)]
+        dc = table.loc[table['cellname'] == cellname]
+        dc = dc.loc[table['cellno'].isin([cellno])]
         if len(dc) == 0:
             print(f"Did not find cellname: {cellname:s}  with no: {cellno:s}")
-            return
+            return False
         # print('cellname: ', cellname)
         cell = Path(basepath, str(dc['cellID'].values[0]), str(dc['map'].values[0]))
-        image = '../' + str(dc['image'].values[0]) + '.tif'
+        print('image: ', dc['image'].values[0])
+        if not pd.isnull(dc['image'].values[0]):
+            image = '../' + str(dc['image'].values[0]) + '.tif'
+        else:
+            image = None
+        if not pd.isnull(dc['mosaic'].values[0]):
+            mosaic = '../' + str(dc['mosaic'].values[0]) + '.mosaic'
+        else:
+            mosaic = None
+        
         pars = makepars(dc)
         MT.setPars(pars)
         MT.setWindow(dc['x0'].values[0], dc['x1'].values[0], dc['y0'].values[0], dc['y1'].values[0])
         MT.setOutputFile(Path(experiments[experimentname]['directory'], f"{cellname:s}{int(cellno):d}_map.pdf"))
         prots = {'ctl': cell}
 
-        MT.setProtocol(cell, image=image)
-        print('calling plot_maps')
-        MT.plot_maps(prots, ax=ax, linethickness=1.0)
+        MT.setProtocol(cell, image=image, mosaic=mosaic)
+        MT.plot_maps(prots, ax=ax, linethickness=0.5)
+        return True
 
-    def plot_cells(cellname, cellno):
+    def count_pages(cs, nperpage=8):
+        nmaps = len(cs)
+        npages = np.floor(nmaps/nperpage)
+        if npages*nperpage < nmaps:
+            npages += 1
+        return int(npages)
+
+    def plot_cells(cellname, sequence):
         
-        if args.number == 0:  # all of a type
+        if len(sequence) > 1:  # all of a type
+            sequence = [int(x) for x in sequence]
             cs = table.loc[table['cellname'] == cellname[0]]
-            print ('cs: ', cs)
-            c, r = PH.getLayoutDimensions(len(cs), pref='height')
-            P = PH.regular_grid(r, c, order='columnsfirst', figsize=(10., 12.), showgrid=False,
-                verticalspacing=0.08, horizontalspacing=0.08,
-                margins={'leftmargin': 0.07, 'rightmargin': 0.05, 'topmargin': 0.12, 'bottommargin': 0.1},
-                labelposition=(0., 0.), parent_figure=None, panel_labels=None)
-            axarr = P.axarr.ravel()
-            for i, indx in enumerate(cs.index):
-                print(cs.iloc[i]['cellname'], cs.iloc[i]['cellno'])
-                plot_a_cell(cs.iloc[i]['cellname'], cs.iloc[i]['cellno'], ax=axarr[i])
-                axarr[i].set_title(f"{cs.iloc[i]['cellID']:s} {cs.iloc[i]['map']:s}", fontsize=9)
-            P.figure_handle.suptitle(f"Celltype: {cellname[0]:s}", fontsize=14)
+            cs = cs.loc[table['cellno'].isin(sequence)]
+            print('len cs: ', len(cs))
+            nperpage = 4
+            npages = count_pages(cs, nperpage=nperpage)
+            lcs = list(cs.index)
+            print('npages: ', npages)
+            icell = 0
+            for npage in range(npages):
+                # c, r = PH.getLayoutDimensions(nperpage, pref='height')
+                c = 2
+                r = int(nperpage/c)
+                P = PH.regular_grid(r, c, order='rowsfirst', figsize=(10., 12.), showgrid=False,
+                    verticalspacing=0.08, horizontalspacing=0.08,
+                    margins={'leftmargin': 0.07, 'rightmargin': 0.05, 'topmargin': 0.12, 'bottommargin': 0.1},
+                    labelposition=(0., 0.), parent_figure=None, panel_labels=None)
+                axarr = P.axarr.ravel()
+                for axn in range(nperpage):
+                    if icell >= len(cs):  # done
+                        break
+                    print('page, axn, i: ', npage, axn, icell)
+                    print('cell, cell number: ', cs.iloc[icell]['cellname'], cs.iloc[icell]['cellno'])
+                    plot_a_cell(cs.iloc[icell]['cellname'], cs.iloc[icell]['cellno'], ax=axarr[axn])
+                    # reduce cell name:
+                    cname = cs.iloc[icell]['cellID'].replace('slice_00', 'S').replace('cell_00', 'C')
+                    axarr[axn].set_title(f"{cname:s} #={cs.iloc[icell]['cellno']:d}\n{cs.iloc[icell]['map']:s}",
+                        fontsize=9, horizontalalignment='center')
+                    sn = sequence[icell]
+                    icell += 1
+                P.figure_handle.suptitle(f"Celltype: {cellname[0]:s} Page: {npage:d}", fontsize=14)
+                if sn > 100:
+                    t = '_pairs'
+                else:
+                    t = ''
+                mpl.savefig(Path('NF107Ai32_Het/Example Maps/', f"{cellname[0]:s}{t:s}_Page{npage:d}.pdf"))
                 # mpl.close()
-        else:
+
+        else: # specific cell
             c, r = PH.getLayoutDimensions(1, pref='height')
             P = PH.regular_grid(r, c, order='columnsfirst', figsize=(8., 10), showgrid=False,
                 verticalspacing=0.08, horizontalspacing=0.08,
                 margins={'leftmargin': 0.07, 'rightmargin': 0.05, 'topmargin': 0.03, 'bottommargin': 0.1},
                 labelposition=(0., 0.), parent_figure=None, panel_labels=None)
-            plot_a_cell(cellname[0], cellno=int(args.number), ax=P.axarr[0,0])
+            success = plot_a_cell(cellname[0], cellno=str(int(sequence[0])), ax=P.axarr[0,0])
+            if not success:
+                return
             # drawtype is 'box' or 'line' or 'none'
             # print(dir(MT))
             rectprops = dict(facecolor='yellow', edgecolor = 'black',
@@ -683,10 +837,11 @@ def main():
                                                    rectprops=rectprops)
 
             mpl.connect('key_press_event', toggle_selector)
+            mpl.show()
     
-        mpl.show()
-    print(docell, args.number)
-    plot_cells(docell, args.number)
+    
+    print(docell, sequence)
+    plot_cells(docell, sequence)
     
 if __name__ == '__main__':
     main()
