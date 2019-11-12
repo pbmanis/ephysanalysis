@@ -18,7 +18,7 @@ import ephysanalysis.SpikeAnalysis
 import ephysanalysis.dataSummary
 import ephysanalysis.IVSummary
 import ephysanalysis.VCSummary
-import ephysanalysis.EPSC_analyzer
+import ephysanalysis.PSCAnalyzer
 import ephysanalysis.boundrect
 import ephysanalysis.poisson_score
 import ephysanalysis.bridge
