@@ -20,7 +20,7 @@ import pprint
 import textwrap as WR
 import collections
 import tifffile as tf
-
+import scipy.ndimage as SND
 pp = pprint.PrettyPrinter(indent=4)
 
 
@@ -430,7 +430,6 @@ class Acq4Read():
         self.trace_StartTimes = np.zeros(0)
         self.sample_rate = []
         info = self.getIndex() #self.protocol)
-#        print('Info: ', info, self.protocol)
         holdcheck = info['devices'][self.shortdname]['holdingCheck']
         holdvalue = info['devices'][self.shortdname]['holdingSpin']
         if holdcheck:
@@ -892,13 +891,18 @@ class Acq4Read():
         d = str(filename.name)
         self.Image_filename = d
         cindex = self._readIndex(Path(filename.parent))
-        self.Image_pos = cindex[d]['transform']['pos']
+        if 'userTransform' in cindex[d].keys() and cindex[d]['userTransform']['pos'] != (0., 0.):
+            z = np.vstack(cindex[d]['userTransform']['pos'] + cindex[d]['transform']['pos']).ravel()
+            self.Image_pos = ((z[0]+z[2]), (z[1]+z[3]), z[4])
+        else:
+            self.Image_pos = cindex[d]['transform']['pos']
+        
         self.Image_scale = cindex[d]['transform']['scale']
         self.Image_region = cindex[d]['region']
         self.Image_binning = cindex[d]['binning']
         return(self.imageData)
 
-    def getAverageScannerImages(self, dataname='Camera/frames.ma', mode='average', firstonly=False, limit=None):
+    def getAverageScannerImages(self, dataname='Camera/frames.ma', mode='average', firstonly=False, limit=None, filter=True):
         """
         Average (or max or std) the images across the scanner camera files
         the images are collected into a stack prior to any operation
@@ -958,12 +962,20 @@ class Acq4Read():
                 imageframed = imageframe[1]
             if imageframe.ndim == 3 and imageframe.shape[0] == 1:
                 imageframed = imageframe[0]
+            imageframed = imageframed.view(np.ndarray)
+            if filter:
+                imageframed = SND.gaussian_filter(imageframed, 3)
             if firstonly:
-                resultframe = imageframed.view(np.ndarray)
-                return resultframe
+                return imageframed
+            
             if i == 0:
                 scannerImages = np.zeros((nmax, int(frsize[2]/binning[0]), int(frsize[3]/binning[1])))
-            scannerImages[i] = imageframed.view(np.ndarray)
+            # import matplotlib.pyplot as mpl
+            # mpl.imshow(imageframed)
+            # mpl.show()
+            # if i > 3:
+            #     exit()
+            scannerImages[i] = imageframed
 
         resultframe = np.zeros((scannerImages.shape[1], scannerImages.shape[2]))
         # simple maximum projection
