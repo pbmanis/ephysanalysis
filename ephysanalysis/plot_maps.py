@@ -32,6 +32,7 @@ import ephysanalysis.metaarray as EM
 from pyqtgraph import configfile
 from pylibrary import picker
 import scipy.ndimage
+import scipy.signal
 import numpy as np
 import datetime
 import pprint
@@ -94,6 +95,7 @@ class ScannerInfo(object):
         # print('scanner camerabox: ', self.camerabox)
         self.boxw = np.swapaxes(np.array(self.camerabox), 0, 1)
         # print('scanner box: ', self.boxw)
+
 
 class ImageInfo(object):
     """
@@ -228,7 +230,13 @@ class MapTraces(object):
         self.calbartext = None
         self.mx = 0
         self.my = 0
+        self.notch_freqs = None
+        self.notch_flag = False
+        self.notch_Q = 12.
         
+    
+    def setScannerImages(self, flag):
+        self.averageScannerImages = flag
 
     def setProtocol(self, cell, image=None, videos=None, mosaic=None):
         self.cell = Path(cell)
@@ -300,6 +308,52 @@ class MapTraces(object):
                 self.twin[1] = pdict[k][1]
             if k == 'ticks':
                 self.ticks = pdict[k]
+            if k == 'notch_freqs':
+                if not pd.isnull(pdict[k]):
+                    p = pdict[k].replace('[', '').replace(']', '').replace('"', '')
+                    fp = p.split(',')
+                    lp = [float(f) for f in fp]
+                    self.notch_freqs = np.array(lp)
+                    self.notch_flag = True
+            if k == 'notch_q':
+                self.notch_Q = float(pdict[k])
+
+    def filter_data(self, tb, data, LPF=3000.):
+        self.HPF_flag = False
+        self.LPF = LPF
+        self.maxtime = 0.599 # sec
+        filtfunc = scipy.signal.filtfilt
+        samplefreq = 1./np.mean(np.diff(tb))
+        rate = 1.0/samplefreq
+        nyquistfreq = samplefreq*0.95
+        wn = self.LPF/nyquistfreq
+        b, a = scipy.signal.bessel(2, wn)
+        if self.HPF_flag:
+            wnh = self.HPF/nyquistfreq
+            bh, ah = scipy.signal.bessel(2, wnh, btype='highpass')
+        imax = int(max(np.where(tb < self.maxtime)[0]))
+        print(np.max(tb), imax)
+        # imax = len(tb)
+        data2 = np.zeros_like(data)
+
+        data2 = filtfunc(b, a, data[:,:imax] - np.mean(data[0:250]))
+        # if self.HPF_flag:
+        #     data2[r,t,:imax] = filtfunc(bh, ah, data2[r, t, :imax]) #  - np.mean(data[r, t, 0:250]))
+        data3 = np.zeros_like(data2)
+        if self.notch_flag:
+            print('Notch Filtering Enabled', self.notch_freqs)
+            for r in range(data2.shape[0]):
+                data3[r] = FILT.NotchFilterZP(data2[r], notchf=self.notch_freqs, Q=self.notch_Q,
+                    QScale=False, samplefreq=samplefreq)
+        else:
+            data3 = data2
+        # mpl.figure()
+        # mpl.plot(tb[:imax], data2[0,:imax])
+        # mpl.plot(tb[:imax], data3[0,:imax])
+        # mpl.show()
+        # exit()
+        #
+        return data3
 
     def plot_maps(self, protocols, ax=None, traces=None, linethickness=1.0):
         """
@@ -384,16 +438,30 @@ class MapTraces(object):
         else:
             cmap = 'gist_gray'
         self.imageax = None
-        max_camera = None
+        self.max_camera = None
+        sc_alpha = 0.75
+        vid_alpha = 0.75
+        image_alpha = 0.75
+        mosaic_alpha = 0.75
         if self.averageScannerImages:
+            sc_alpha = 0.75
+            vid_alpha = 0.5
+            image_alpha = 0.5
+            mosaic_alpha = 0.5
+            
+        if self.averageScannerImages:
+            self.max_camera = self.AR.getAverageScannerImages(dataname='Camera/frames.ma', mode='max', firstonly=False, limit=None)
+            sm = self.max_camera
+            sm = sm/np.max(sm)
+            sm = sm*sm
+            # sm = np.clip(sm, a_min=0.5, a_max=None)
             self.extentSI = [np.min(self.SI.boxw[0]), np.max(self.SI.boxw[0]), np.min(self.SI.boxw[1]), np.max(self.SI.boxw[1])]
-            max_camera = self.AR.getAverageScannerImages(dataname='Camera/frames.ma', mode='max', firstonly=False, limit=None)
-            self.imageax = ax.imshow(max_camera, aspect='equal', cmap='Reds', alpha=0.7, vmin = 1000, vmax=self.vmax,
+            self.imageax = ax.imshow(sm, aspect='equal', cmap='Blues', alpha=sc_alpha, vmin = 0, vmax=np.max(sm),
                 extent=self.extentSI)
         # max_camera = scipy.ndimage.gaussian_filter(max_camera, sigma=256/(4.*10))
             self.cmin = SND.minimum(self.max_camera)
             self.cmax = SND.maximum(self.max_camera)
-        elif len(self.videos) > 0:
+        if len(self.videos) > 0:
             self.Montager = montage.Montager(celldir=self.cell)
             self.Montager.run()
             # M.list_images_and_videos()
@@ -401,14 +469,14 @@ class MapTraces(object):
             # bounds are in  self.Montager.bounds: (minx, miny, maxx, maxy)
             bounds = self.Montager.bounds
             self.extentV = [bounds[0], bounds[2], bounds[1], bounds[3]]
-            self.imageax = ax.imshow(self.merged_image, aspect='equal', cmap=cmap, alpha=0.75, vmin = 0, vmax=self.vmax,
+            self.imageax = ax.imshow(self.merged_image, aspect='equal', cmap=cmap, alpha=vid_alpha, vmin = 0, vmax=self.vmax,
                 extent=self.extentV)
             self.cmin = SND.minimum(self.merged_image)
             self.cmax = SND.maximum(self.merged_image)
             
-        elif self.image is not None:
+        if self.image is not None:
             self.extentI = [np.min(self.ImgInfo.boxw[0]), np.max(self.ImgInfo.boxw[0]), np.min(self.ImgInfo.boxw[1]), np.max(self.ImgInfo.boxw[1])]
-            self.imageax = ax.imshow(self.image_data, aspect='equal', cmap=cmap, alpha=0.75, vmin = 0, vmax=self.vmax,
+            self.imageax = ax.imshow(self.image_data, aspect='equal', cmap=cmap, alpha=image_alpha, vmin = 0, vmax=self.vmax,
                 extent=self.extentI)
             self.cmin = SND.minimum(self.image_data)
             self.cmax = SND.maximum(self.image_data)
@@ -424,7 +492,7 @@ class MapTraces(object):
             print('bounds: ', bounds)
             self.extentV = [bounds[0], bounds[2], bounds[1], bounds[3]]
             mpl.imshow(self.Montager.merged_image)
-            self.imageax = ax.imshow(self.Montager.merged_image, aspect='equal', cmap=cmap, alpha=0.75, vmin = 0, vmax=self.vmax,
+            self.imageax = ax.imshow(self.Montager.merged_image, aspect='equal', cmap=cmap, alpha=mosaic_alpha, vmin = 0, vmax=self.vmax,
                 extent=self.extentV)
             self.cmin = SND.minimum(self.Montager.merged_image)
             self.cmax = SND.maximum(self.Montager.merged_image)
@@ -449,9 +517,11 @@ class MapTraces(object):
         # print(xmin, ymin, xmax, ymax)
         ax.scatter(scp[:,0], scp[:,1], s=4, c='c', marker='o', alpha=0.3, picker=5)
         # print('getdata: ', name, self.datasets)
-        d = self.AR.getData()
+        self.AR.getData()
+        d = self.AR.data_array
+        d = self.filter_data(self.AR.time_base, d)
         if name is not None:
-            self.datasets[name] = self.AR.data_array
+            self.datasets[name] = d
 
         if self.AR.mode in ['v', 'V', 'VC']:
             self.vscale = 1e5
@@ -593,6 +663,9 @@ def main():
                         help='Set celltype for figure')
     parser.add_argument('-s', '--sequence', type=str, default='1', dest='sequence',
                         help='sequence of ID numbers of the cells to plot')
+
+    parser.add_argument('-S', '--scanner', action='store_true', dest='scannerimages',
+                        help='Plot the scanner spots on the map')
                         
     args = parser.parse_args()
     experimentname = args.experiment 
@@ -600,7 +673,8 @@ def main():
     # basepath = '/Volumes/Pegasus/ManisLab_Data3/Kasten_Michael/NF107ai32Het/'
 
     MT = MapTraces()
-
+    MT.setScannerImages(args.scannerimages)
+    
     if args.celltype == 'lsps':
         cell = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.05_000/slice_002/cell_000/LSPS_dendrite_VC_testmap_MAX_001')  # pyr
         image = '../image_001.tif'
@@ -643,7 +717,7 @@ def main():
     table = pd.read_excel('NF107Ai32_Het/Example Maps/SelectedMapsTable.xlsx')
 
     def makepars(dc):
-        parnames = ['invert', 'vmin', 'vmax', 'xscale', 'yscale', 'calbar', 'twin', 'ioff', 'ticks']
+        parnames = ['invert', 'vmin', 'vmax', 'xscale', 'yscale', 'calbar', 'twin', 'ioff', 'ticks', 'notch_freqs', 'notch_q']
         pars = dict()
         for n in parnames:
             if n in ['calbar', 'twin']:
