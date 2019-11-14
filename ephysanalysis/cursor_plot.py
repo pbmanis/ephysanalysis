@@ -20,7 +20,7 @@ font = QtGui.QFont()
 font.setFamily('Arial')
 font.setFixedPitch(False)
 font.setPointSize(11)
-import faulthandler
+
 
 
 
@@ -28,7 +28,6 @@ class CursorPlot(object):
     def __init__(self, title='crosshair'):
         
         self.title = title
-        faulthandler.enable()
         self.app = QtGui.QApplication([])
         self.win = pg.GraphicsWindow()
         self.layout = QtGui.QGridLayout()
