@@ -43,10 +43,7 @@ import ephysanalysis.boundrect as BR
 import mapanalysistools.digital_filters as FILT
 import montage
 import mahotas as MH
-import nf107.set_expt_paths as set_expt_paths
-set_expt_paths.get_computer()
-experiments = set_expt_paths.get_experiments()
-exclusions = set_expt_paths.get_exclusions()
+
 
 class ScannerInfo(object):
     """
@@ -646,6 +643,12 @@ class MapTraces(object):
         mpl.draw()
         
 def main():
+
+    import nf107.set_expt_paths as set_expt_paths
+    set_expt_paths.get_computer()
+    experiments = set_expt_paths.get_experiments()
+    exclusions = set_expt_paths.get_exclusions()
+
     cellchoices = [     'bushy',
                         'tstellate', 
                         'dstellate',
