@@ -462,7 +462,7 @@ class Acq4Read():
         for i, d in enumerate(dirs):
             fn = Path(d, self.dataname)
             if not fn.is_file():
-                print(' acq4read.getData: File not found: ', fn)
+                # print(' acq4read.getData: File not found: ', fn)
                 if check:
                     return False
                 else:
@@ -1002,8 +1002,6 @@ class Acq4Read():
             ax[0].plot(self.time_base, np.array(self.data_array).mean(axis=0))
         mpl.show()
 
-
-    
 def one_test():
     import boundrect as BR
     BRI = BR.BoundRect()
