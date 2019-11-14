@@ -23,7 +23,6 @@ from cycler import cycler
 from itertools import cycle
 import numpy as np
 
-
 import ephysanalysis as EP
 import ephysanalysis.metaarray as EM  # need to use this version for Python 3
 import ephysanalysis.cursor_plot as CP
@@ -35,6 +34,7 @@ import pyqtgraph as pg
 from pyqtgraph.Qt import QtGui, QtCore
 from pyqtgraph.Point import Point
 
+
 def make_key(pathname):
     """
     Make a key string using the date, slice, cell and protocol from the path name
@@ -44,7 +44,7 @@ def make_key(pathname):
     return(str('~'.join([p[i] for i in range(-4, 0)])))
 
 
-class PSCSummary():
+class PSCAnalyzer():
     def __init__(self, datapath, plot=True, update_regions=False):
         """
         Analyze PSCs in a few different formats:
@@ -192,6 +192,9 @@ class PSCSummary():
             return False
 
     def get_stimtimes(self):
+        """
+        This should get the stimulus times. Right now, it does nothing
+        """
         pass
 
     def set_baseline_times(self, baseline):
@@ -205,19 +208,21 @@ class PSCSummary():
         self.baseline = np.sort(baseline)
 
     def get_baseline(self):
-        """ return the mean values in the data
+        """ Return the mean values in the data over the baseline region.
         """
         bl = self.mean_I_analysis(region=self.baseline, reps=[0])
         return bl
         
-    def analyze_IO(self, rmpregion=[0., 0.05], protocolName=None):
- 
-        ptrain = self.AR.getStim('Stim0')
+    def analyze_IO(self, rmpregion=[0., 0.05], protocolName=None, device='Stim0'):
+        """Analyze in input=output function for a specific device
+        
+        """
+        ptrain = self.AR.getStim(device)
         # stim dict in ptrain will look like:
         # {'start': [0.05, 0.1], 'duration': [0.0001, 0.0001],
         # 'amplitude': [0.00025, 0.00025], 'npulses': [2], 'period': [0.05], 'type': ['pulseTrain']}
         # try:
-        dd  = self.AR.getDeviceData(device='Stim0', devicename='command')
+        dd  = self.AR.getDeviceData(device=device, devicename='command')
         if dd is None:
             return False
         # except:
@@ -237,10 +242,10 @@ class PSCSummary():
         stim_dt = np.diff(ptrain['start'])
         stim_I = [ptrain['amplitude'][0]]
         mode = '?'
-        if not ('Stim0', 'command.PulseTrain_amplitude') in self.AR.sequence.keys():
+        if not (device, 'command.PulseTrain_amplitude') in self.AR.sequence.keys():
             raise ValueError('Cannot find PulseTrain_amplitude in stimulus command')
             
-        stim_I = self.AR.sequence[('Stim0', 'command.PulseTrain_amplitude')]
+        stim_I = self.AR.sequence[(device, 'command.PulseTrain_amplitude')]
 
         baseline = []
         meani = []
@@ -278,21 +283,31 @@ class PSCSummary():
         self.analysis_summary['window'] = [self.T0, self.T1]
         return True
 
-    def analyze_VDEP(self, rmpregion=[0., 0.05], protocolName=None):
+    def analyze_VDEP(self, rmpregion=[0., 0.05], protocolName=None, device='Stim0'):
         """
         Analyze the voltage-dependence of EPSCs 
         
         When selecting the analysis window, choose a window that encompases
         the peak of the inward EPSC in the negative voltage range.
         Do not try to balance the trace (the slope should be turned off)
+        
+        Parameters
+        ----------
+        rmpregion : 2 element list (default: [0., 0.05])
+            The region of the trace used to measure the resting membrane potential, 
+            in seconds. 
+        protocolName : str (default: None)
+            The name of the protocol (not used here)
+        device : str (default: 'Stim0')
+            The name of the stimulus device 
         """
         print('\n'+'******'*4)
-        ptrain = self.AR.getStim('Stim0')
+        ptrain = self.AR.getStim(device)
         dt = self.Clamps.sample_interval
         # stim dict in ptrain will look like:
         # {'start': [0.05, 0.1], 'duration': [0.0001, 0.0001],
         # 'amplitude': [0.00025, 0.00025], 'npulses': [2], 'period': [0.05], 'type': ['pulseTrain']}
-        dd  = self.AR.getDeviceData(device='Stim0', devicename='command')
+        dd  = self.AR.getDeviceData(device=device, devicename='command')
         # print('ptrain: ', ptrain)
         # print('dd: ', dd)
         reps = self.AR.sequence[('protocol', 'repetitions')]
@@ -392,7 +407,6 @@ class PSCSummary():
         mintime = self.i_argmin[ind]*dt  # get AMPA peak index in the window
         print(f'AMPA mintime @ {self.AMPA_voltage*1e3:.1f} mV: {mintime*1e3:.3f} ms')
 
-
         # values for nmda analysis are currently fixed
         i_nmda_mean = self.mean_I_analysis(region=[nmdelay-nwidth, nmdelay+nwidth], mode='mean',
                                     baseline=bl, reps=reps, slope=False)
@@ -406,8 +420,6 @@ class PSCSummary():
         # print('nmda window & mean: ', [nmdelay-nwidth, nmdelay+nwidth], i_nmda_mean)
 
         # find -80 and +30 voltage indices (so we can save them and save the data)
-
-        # print(cmds)
         iAMPA = np.argmin(np.fabs(-self.AMPA_voltage+cmds))
         iNMDA = np.argmin(np.fabs(-self.NMDA_voltage+cmds))
         # print(iAMPA, iNMDA)
@@ -433,6 +445,25 @@ class PSCSummary():
         return True
 
     def plot_data(self, tb, data1, title=''):
+        """
+        Quick plot of data for testing purposes
+        
+        Parameters
+        ----------
+        tb : np.array (no default)
+            the time base (one dimension)
+        
+        data1 : np.array (no default)
+            The data, can be [m traces x npoints]
+        
+        title : str (default: '')
+            A title to put on the plot
+        
+        Return
+        ------
+        Nothing
+        """
+        
         f, ax = mpl.subplots(1)
         ax = np.array(ax).ravel()
         ie = data1.shape[1]
@@ -447,24 +478,37 @@ class PSCSummary():
         ax[0].set_title(str(self.datapath).replace('_', '\_')+' '+title, fontsize=8)
         mpl.show()
         
-    def analyze_PPF(self, rmpregion=[0., 0.05], protocolName=None):
+    def analyze_PPF(self, rmpregion=[0., 0.05], protocolName=None, device='Stim0'):
+        """
+        Analyze paired-pulse facilitiation
+
+        Parameters
+        ----------
+        rmpregion : 2 element list (default: [0., 0.05])
+            The region of the trace used to measure the resting membrane potential, 
+            in seconds. 
+        protocolName : str (default: None)
+            The name of the protocol (not used here)
+        device : str (default: 'Stim0')
+            The name of the stimulus device
+        """
         # self.rmp_analysis(region=rmpregion)
         #        self.tau_membrane(region=tauregion)
         # r0 = self.Clamps.tstart + 0.9*(self.Clamps.tend-self.Clamps.tstart) #
         # print(dir(self.Clamps))
-        ptrain = self.AR.getStim('Stim0')
+        ptrain = self.AR.getStim(device)
         # stim dict in ptrain will look like:
         # {'start': [0.05, 0.1], 'duration': [0.0001, 0.0001], 'amplitude': [0.00025, 0.00025], 'npulses': [2], 'period': [0.05], 'type': ['pulseTrain']}
-        dd  = self.AR.getDeviceData(device='Stim0', devicename='command')
+        dd  = self.AR.getDeviceData(device=device, devicename='command')
 
         reps = self.AR.sequence[('protocol', 'repetitions')]
         stim_I = [ptrain['amplitude'][0]]
-        if not ('Stim0', 'command.PulseTrain_period') in self.AR.sequence.keys():
+        if not (device, 'command.PulseTrain_period') in self.AR.sequence.keys():
             raise ValueError('Cannot find PulseTrain_period in stimulus command')
         
-        stim_dt = self.AR.sequence[('Stim0', 'command.PulseTrain_period')]
+        stim_dt = self.AR.sequence[(device, 'command.PulseTrain_period')]
         mode = 'PPF'
-        print('PPF')
+        print(mode)
         delay = 1.0*1e-3
         width = 20.0*1e-3
         ndelay = 1.0*1e-3
@@ -597,16 +641,43 @@ class PSCSummary():
     def mean_I_analysis(self, region=None, t0=0.5, mode='mean', baseline=None, intno=0, nint=1, reps=[0], slope=True, slopewin=None):
         """
         Get the mean current in a window
+        Works with the current Clamps object
         
         Parameters
         ----------
         region : tuple, list or numpy array with 2 values (default: None)
             start and end time of a trace used to measure the RMP across
-            traces.
+            traces. Note that if slopewin is set, it may replace the region
+        
+        t0 : float (default=0.5)
+            start time for the mean current analysis
+        
+        mode : str (default='mean')
+            How to measure the value (valid values: 'mean', 'baseline' both compute mean,
+            'min' gives the minimum current in the window.
+        
+        baseline: np.array (default None)
+            an array of precomputed baseline values to subtract from the data; one value
+            per trace
+        
+        intno : int (default=0)
+            first trace to do in a group
+        
+        nint : int (default=1)
+            # of traces to skip (e.g., for repeats or different values across the array)
+        
+        reps: list (default=[0])
+            # of repetitions (used to reshape data in computation)
+        
+        slope: bool (default=True)
+            set to subtract a slope from trace
+        
+        slopewin: list or np.array of 2 elements (default=None)
+            Time window to use to compute slope, [start, stop], in seconds
         
         Return
         ------
-        Nothing
+        the mean current in the window
         
         Stores computed mean current in the variable "name".
         """
@@ -652,20 +723,20 @@ class PSCSummary():
         nx = int(sh[0]/len(reps))
         
         if mode in ['mean', 'baseline']:
-            print('calc mean: ')
-            print('    data1.shape: ', data1.shape)
+            # print('calc mean: ')
+            # print('    data1.shape: ', data1.shape)
             i_mean = data1.mean(axis=1)  # all traces, average over specified time window
-            print('    i_mean.shape: ', i_mean.shape)
+            # print('    i_mean.shape: ', i_mean.shape)
             if nint == 1:
                 nx = int(sh[0]/len(reps))
                 try:
                     i_mean = np.reshape(i_mean, (len(reps), nx))  # reshape by repetition
                 except:
                     return i_mean
-            print('    _after possible reshape: ', i_mean.shape)
+            # print('    _after possible reshape: ', i_mean.shape)
             i_mean = i_mean.mean(axis=0)  # average over reps
             
-            print('     i_mean averaged over reps: ', i_mean)
+            # print('     i_mean averaged over reps: ', i_mean)
             # print('mean data windows : ', self.i_data.shape)
             return i_mean
      
@@ -688,10 +759,10 @@ class PSCSummary():
             
             # print(dfw.shape, ist, ien)
             i_mean = dfw[:, ist:ien].min(axis=1)  # all traces, average over specified time window
-            self.i_argmin = dfw[:, ist:ien].argmin(axis=1) +ist
-            print('imean shape: ', i_mean.shape)
-            print('mean values: ', i_mean)
-            print('iargmin: ', self.i_argmin)
+            # self.i_argmin = dfw[:, ist:ien].argmin(axis=1) +ist
+            # print('imean shape: ', i_mean.shape)
+            # print('mean values: ', i_mean)
+            # print('iargmin: ', self.i_argmin)
 
             return(i_mean)
             # except:
@@ -720,11 +791,27 @@ class PSCSummary():
 
     def slope_subtraction(self, tb, data1, region, mode='mean'):
         """
-        Based on """
+        Subtract a slope from the data; the slope is calculated from a time region
+        
+        Parameters
+        ----------
+        tb : np.array 
+            time base, in seconds. Must be of same size as data1 2nd dimension
+        data1 : np.array
+            data array; 2 dimensional (traces x time)
+        region : 2 element list or np.array
+            time region for computation of the slope, in seconds
+        mode : str (default: 'mean')
+            Either 'point' (does nothing to the data)
+                or 'mean' 
+        Return
+        ------
+            slope-subtracted data
+        """
         dt = tb[1]-tb[0]
         minX = 0 #int((region[0])/dt)
         maxX = int((region[1]-region[0])/dt)
-        if mode is 'point':
+        if mode is 'point':  # do nothing... 
             # for i in range(data1.shape[0]):
             #     data1[i,:] -=  data1[i,0]
             return data1
@@ -923,7 +1010,9 @@ class PSCSummary():
 
 
     def plot_vciv(self):
-        
+        """
+        Plot the current voltage-clamp IV function
+        """
         P = PH.regular_grid(2 , 2, order='columns', figsize=(8., 6.), showgrid=False,
                         verticalspacing=0.1, horizontalspacing=0.1,
                         margins={'leftmargin': 0.12, 'rightmargin': 0.12, 'topmargin': 0.08, 'bottommargin': 0.1},
@@ -1015,8 +1104,12 @@ class PSCSummary():
         
 
 if __name__ == '__main__':
+    """
+    This is for testing - normally an instance of EPSC_analyzer would be
+    created and these values would be filled in.
+    """
     import matplotlib
-    matplotlib.use('Qt4Agg')
+    matplotlib.use('Qt5Agg')
     from matplotlib import rc
     #rc('font',**{'family':'sans-serif','sans-serif':['Arial']})
     #rcParams['font.sans-serif'] = ['Arial']
@@ -1042,6 +1135,6 @@ if __name__ == '__main__':
     protocol = 'PPF_2_001'
     # protocol = 'VC-EPSC_3_ver2_003'
     fn = Path(ddc, protocol)
-    PSC = PSCSummary(fn)
+    PSC = PSCAnalyzer(fn)
     PSC.compute_PSC_IV(protocol[:-4], savetimes=True)
     
