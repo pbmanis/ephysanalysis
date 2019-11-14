@@ -497,15 +497,17 @@ class CursorPlot(object):
         else:
             pass
 
-
-
-
-## Start Qt event loop unless running in interactive mode or using pyside.
-if __name__ == '__main__':
+def main():
     import sys
     app = pg.mkQApp()
     CP = CursorPlot()
     # x, y = CP.make_testdata()
     # CP.plotData(x, y)
     #if (sys.flags.interactive != 1) or not hasattr(QtCore, 'PYQT_VERSION'):
-    app.exec_() # QtGui.QApplication.instance().exec_()
+    app.exec_() # QtGui.QApplication.instance().exec_()    
+
+
+## Start Qt event loop unless running in interactive mode or using pyside.
+if __name__ == '__main__':
+    main()
+    
