@@ -20,6 +20,7 @@ from pathlib import Path
 import os  #legacy
 import scipy.signal
 import pandas as pd
+import lmfit
 
 from cycler import cycler
 from itertools import cycle
@@ -45,6 +46,103 @@ def make_key(pathname):
     p = pathname.parts
 
     return(str('~'.join([p[i] for i in range(-4, 0)])))
+
+class PSC_Fitter():
+    """
+    Provide fitting functions for PSCs:
+    1. decay tau only
+    2. PSC full fit (1-exp(tau_rise))^4 * exp(tau_fall)
+    
+    """
+    def __init__(self):
+        pass # nothing to do
+
+    def _fcn_tau(self, params, x, data):
+        """Model single exponential"""
+        v = params.valuesdict()
+
+        model = v['amp'] * np.exp(-x/v['tau_fall']) + v['DC']
+        return model - data
+
+    def fitTau(self):
+
+        # create a set of Parameters
+        params = lmfit.Parameters()
+        params.add('amp', value=self.ptreedata.param('Initial Fit Parameters').param('amp').value(), min=-self.dmax, max=self.dmax)
+        params.add('tau_fall', value=self.ptreedata.param('Initial Fit Parameters').param('taufall').value(), min=1e-4, max=1e-1)
+        params.add('DC', value=self.ptreedata.param('Initial Fit Parameters').param('DC').value(), min=-1e3, max=1e3)
+        
+        t0 = self.T0.value()
+        t1 = self.T1.value()
+        it0 = int(t0/self.dt)
+        it1 = int(t1/self.dt)
+        if it0 > it1:
+            t = it0
+            it0 = it1
+            it1 = t
+
+        time_zero = int(self.time_zero/self.dt)
+        print('timezero: ', time_zero, self.dataX[time_zero])
+        # do fit, here with the default leastsq algorithm
+        minner = lmfit.Minimizer(self._fcn_tau, params, fcn_args=(self.dataX[it0:it1]-self.dataX[time_zero], self.dataY[it0:it1]))
+        self.fitresult = minner.minimize('leastsq')
+
+        # calculate final result
+        final = self.dataY[it0:it1] + self.fitresult.residual
+
+        # write error report
+        lmfit.report_fit(self.fitresult)
+
+        # self.updateFit(self.fitresult)  # how to display... 
+        # self.fitx = self.dataX[it0:it1]
+        # self.fity = final
+        # self.showFit()
+
+    def _fcn_EPSC(self, params, x, data):
+        """Model EPSC"""
+        v = params.valuesdict()
+
+        model = v['amp'] * (((1. - np.exp(-x/v['tau_rise']))**4.0)*np.exp(-x/v['tau_fall'])) + v['DC']
+        return model - data
+    
+    def fitEPSC(self):
+
+        # create a set of Parameters
+        params = lmfit.Parameters()
+        params.add('amp', value=self.ptreedata.param('Initial Fit Parameters').param('amp').value(), min=-self.dmax, max=self.dmax)
+        params.add('tau_rise', value=self.ptreedata.param('Initial Fit Parameters').param('taurise').value(), min=1e-4, max=1e-1)
+        params.add('tau_fall', value=self.ptreedata.param('Initial Fit Parameters').param('taufall').value(), min=1e-4, max=1e-1)
+        params.add('DC', value=self.ptreedata.param('Initial Fit Parameters').param('DC').value(), min=-1e3, max=1e3)
+        dc = np.mean(self.dataY[0:10])
+        params.add('DC', value=dc, min=dc-dc*1, max=dc+dc*1)
+        t0 = self.T0.value()
+        t1 = self.T1.value()
+        it0 = int(t0/self.dt)
+        it1 = int(t1/self.dt)
+        if it0 > it1:
+            t = it0
+            it0 = it1
+            it1 = t
+        
+        # do fit, here with the default leastsq algorithm
+        time_zero = int(self.time_zero/self.dt)
+        print('timezero: ', time_zero, self.dataX[time_zero])
+        print(self.dataX[it0:it1]-self.time_zero)
+        print(self.dataY[it0:it1])
+        
+        minner = lmfit.Minimizer(self._fcn_EPSC, params, fcn_args=(self.dataX[it0:it1]-self.dataX[time_zero], self.dataY[it0:it1]))
+        self.fitresult = minner.minimize(method='least_squares', )
+
+        # calculate final result
+        final = self.dataY[it0:it1] + self.fitresult.residual
+
+        # write error report
+        lmfit.report_fit(self.fitresult)
+        # self.updateFit(self.fitresult)
+        # self.fitx = self.dataX[it0:it1]
+        # self.fity = final
+        # self.showFit()
+    
 
 
 class PSCAnalyzer():
@@ -159,11 +257,22 @@ class PSCAnalyzer():
             Flag to plot data
         
         """
+        dp_s = str(self.datapath)
+        date, name, cellname, proto, sliceid = self.AR.file_cell_protocol(dp_s)
+        dk = list(self.AR.getIndex(dp_s).keys())
+        if 'important' in dk:
+            print(str(Path(date, name, cellname, proto)), self.AR.getIndex(dp_s)['important'])
+        else:
+            return False
+        
+        
         self.AR.setProtocol(self.datapath)  # define the protocol path where the data is
+        
         self.setup(clamps=self.AR)
         self.read_database(f"{protocolName:s}.p")
 
         if self.AR.getData():  # get that data.
+            
             ok = False
             if protocolName.startswith('Stim_IO'):
                 ok = self.analyze_IO()
@@ -172,7 +281,7 @@ class PSCAnalyzer():
             elif protocolName.startswith('PPF'):
                 ok = self.analyze_PPF()
             if not ok:
-                print('Failed on protocol: ', self.datapath, protocolName)
+                print('Failed on protocol in IV: ', self.datapath, protocolName)
                 return False
             if plot:
                 self.plot_vciv()
@@ -262,7 +371,6 @@ class PSCAnalyzer():
         self.i_mean = []
         self.analysis_summary[f'PSP_IO'] = [[]]*len(ptrain['start'])
         bl = self.mean_I_analysis(region=self.baseline, mode='baseline', reps=[0])
-        print('bl: ', bl)
         for i in range(len(ptrain['start'])):
             pdelay = ptrain['start'][i] + delay
             if i == 0 and self.update_regions:
@@ -361,7 +469,7 @@ class PSCAnalyzer():
         self.analysis_summary[f'PSP_VDEP_AMPA'] = [[]]*len(ptrain['start'])
         self.analysis_summary[f'PSP_VDEP_NMDA'] = [[]]*len(ptrain['start'])
         bl = self.mean_I_analysis(region=bl_region, mode='baseline', reps=[0])
-        print('bl: ', bl)
+        # print('bl: ', bl)
         
         rgn = [delay, t1]
         # print('rgn: ', rgn)
@@ -391,6 +499,8 @@ class PSCAnalyzer():
 
         data1, tb = self.get_traces(region=slope_region,
             trlist=None, baseline=bl, intno=0, nint=1, reps=reps, slope=False)
+        if data1.ndim == 1:
+            return False
         # self.plot_data(tb, data1)
    
         ind = np.argmin(np.fabs(cmds-self.AMPA_voltage))
@@ -704,7 +814,7 @@ class PSCAnalyzer():
             data1 = self.slope_subtraction(tb, data1, region, mode=mode)
         # if not slope and slopewin is not None: # just first slope point to align current
         #     data1 = self.slope_subtraction(tb, data1, region, mode='point')
-        print('slope, slopewin: ', slope, slopewin, mode)
+            print('slope, slopewin: ', slope, slopewin, mode)
         
         
         sh = data1.shape
@@ -736,19 +846,45 @@ class PSCAnalyzer():
             return i_mean
      
         elif mode == 'min':
-            dfilt = data1 # scipy.signal.savgol_filter(data1, 5, 2, axis=1, mode='nearest')
-            ist = int(t0/self.Clamps.sample_interval) # points in deadwin
-            ien = int((analysis_region[1]-analysis_region[0])/self.Clamps.sample_interval)
-            print('region 0: ', analysis_region[0])
-            print('analysis time: ', ist*self.Clamps.sample_interval, ien*self.Clamps.sample_interval)
-            i_min = dfilt[:, ist:ien].min(axis=1)  # all traces, average over specified time window
+
+            # mpl.plot(data1.T)
+            # mpl.show()
+
+            i_mina = data1.min(axis=1)  # all traces, average over specified time window
             if nint == 1:
-                nx = int(sh[0]/nreps)
+                nx = int(sh[0]/len(reps))
                 try:
-                    i_min = np.reshape(i_min, (nreps, nx))  # reshape by repetition
+                    i_mina = np.reshape(i_mina, (len(reps), nx))  # reshape by repetition
                 except:
-                    return i_min
-            i_min = i_min.mean(axis=0)  # average over reps
+                    raise ValueError("Reshpae failed on min")
+            i_min = i_mina.min(axis=0)  # average over reps
+            self.i_argmin = np.argmin(i_mina, axis=0)
+            # return i_min
+
+            # dfilt = data1 # scipy.signal.savgol_filter(data1, 5, 2, axis=1, mode='nearest')
+            # print('data1.shpae 0: ', data1.shape)
+            # ist = int(t0/self.Clamps.sample_interval) # points in deadwin
+            # ien = int((analysis_region[1]-analysis_region[0])/self.Clamps.sample_interval)
+            # print('region 0: ', analysis_region[0])
+            # print('analysis time: ', ist*self.Clamps.sample_interval, ien*self.Clamps.sample_interval)
+            # print('dfilt shape: ', dfilt.shape)
+            # print('ist, ien: ', ist, ien)
+            # i_min = dfilt[:, ist:ien].min(axis=1)  # all traces, get the minimum over specified time window
+            # print('nint: ', nint)
+            # print('imin shape: ', i_min.shape)
+            # print('reps: ', nreps)
+            # if nint == 1:
+            #     nx = int(sh[0]/nreps)
+            #     print('nx: ', nx)
+            #     print(i_min.shape)
+            #     print((nreps, nx))
+            #     try:
+            #         i_min = np.reshape(i_min, (nreps, nx))  # reshape by repetition
+            #         print('rehsape ok')
+            #     except:
+            #         print('reshape failed!!!!')
+            # i_min = i_min.mean(axis=0)  # average over reps
+            print('imin shape: ', i_min.shape)
             # data2 = np.reshape(data1, (nreps, nx, data1.shape[1])).mean(axis=0)
             # print(data2.shape)
             # f, ax = mpl.subplots(1,1)
@@ -765,28 +901,26 @@ class PSCAnalyzer():
             #         print('csel: ', csel)
             #         ax.plot(data3[j, i,:], color = cp[csel], linestyle='--', linewidth=1, alpha=1)
             # mpl.show()
-            return i_min
             # # print(ist, ien)
             # print(dfilt.shape, nreps)
             # dfw = [[]]*nreps
-            # nvs = int(sh[0]/nreps)
-            # print('nreps, nvs: ', nreps, nvs)
-            # for i in range(nreps):
-            #     dfw[i] = dfilt[i*nvs:i*nvs + nvs,: ]
-            # dfw = np.array(dfw)
-            # print(dfw.shape)
-            # dfw = np.array(dfw).mean(axis=0)
-            # # dfw = dfw.reshape((nreps, -1, int(sh[0]/nreps)))
-            # # dfw = dfw.mean(axis=0)
-            # # for i in range(dfw.shape[0]):
-            # #     mpl.plot(dfw[i])
-            # # mpl.show()
-            #
-            # # print(dfw.shape, ist, ien)
-            # self.i_argmin = dfw[:, ist:ien].argmin(axis=1) +ist
-            # print('imean shape: ', i_mean.shape)
-            # print('mean values: ', i_mean)
-            # print('iargmin: ', self.i_argmin)
+           #  nvs = int(sh[0]/nreps)
+           #  print('nreps, nvs: ', nreps, nvs)
+           #  for i in range(nreps):
+           #      dfw[i] = data1[i*nvs:i*nvs + nvs,: ]
+           #  dfw = np.array(dfw)
+           #  print(dfw.shape)
+           #  dfw = np.array(dfw).mean(axis=0)
+           #  # dfw = dfw.reshape((nreps, -1, int(sh[0]/nreps)))
+           #  # dfw = dfw.mean(axis=0)
+           #  # for i in range(dfw.shape[0]):
+           #  #     mpl.plot(dfw[i])
+           #  # mpl.show()
+           #
+           #  # print(dfw.shape, ist, ien)
+           #  self.i_argmin = dfw[:, ist:ien].argmin(axis=1) +ist
+            print('iargmin: ', self.i_argmin)
+            return i_min
 
 
 
@@ -1132,8 +1266,8 @@ if __name__ == '__main__':
     # cell = '2019.03.19_000/slice_001/cell_000'
     
     ddc = Path(disk, middir, directory, cell)
-    protocol = 'Stim_IO_1_001'
-    # protocol = 'PPF_2_001'
+    # protocol = 'Stim_IO_1'
+    protocol = 'PPF_2_001'
     # protocol = 'VC-EPSC_3_ver2_003'
     fn = Path(ddc, protocol)
     PSC = PSCAnalyzer(fn)
