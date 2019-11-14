@@ -21,7 +21,7 @@ setup(name='ephysanalysis',
                'ma2tiff=ephysanalysis.ma2tiff:convertfiles',
                'bridge=ephysanalysis.bridge:main',
                'notch=ephysanalysis.test_notch:main',
-               'cmeasure=ephysanalysis.cursor_plot:main'
+               'cmeasure=ephysanalysis.cursor_plot:main',
                'matread=ephysanalysis.MatdatacRead:main',
                'plotmaps=ephysanalysis.plot_maps:main',
           ]
