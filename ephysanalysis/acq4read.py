@@ -112,11 +112,13 @@ class Acq4Read():
         dirs = sorted(list(dirs))  # make sure these are in proper order... 
         return dirs
 
-    def checkProtocol(self, protocolpath):
+    def checkProtocol(self, protocolpath=None):
         """
         Check the protocol to see if the data is complete
         """
         print('Check...')
+        if protocolpath is None:
+            protocolpath = self.protocol
         dirs = self.subDirs(protocolpath)  # get all sequence entries (directories) under the protocol
         modes = []
         info = self.readDirIndex(protocolpath) # top level info dict
@@ -149,6 +151,55 @@ class Acq4Read():
         if ncomplete != nexpected:
             print(f"acq4read.checkProtocol: Completed dirs and expected dirs are different: Completed {ncomplete: d}, expected: {nexpected:d}")
             #return False
+        return True
+
+    def checkProtocolImportantFlags(self, protocolpath=None):
+        """
+        Check the protocol directory to see what "important" flags might be set or not
+        for individual traces
+        Return a dict of the traces that are "important"
+        """
+        important = {}
+        if protocolpath is None:
+            protocolpath = self.protocol
+        dirs = self.subDirs(protocolpath)  # get all sequence entries (directories) under the protocol
+        modes = []
+        info = self.readDirIndex(protocolpath) # top level info dict
+        if info is None:
+            print('acq4read.checkProtocol: Protocol is not managed (no .index file found): {0:s}'.format(protocolpath))
+            return False
+        info = info['.']
+        if 'devices' not in info.keys():  # just safety... 
+            print('acq4read.checkProtocol: No devices in the protocol')
+            print(info.keys())
+            return False
+        devices = info['devices'].keys()
+        clampDevices = []
+        for d in devices:
+            if d in self.clampdevices:
+                clampDevices.append(d)
+        if len(clampDevices) == 0:
+            print('acq4read.checkProtocol: No clamp devices found?')
+            return False 
+        mainDevice = clampDevices[0]
+
+        ncomplete = 0
+        nexpected = len(dirs)  # acq4 writes dirs before, so this is the expected fill
+        for i, directory_name in enumerate(dirs):  # dirs has the names of the runs within the protocol
+            datafile = Path(directory_name, mainDevice+'.ma')  # clamp device file name
+            tr_info = self.readDirIndex(directory_name)['.'] # get info
+            # print('tr_info: ', directory_name.name,  tr_info['.'])
+            clampInfo = self.getDataInfo(datafile)
+            if clampInfo is None:
+                continue
+            else:
+                if "important" in list(tr_info.keys()):
+                    important[directory_name.name] = True
+                ncomplete += 1  # count up
+        if len(important) == 0:  # if none were marked, treat as if ALL were marked (reject at top protocol level)
+            for i, directory_name in enumerate(dirs):
+                important[directory_name.name] = True
+        self.important = important  # save, but also return
         return True
 
     def listSequenceParams(self, dh):
@@ -410,6 +461,13 @@ class Acq4Read():
         except:
             return 0.
 
+    def _getImportant(self, info):
+        if 'important' in list(info.keys()):
+            important = info['important']
+        else:
+            important = False
+        return important
+        
     def getData(self, pos=1, check=False):
         """
         Get the data for the current protocol
@@ -422,6 +480,8 @@ class Acq4Read():
         self.clampInfo['dirs'] = dirs
         self.clampInfo['missingData'] = []
         self.traces = []
+        self.trace_index = []
+        self.trace_important = []
         self.data_array = []
         self.commandLevels = []
         self.cmd_wave = []
@@ -436,16 +496,15 @@ class Acq4Read():
             self.holding = holdvalue
         else:
             self.holding = 0.
-
         trx = []
         cmd = []
+        self.protocol_important = self._getImportant(info)  # save the protocol importance flag
         sequence_values = None
         if 'sequenceParams' in index['.'].keys():
             self.sequence =  index['.']['sequenceParams']
         else:
             self.sequence = []
         # building command voltages or currents - get amplitudes to clamp
-
         reps = ('protocol', 'repetitions')
         foundclamp = False
         for clamp in self.clamps:
@@ -458,7 +517,36 @@ class Acq4Read():
                 else:
                     sequence_values = [x for x in self.clampValues]
         self.mode = None
+        self.protoDirs = []
+        # get traces marked "important"
+        # if no such traces exist, then accept ALL traces
+        important = []
+        for i, d in enumerate(dirs):
+            important.append(self._getImportant(self.getIndex(d)))
+        if sum(important) % 2 == 0: # even number of "True", fill in between.
+            state = False
+            for i in range(len(important)):
+                if important[i] is True and state is False:
+                    state = True
+                    continue
+                if important[i] is False and state is True:  # transistion to True 
+                    important[i] = state
+                    continue
+                if important[i] is True and state is True: # next one goes back to false
+                    state = False
+                    continue
+                if important[i] is False and state is False:  # no change... 
+                    continue
+                    
+        if not any(important):
+            important = [True for i in range(len(important))]  # set all true
+        self.trace_important = important
+
         j = 0
+        # get traces. 
+        # if traces are not marked (or computed above) to be "important", then they
+        # are skipped
+        self.nprotodirs = len(dirs)  # save this... 
         for i, d in enumerate(dirs):
             fn = Path(d, self.dataname)
             if not fn.is_file():
@@ -469,29 +557,35 @@ class Acq4Read():
                     continue
             if check:
                 return True
+            if not important[i]:  # only return traces marked "important"
+                continue
             # try:
+            self.protoDirs.append(Path(d).name)  # keep track of valid protocol directories here
             tr = EM.MetaArray(file=fn)
             # except:
             #     continue
-            info = tr[0].infoCopy()
-            self.parseClampInfo(info)
-            self.WCComp = self.parseClampWCCompSettings(info)
-            self.CCComp = self.parseClampCCCompSettings(info)
+            tr_info = tr[0].infoCopy()
+            
+            self.parseClampInfo(tr_info)
+            self.WCComp = self.parseClampWCCompSettings(tr_info)
+            self.CCComp = self.parseClampCCCompSettings(tr_info)
             
             # if i == 0:
             #     pp.pprint(info)
             cmd = self.getClampCommand(tr)
             self.traces.append(tr)
+            self.trace_index.append(i)
             trx.append(tr.view(np.ndarray))
             self.data_array.append(tr.view(np.ndarray)[self.tracepos])
             self.cmd_wave.append(tr.view(np.ndarray)[self.cmdpos])
+
             if sequence_values is not None:
                 if j >= len(sequence_values):
                     j = 0
                 self.values.append(sequence_values[j])
                 j += 1
             self.time_base.append(tr.xvals('Time'))
-            sr = info[1]['DAQ']['primary']['rate']
+            sr = tr_info[1]['DAQ']['primary']['rate']
             self.sample_rate.append(self.samp_rate)
             #print ('i: %d   cmd: %f' % (i, sequence_values[i]*1e12))
         if self.mode is None:
