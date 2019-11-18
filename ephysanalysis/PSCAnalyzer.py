@@ -321,7 +321,7 @@ class PSCAnalyzer():
     def analyze_IO(self, rmpregion=[0., 0.05], twidth=0.05, deadwin=0.001, protocolName=None, device='Stim0'):
         """Analyze in input=output relationship for a specific driving device
         """
-        pulse_train = self.AR.getStim(device)
+        pulse_train = self.AR.getStim(device)  # get the stimulus information
         # stim dict in pulse_train will look like:
         # {'start': [0.05, 0.1], 'duration': [0.0001, 0.0001],
         # 'amplitude': [0.00025, 0.00025], 'npulses': [2], 'period': [0.05], 'type': ['pulseTrain']}
@@ -344,20 +344,19 @@ class PSCAnalyzer():
         stim_io = self.AR.sequence[(device, 'command.PulseTrain_amplitude')]
         reps = self.AR.sequence[('protocol', 'repetitions')]
         Stim_IO = np.tile(stim_io, len(reps))  # stimuli in order
-        print('stim io: ', Stim_IO)
-        idat = [None]*len(pulse_train['start'])
-        self.analysis_summary[f'PSP_IO'] = [[]]*len(pulse_train['start'])
+        self.analysis_summary[f'PSP_IO'] = [[]]*len(pulse_train['start'])  # create space for amplitude results, per pulse
+        self.analysis_summary[f'psc_stim_amplitudes'] = [[]]*len(pulse_train['start'])  # create space for amplitude results, per pulse
         stimintvl = []
-        for i in range(len(idat)):   # across each of the pulses
+        idat = [None]*len(pulse_train['start'])
+        for i in range(len(idat)):   # across each of the pulses in the train
             idat[i] = OrderedDict()  # storage for data for each stimulus level
             pdelay = pulse_train['start'][i] + delay
-            if i == 0 and self.update_regions:  # get the regions
+            if i == 0 and self.update_regions:  # if self.update_region is set, then use cursor plot to get the regions
                 rgn = self.set_region([pulse_train['start'][i], pulse_train['start'][i]+twidth], baseline=bl)
-            else:
+            else:  # normal operation, just use stock values
                 rgn = [delay, delay+width]
             self.T0 = rgn[0]  # kind of bogus
             self.T1 = rgn[1]
-
             region = np.array(rgn)+pulse_train['start'][i]  # get region relative to start of this pulse
             for j in range(len(self.AR.traces)):  # for all traces
                 mi = self.AR.trace_index[j]  # get index into marked traces then compute the min value minus the baseline
@@ -370,68 +369,162 @@ class PSCAnalyzer():
                 mi = self.AR.trace_index[j]
                 idat[i][Stim_IO[mi]] = np.mean(idat[i][Stim_IO[mi]])  # replace with the mean value for that stimulus level within the protocol
 
-            print('idat keys: ', idat[i].keys())
             self.analysis_summary[f'PSP_IO'][i] = self.sign*1e12*np.array([idat[i][k] for k in idat[i].keys()])
+            self.analysis_summary[f'psc_stim_amplitudes'][i] = 1e6*np.array([k for k in idat[i].keys()])
             stimintvl.append(pulse_train['period'][0])
 
-        print('PSPIO: ', self.analysis_summary[f'PSP_IO'])
 
         stim_dt = np.diff(pulse_train['start'])
-        self.analysis_summary['psc_stim_amplitudes'] = 1e6*np.array(stim_io)
+        # self.analysis_summary['psc_stim_amplitudes'] = 1e6*np.array(stim_io)
         self.analysis_summary['psc_intervals'] = np.array(stimintvl)
         self.analysis_summary['ppf_dt'] = np.array(stim_dt)
         self.analysis_summary['stim_times'] = pulse_train['start']
         self.analysis_summary['window'] = [self.T0, self.T1]
         return True
 
-        # print('reps0: ', reps)
-        # print(sum(self.AR.trace_important), len(self.AR.trace_important))
-        # if sum(self.AR.trace_important) < len(self.AR.trace_important):
-        #     r = int(float(len(reps))*sum(self.AR.trace_important)/len(self.AR.trace_important))   # assumes all marked important make a FULL REP..
-        #     reps = list(range(r))
-        # print('reps: ', reps, r)
-        # stim_dt = np.diff(pulse_train['start'])
-        # stim_I = [pulse_train['amplitude'][0]]
-        # mode = '?'
-        # if not (device, 'command.PulseTrain_amplitude') in self.AR.sequence.keys():
-        #     raise ValueError('Cannot find PulseTrain_amplitude in stimulus command')
-        #
-        # baseline = []
-        # meani = []
-        # stimamp = []
-        # stimintvl = []
-        # cmdv = []
-        # self.sign = -1
-        # self.i_mean = []
-        # self.set_baseline_times(rmpregion)
-        # self.analysis_summary['iHold'] = []
-        # self.i_mean = []
-        # self.analysis_summary[f'PSP_IO'] = [[]]*len(pulse_train['start'])
-        # bl = self.mean_I_analysis(region=self.baseline, mode='baseline', reps=[0])
-        # for i in range(len(pulse_train['start'])):
-        #     pdelay = pulse_train['start'][i] + delay
-        #     if i == 0 and self.update_regions:
-        #         rgn = self.set_region([pulse_train['start'][i], pulse_train['start'][i]+twidth], baseline=bl)
-        #     else:
-        #         rgn = [delay, delay+width]
-        #     self.T0 = rgn[0]
-        #     self.T1 = rgn[1]
-        #     print('pdelay: ', pdelay, pulse_train['start'][i])
-        #     print('rgn + start[i]: ', np.array(rgn)+pulse_train['start'][i])
-        #     i_mean = self.mean_I_analysis(region=np.array(rgn)+pulse_train['start'][i],  t0=0.005, mode='min', baseline=bl, reps=reps)
-        #     if i_mean is None:
-        #         return False
-        #     self.analysis_summary[f'PSP_IO'][i] = self.sign*1e12*i_mean
-        #     cmdv.append(self.V_cmd[i])
-        #     stimamp.append(pulse_train['amplitude'][i])
-        #     stimintvl.append(pulse_train['period'][0])
-        #
-        # self.analysis_summary['psc_stim_amplitudes'] = 1e6*np.array(stim_I)
-        # self.analysis_summary['psc_intervals'] = np.array(stimintvl)
-        # self.analysis_summary['ppf_dt'] = np.array(stim_dt)
-        # self.analysis_summary['stim_times'] = pulse_train['start']
-        # self.analysis_summary['window'] = [self.T0, self.T1]
-        # return True
+    def analyze_PPF(self, rmpregion=[0., 0.05], twidth=0.02, protocolName=None, device='Stim0'):
+        """
+        Analyze paired-pulse facilitiation
+
+        Parameters
+        ----------
+        rmpregion : 2 element list (default: [0., 0.05])
+            The region of the trace used to measure the resting membrane potential, 
+            in seconds. 
+        protocolName : str (default: None)
+            The name of the protocol (not used here)
+        device : str (default: 'Stim0')
+            The name of the stimulus device
+        """
+        pulse_train = self.AR.getStim(device)
+        # stim dict in pulse_train will look like:
+        # {'start': [0.05, 0.1], 'duration': [0.0001, 0.0001], 'amplitude': [0.00025, 0.00025], 'npulses': [2], 'period': [0.05], 'type': ['pulseTrain']}
+        dd  = self.AR.getDeviceData(device=device, devicename='command')
+        reps = self.AR.sequence[('protocol', 'repetitions')]
+        
+        stim_I = [pulse_train['amplitude'][0]]
+
+        mode = 'PPF'
+        delay = 1.0*1e-3
+        width = 25.0*1e-3
+        ndelay = 1.0*1e-3
+
+        filekey = make_key(self.datapath)
+        # check the db to see if we have parameters already
+        dfiles = self.db['date'].tolist()  # protocols matching our prefix
+        if filekey in dfiles:
+            delays = self.db.loc[self.db['date'] == filekey]['T0'].values
+            t1s    = self.db.loc[self.db['date'] == filekey]['T1'].values
+            if isinstance(delays, np.ndarray) and len(delays) > 1:
+                delay = delays[0]
+            else:
+                delay = delays
+            if isinstance(t1s, np.ndarray) and len(t1s) > 1:
+                t1 = t1s[0]
+            else:
+                t1 = t1s
+        else:
+            delay = 0.5*1e-3
+            t1 = width-ndelay
+            print('auto delay', delay, t1)
+        nwidth = width
+        baseline = []
+        meani = []
+        stimamp = []
+        stimintvl = []
+        cmdv = []
+        self.sign = 1
+        self.set_baseline_times(rmpregion)
+        self.i_mean = []
+        self.i_mean = []
+
+        if not (device, 'command.PulseTrain_period') in self.AR.sequence.keys():
+            raise ValueError('Cannot find PulseTrain_period in stimulus command')
+        stim_dt = self.AR.sequence[(device, 'command.PulseTrain_period')]
+        Stim_Intvl = np.tile(stim_dt, len(reps))  # stimuli in order
+
+        self.analysis_summary[f'PPF'] = [[]]*len(stim_dt)
+        self.analysis_summary['iHold'] = []
+        self.analysis_summary['ppf_dt'] = [None]*len(stim_dt)
+        # print(pulse_train)
+        self.i_mean = []
+        
+        rgn = [delay, width]
+        # print('rgn: ', rgn)
+        if self.update_regions:
+            rgn = self.set_region([pulse_train['start'][0], pulse_train['start'][0]+width], baseline=bl)
+        self.T0 = float(rgn[0])
+        self.T1 = float(rgn[1])
+        window = self.T1-self.T0
+        p1delay = pulse_train['start'][0] + self.T0 # first stim of pair
+        p1end = pulse_train['start'][0] + self.T1
+        pulse2 = pulse_train['start'][0] + stim_dt[0]
+        bl = self.mean_I_analysis(region=self.baseline, mode='baseline', reps=[0])
+
+        ppf_traces_T1 = OrderedDict([(k, []) for k in stim_dt])
+        ppf_traces_R1 = OrderedDict([(k, []) for k in stim_dt])
+        ppf_traces_T2 = OrderedDict([(k, []) for k in stim_dt])
+        ppf_traces_R2 = OrderedDict([(k, []) for k in stim_dt])
+        # ppftr2 = OrderedDict([(k, []) for k in stim_dt])
+        ppf_dat = OrderedDict([(k, []) for k in stim_dt])
+
+        for j in range(len(self.AR.traces)):  # for all (accepted) traces
+            mi = self.AR.trace_index[j]  # get index into marked/accepted traces then compute the min value minus the baseline
+            # print(pulse_train['start'][0])
+            # print('stimn_dt[i]: ', Stim_Intvl[mi], delay)
+            rgn = [pulse_train['start'][0]+delay, pulse_train['start'][0]+twidth]
+            # rgn = [pulse_train['start'][i]+delay, pulse_train['start'][i]+twidth]
+            self.T0 = rgn[0]  # kind of bogus
+            self.T1 = rgn[1]
+            region = np.array(rgn)+Stim_Intvl[mi]  # get region relative to start of this pulse
+            region0 = [pulse_train['start'][0]+delay, pulse_train['start'][0]+np.min((Stim_Intvl[mi], twidth))]
+            bl = np.mean(self.Clamps.traces['Time': rmpregion[0]:rmpregion[1]][j])
+            i_pp2 = self.Clamps.traces['Time': region[0]:region[1]][j] - bl
+            tb_p2= self.Clamps.time_base[np.where((self.Clamps.time_base >= region[0]) & (self.Clamps.time_base < region[1]))]
+            i_pp1 = self.Clamps.traces['Time': region0[0]:region0[1]][j] - bl
+            tb_ref = self.Clamps.time_base[np.where((self.Clamps.time_base >= region0[0]) & (self.Clamps.time_base < region0[1]))]
+            # mpl.plot(self.Clamps.time_base*1e3, self.Clamps.traces[j]-bl, 'g-')
+            # mpl.plot(tb_p2*1e3, i_pp2, 'r-')
+            # mpl.plot(tb_ref*1e3, i_pp1, 'k-')
+            # mpl.show()
+            # exit()
+            da2 = np.min(i_pp2)
+            da1 = np.min(i_pp1)
+            ppf_tr = da2/da1  # get facilitation for this trace and interval
+            ppf_dat[Stim_Intvl[mi]].append(ppf_tr)  # accumulate 
+            ppf_traces_T1[Stim_Intvl[mi]].append(tb_ref)
+            ppf_traces_R1[Stim_Intvl[mi]].append(i_pp1)
+            ppf_traces_T2[Stim_Intvl[mi]].append(tb_p2)
+            ppf_traces_R2[Stim_Intvl[mi]].append(i_pp2)
+            # self.analysis_summary[f'PPF'][i] = idat[i]
+            # print(self.analysis_summary.keys())
+            # self.analysis_summary['ppf_dt'][i] = 1e6*np.array([k for k in idat[i].keys()])[0]
+            # stimintvl.append(pulse_train['period'][0])
+            #
+            # cmdv.extend([self.V_cmd[i]])
+            # stimamp.extend(pulse_train['amplitude'])
+            # stimintvl.append(stim_dt[i])
+            # ppftr[stim_dt[i]].append({'TRef': tb_ref, 'IRef': i_pp1, 'TPP2': tb_p2, 'IPP2': i_pp2})
+        # print(self.analysis_summary)
+        # self.analysis_summary[f'PPF'] = [self.analysis_summary[f'PPF'][i]/self.analysis_summary[f'PPF'][i][0] for i in range(len(self.analysis_summary[f'PPF']))]
+            # print('iref, ip2: ', i, ppftr[stim_dt[i]]['IRef'][0]*1e9, ppftr[stim_dt[i]]['IPP2'][0]*1e9)
+        self.analysis_summary[f'PPF'] = ppf_dat
+        self.analysis_summary['PPF_traces_T1'] = ppf_traces_T1
+        self.analysis_summary['PPF_traces_R1'] = ppf_traces_R1
+        self.analysis_summary['PPF_traces_T2'] = ppf_traces_T2
+        self.analysis_summary['PPF_traces_R2'] = ppf_traces_R2
+        self.analysis_summary['psc_stim_amplitudes'] = np.array(stim_I)
+        self.analysis_summary['psc_intervals'] = np.array(stim_dt)
+        self.analysis_summary['stim_times'] = pulse_train['start']
+        self.analysis_summary['window'] = [self.T0, self.T1]
+        # f, ax = mpl.subplots(1,1)
+        # ax = np.array(ax).ravel()
+        # for i in range(len(stim_dt)):
+        #     dt = stim_dt[i]
+        #     ax[0].plot(ppftr[dt]['TRef'], ppftr[dt]['IRef'], 'k')
+        #     ax[0].plot(ppftr[dt]['TPP2'], ppftr[dt]['IPP2'], 'k')
+        # mpl.show()
+        return True
 
     def analyze_VDEP(self, rmpregion=[0., 0.05], protocolName=None, device='Stim0'):
         """
@@ -630,136 +723,6 @@ class PSCAnalyzer():
             ax[0].plot(tb[:it], data1[i,:ie])
         ax[0].set_title(str(self.datapath).replace('_', '\_')+' '+title, fontsize=8)
         mpl.show()
-        
-    def analyze_PPF(self, rmpregion=[0., 0.05], protocolName=None, device='Stim0'):
-        """
-        Analyze paired-pulse facilitiation
-
-        Parameters
-        ----------
-        rmpregion : 2 element list (default: [0., 0.05])
-            The region of the trace used to measure the resting membrane potential, 
-            in seconds. 
-        protocolName : str (default: None)
-            The name of the protocol (not used here)
-        device : str (default: 'Stim0')
-            The name of the stimulus device
-        """
-        # self.rmp_analysis(region=rmpregion)
-        #        self.tau_membrane(region=tauregion)
-        # r0 = self.Clamps.tstart + 0.9*(self.Clamps.tend-self.Clamps.tstart) #
-        # print(dir(self.Clamps))
-        pulse_train = self.AR.getStim(device)
-        # stim dict in pulse_train will look like:
-        # {'start': [0.05, 0.1], 'duration': [0.0001, 0.0001], 'amplitude': [0.00025, 0.00025], 'npulses': [2], 'period': [0.05], 'type': ['pulseTrain']}
-        dd  = self.AR.getDeviceData(device=device, devicename='command')
-
-        reps = self.AR.sequence[('protocol', 'repetitions')]
-        
-        stim_I = [pulse_train['amplitude'][0]]
-        if not (device, 'command.PulseTrain_period') in self.AR.sequence.keys():
-            raise ValueError('Cannot find PulseTrain_period in stimulus command')
-        
-        stim_dt = self.AR.sequence[(device, 'command.PulseTrain_period')]
-        mode = 'PPF'
-        delay = 1.0*1e-3
-        width = 25.0*1e-3
-        ndelay = 1.0*1e-3
-
-        filekey = make_key(self.datapath)
-        # check the db to see if we have parameters already
-        dfiles = self.db['date'].tolist()  # protocols matching our prefix
-        if filekey in dfiles:
-            delays = self.db.loc[self.db['date'] == filekey]['T0'].values
-            t1s    = self.db.loc[self.db['date'] == filekey]['T1'].values
-            if isinstance(delays, np.ndarray) and len(delays) > 1:
-                delay = delays[0]
-            else:
-                delay = delays
-            if isinstance(t1s, np.ndarray) and len(t1s) > 1:
-                t1 = t1s[0]
-            else:
-                t1 = t1s
-        else:
-            delay = 1.0*1e-3
-            t1 = width-ndelay
-            print('auto delay', delay, t1)
-        nwidth = width
-        baseline = []
-        meani = []
-        stimamp = []
-        stimintvl = []
-        cmdv = []
-        self.sign = 1
-        self.set_baseline_times(rmpregion)
-        self.i_mean = []
-        self.analysis_summary['iHold'] = []
-        self.i_mean = []
-        self.analysis_summary[f'PPF'] = [[]]*len(stim_dt)
-        # print(pulse_train)
-        self.i_mean = []
-        ppftr = {}
-        
-        rgn = [delay, width]
-        # print('rgn: ', rgn)
-        if self.update_regions:
-            rgn = self.set_region([pulse_train['start'][0], pulse_train['start'][0]+width], baseline=bl)
-        self.T0 = float(rgn[0])
-        self.T1 = float(rgn[1])
-        window = self.T1-self.T0
-        p1delay = pulse_train['start'][0] + self.T0 # first stim of pair
-        p1end = pulse_train['start'][0] + self.T1
-        # print('p1delay, p1end: ', p1delay, p1end)
-        pulse2 = pulse_train['start'][0] + stim_dt[0]
-        # if p1end >= pulse2:  # would run into next stimulus!
-        #     delt = p1end - pulse2
-        #     # self.T1 -= delt  # make it msec shorter
-        #     p1end = pulse_train['start'][0] + self.T1
-        #     print('new p1end: ', p1end)
-        bl = self.mean_I_analysis(region=self.baseline, mode='baseline', reps=[0])
-        original_p1end = p1end
-        for i in range(len(stim_dt)):
-            p2delay = p1delay + stim_dt[i] # second stim of pair
-            p2end = p2delay + self.T1
-            p1end = original_p1end
-            if p1end > (p1delay + stim_dt[0]):
-                p1end = p2delay-0.001
-            #     print('reset p1end from ', original_p1end, '   to ', p1end)
-            # print('ppf p1, p2, p1end, t1: ', p1delay, p2delay, p1end, self.T1)
-            # print('ppf T1: ', float(self.T1))
-            # print('ppf p1delay, end: ', p1delay, p1end, '  diff = ', p1end-p1delay, stim_dt[i])
-            i_mean_ref = self.mean_I_analysis(region=[p1delay, p1end], mode='min', baseline=bl, t0=p1delay,
-                        intno=i, nint=len(stim_dt), reps=reps)
-            i_ref = self.i_data
-            tb_ref = self.i_tb
-            if i_mean_ref is None:
-                return False
-            i_mean = self.mean_I_analysis(region=[p2delay, p2end], mode='min', baseline=bl, t0=p2delay,
-                intno=i, nint=len(stim_dt), reps=reps)
-            i_p2 = self.i_data
-            tb_p2 = self.i_tb
-            # i_mean -= bl.mean()
-            # i_mean_ref -= bl.mean()
-            cmdv.extend([self.V_cmd[i]])
-            stimamp.extend(pulse_train['amplitude'])
-            stimintvl.append(stim_dt[i])
-            self.analysis_summary[f'PPF'][i] = i_mean/i_mean_ref
-            ppftr[stim_dt[i]] = {'TRef': tb_ref, 'IRef': i_ref-i_ref[0], 'TPP2': tb_p2, 'IPP2': i_p2-i_ref[0]}
-            # print('iref, ip2: ', i, ppftr[stim_dt[i]]['IRef'][0]*1e9, ppftr[stim_dt[i]]['IPP2'][0]*1e9)
-        self.analysis_summary['PPF_traces'] = ppftr
-        self.analysis_summary['psc_stim_amplitudes'] = np.array(stim_I)
-        self.analysis_summary['psc_intervals'] = np.array(stimintvl)
-        self.analysis_summary['ppf_dt'] = np.array(stim_dt)
-        self.analysis_summary['stim_times'] = pulse_train['start']
-        self.analysis_summary['window'] = [self.T0, self.T1]
-        # f, ax = mpl.subplots(1,1)
-        # ax = np.array(ax).ravel()
-        # for i in range(len(stim_dt)):
-        #     dt = stim_dt[i]
-        #     ax[0].plot(ppftr[dt]['TRef'], ppftr[dt]['IRef'], 'k')
-        #     ax[0].plot(ppftr[dt]['TPP2'], ppftr[dt]['IPP2'], 'k')
-        # mpl.show()
-        return True
 
 
     def set_region(self, region=None, baseline=None, slope=True):
