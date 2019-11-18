@@ -755,8 +755,18 @@ class DataSummary():
             df.to_pickle(self.outFilename)
         if self.outputMode == 'pandas' and self.append:
             print('\nAPPENDING to EXISTING PANDAS DATAFRAME')
+            # first save the original with a date-time string appended
+            ofile = Path(self.outFilename)
+            if ofile.is_file:
+                n = datetime.datetime.now()  # get current time
+                dateandtime = n.strftime("_%Y%m%d-%H%M%S") # make a value indicating date and time for backup file
+                bkfile = Path(ofile.parent, str(ofile.stem)+dateandtime).with_suffix('.bak')
+                print('Copied original to backup file: ', bkfile)
+                maindf = pd.read_pickle(ofile) # read in the current file
+                ofile.rename(bkfile)
+            else:
+                raise ValueError(f'Cannot append to non-existent file: {self.outFilename:s}')
             df = pd.read_csv(pandas.compat.StringIO(self.panda_string), delimiter='\t')
-            maindf = pd.read_pickle(self.outFilename)
             maindf = maindf.append(df)
             maindf = maindf.reset_index(level=0, drop=True)
            # maindf = maindf.reset_index()  # redo the indices so all in sequence
