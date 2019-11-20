@@ -26,11 +26,18 @@ objlist = {4: '4x 0.1na ACHROPLAN',
 
 
 bp = '/Volumes/Pegasus/ManisLab_Data3/Kasten_Michael/NF107Ai32Het'
-fn = '2019.11.15_000/slice_001/cell_001'
+
+# fn = '2019.11.15_000/slice_001/cell_001'
+# changelist = {'image_001.tif': [4, 10], 'image_002.tif': [4, 10], 'video_000.ma': [4, 10]}
+
+# fn = '2019.04.16_000/slice_002/cell_000'
+# changelist = {'image_009.tif': [4, 10], 'image_010.tif': [4, 10], 'image_011.tif': [4, 10],'image_012.tif': [4, 10],'image_013.tif': [4, 10],}
+
+fn = '2019.04.16_000/slice_003/cell_001'
+changelist = {'image_001.tif': [4, 10], 'image_002.tif': [4, 10], 'video_000.ma': [4, 10],}
 
 p = Path(bp, fn, '.index')
 
-changelist = {'image_001.tif': [4, 10], 'image_002.tif': [4, 10], 'video_000.ma': [4, 10]}
 
 def read_index(p):
     d = datetime.datetime.now()

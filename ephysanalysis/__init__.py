@@ -26,6 +26,7 @@ import ephysanalysis.cursor_plot
 import ephysanalysis.MakeClamps
 import ephysanalysis.test_notch
 import ephysanalysis.plot_maps
+import ephysanalysis.fix_objscale
 
 import ephysanalysis.metaarray as MetaArray
 

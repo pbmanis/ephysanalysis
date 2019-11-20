@@ -23,6 +23,7 @@ import matplotlib.pyplot as mpl
 from matplotlib.widgets import RectangleSelector
 import matplotlib.backend_bases as MBB
 import scipy.ndimage as SND
+import shapely as SH
 
 from pylibrary import PlotHelpers as PH
 import pylibrary.Utility as PU
@@ -80,6 +81,9 @@ class ScannerInfo(object):
         #        [pos[0] + scale[0]*region[0]/binning[0], pos[1] + scale[1]*region[1]/binning[1]]
         #    ]
         scannerbox = BRI.getRectangle(self.AR.scannerpositions)
+        self.scanner_sh = SH.geometry.MultiPoint(self.AR.scannerpositions)
+        self.envelope_sh = self.scanner_sh.envelope
+        self.centroid_sh = self.scanner_sh.centroid
         if scannerbox is None:  # likely just one point
             pt = self.AR.scannerpositions
             fp = np.array([[pt[0][0]], [pt[0][1]]])
@@ -119,10 +123,8 @@ class ImageInfo(object):
         y0 = pos[1] #+ scale[1]*region[1]/binning[1]
         y1 = pos[1] + scale[1]*(region[3])/binning[1]
         self.camerabox = [[x0, y0], [x0, y1], [x1, y1], [x1, y0], [x0, y0]]
-        # print('image camerabox: ', self.camerabox)
         self.boxw = np.swapaxes(np.array(self.camerabox), 0, 1)
         # self.boxw = np.array(self.camerabox)
-        # print('Image boxw: ', self.boxw)
 
 
 class MosaicReader(object):
@@ -194,6 +196,7 @@ class MapTraces(object):
         self.datasets = OrderedDict()
         self.image = None
         self.AR = ARC.Acq4Read()
+        self.AR.setImportant(False) # turn off the default flag
         self.outputfn = None
         self.invert = True
         self.vmax = 20000.
@@ -210,6 +213,8 @@ class MapTraces(object):
         self.indicesplotted = []
         self.twin = [0, 0.6]
         self.averageScannerImages = False # normally, would not do
+        self.cellpos = None
+        self.experiment = None
         self.image = None
         self.mosaic = None
         self.mosaics = []
@@ -242,7 +247,27 @@ class MapTraces(object):
             raise ValueError
         if image is not None:
             self.image = Path(self.cell, image)
-            self.image_data = self.AR.getImage(self.image)
+            print('image path: ', self.image)
+            if str(Path(self.image).name).startswith('image_'):
+                imagefile = Path(self.image).with_suffix('.tif')  # make sure right suffix is there
+                self.image_data = self.AR.getImage(Path(imagefile))
+            elif str(Path(self.image).name).startswith('image_'):
+                imagefile = Path(self.image).with_suffix('.tif')  # make sure right suffix is there
+                self.image_data = self.AR.getImage(Path(imagefile))
+            elif str(Path(self.image).name).startswith('video_'):
+                imagefile = Path(self.image).with_suffix('.ma')
+                print('imagefile: ', imagefile)
+                self.image_data = self.AR.getImage(Path(imagefile))
+                self.image_data = np.max(self.image_data, axis=0)  # max projection along stack
+                self.image_data = np.rot90(np.fliplr(self.image_data))
+            else:
+                raise ValueError('Do not know how to handle image: ', self.image)
+            self.AR.getIndex(currdir=imagefile.parent)
+            if 'userTransform' not in list(self.AR._index[imagefile.name].keys()):
+                self.refpos = self.AR._index[imagefile.name]['deviceTransform']['pos']
+            else:
+                self.refpos = self.AR._index[imagefile.name]['userTransform']['pos']  # use repositioned image location
+
             self.ImgInfo = ImageInfo(self.AR)
 
         else:
@@ -314,6 +339,10 @@ class MapTraces(object):
                     self.notch_flag = True
             if k == 'notch_q':
                 self.notch_Q = float(pdict[k])
+            if k == 'cellpos':
+                self.cellpos = pdict[k]
+            if k == 'experiment':
+                self.experiment = pdict[k]
 
     def filter_data(self, tb, data, LPF=3000.):
         self.HPF_flag = False
@@ -356,7 +385,7 @@ class MapTraces(object):
         """
         Plot map or superimposed maps...
         """
-        print('plot_maps')
+        print('plot_maps: plot_maps with protocols: ', protocols)
         if ax is None:
             self.figure = mpl.figure()
             # print(dir(self.figure))
@@ -416,7 +445,16 @@ class MapTraces(object):
         x1, x2 = self.ax.get_xlim()
         y1, y2 = self.ax.get_ylim()
         return([x1, y1, x2, y2])
-        
+
+    def adjust(self, extent, a):
+        # adjust the extent so that the minimum boundary to the edge of the plot is a, 
+        # and so that the area plotted is "common" across datasets
+        minx = self.SI.centroid_sh.x - a/2.
+        maxx = self.SI.centroid_sh.x + a/2.
+        miny = self.SI.centroid_sh.y - a/2.
+        maxy = self.SI.centroid_sh.y + a/2.
+        return([minx, maxx, miny, maxy])
+    
     def show_traces(self, ax, pcolor='r', linethickness=0.5, name=None):
 
         self.cell.glob('*')
@@ -434,12 +472,14 @@ class MapTraces(object):
             cmap = 'gist_gray_r'
         else:
             cmap = 'gist_gray'
+        mapwidth = 1e-3
         self.imageax = None
         self.max_camera = None
         sc_alpha = 0.75
         vid_alpha = 0.75
         image_alpha = 0.75
         mosaic_alpha = 0.75
+        box = None
         if self.averageScannerImages:
             sc_alpha = 0.75
             vid_alpha = 0.5
@@ -452,12 +492,16 @@ class MapTraces(object):
             sm = sm/np.max(sm)
             sm = sm*sm
             # sm = np.clip(sm, a_min=0.5, a_max=None)
-            self.extentSI = [np.min(self.SI.boxw[0]), np.max(self.SI.boxw[0]), np.min(self.SI.boxw[1]), np.max(self.SI.boxw[1])]
+            self.extent0 = [np.min(self.SI.boxw[0]), np.max(self.SI.boxw[0]), np.min(self.SI.boxw[1]), np.max(self.SI.boxw[1])]
+            self.extent = self.adjust(self.extent0, mapwidth)
             self.imageax = ax.imshow(sm, aspect='equal', cmap='Blues', alpha=sc_alpha, vmin = 0, vmax=np.max(sm),
-                extent=self.extentSI)
+                extent=self.extent0)
         # max_camera = scipy.ndimage.gaussian_filter(max_camera, sigma=256/(4.*10))
             self.cmin = SND.minimum(self.max_camera)
             self.cmax = SND.maximum(self.max_camera)
+            box = self.SI
+        
+        print('VIDEOS image scanner mosaic: ', self.videos, self.image, self.averageScannerImages, self.mosaics)
         if len(self.videos) > 0:
             self.Montager = montage.Montager(celldir=self.cell)
             self.Montager.run()
@@ -465,19 +509,26 @@ class MapTraces(object):
             self.Montager.process_videos(window='mpl', show=True, gamma=1.5, merge_gamma=-1., sigma=2.5)
             # bounds are in  self.Montager.bounds: (minx, miny, maxx, maxy)
             bounds = self.Montager.bounds
-            self.extentV = [bounds[0], bounds[2], bounds[1], bounds[3]]
+            self.extent0 = [bounds[0], bounds[2], bounds[1], bounds[3]]
+            self.extent = self.adjust(self.extent0, mapwidth)
             self.imageax = ax.imshow(self.merged_image, aspect='equal', cmap=cmap, alpha=vid_alpha, vmin = 0, vmax=self.vmax,
-                extent=self.extentV)
+                extent=self.extent0)
             self.cmin = SND.minimum(self.merged_image)
             self.cmax = SND.maximum(self.merged_image)
+            box = self.extent
             
         if self.image is not None:
-            self.extentI = [np.min(self.ImgInfo.boxw[0]), np.max(self.ImgInfo.boxw[0]), np.min(self.ImgInfo.boxw[1]), np.max(self.ImgInfo.boxw[1])]
+            # mpl.imshow(self.image_data)
+            # mpl.show()
+            self.extent0 = [np.min(self.ImgInfo.boxw[0]), np.max(self.ImgInfo.boxw[0]), np.min(self.ImgInfo.boxw[1]), np.max(self.ImgInfo.boxw[1])]
+            self.extent = self.adjust(self.extent0, mapwidth)
             self.imageax = ax.imshow(self.image_data, aspect='equal', cmap=cmap, alpha=image_alpha, vmin = 0, vmax=self.vmax,
-                extent=self.extentI)
+                extent=self.extent0)
             self.cmin = SND.minimum(self.image_data)
             self.cmax = SND.maximum(self.image_data)
-        
+            box = self.extent
+            
+            
         if self.mosaics:
             self.Montager = montage.montager.Montager(celldir=self.cell)
             self.Montager.setup(self.mosaics)
@@ -486,14 +537,15 @@ class MapTraces(object):
             self.Montager.process_videos(window=None, show=True, gamma=1.5, merge_gamma=-1., sigma=2.5, register=False, mosaic_data=self.mosaics)
             # bounds are in  self.Montager.bounds: (minx, miny, maxx, maxy)
             bounds = self.Montager.image_boundary
-            print('bounds: ', bounds)
-            self.extentV = [bounds[0], bounds[2], bounds[1], bounds[3]]
+            self.extent0 = [bounds[0], bounds[2], bounds[1], bounds[3]]
+            self.extent = self.adjust(self.extent0, mapwidth)
             mpl.imshow(self.Montager.merged_image)
             self.imageax = ax.imshow(self.Montager.merged_image, aspect='equal', cmap=cmap, alpha=mosaic_alpha, vmin = 0, vmax=self.vmax,
-                extent=self.extentV)
+                extent=self.extent0)
             self.cmin = SND.minimum(self.Montager.merged_image)
             self.cmax = SND.maximum(self.Montager.merged_image)
-            
+            box = self.extent
+
         if self.window:
             if self.xlim == (0., 0.) and self.ylim == (0., 0.):
                 xylims = self.extent
@@ -538,6 +590,21 @@ class MapTraces(object):
         for p in range(dshape[0]): # scp.shape[0]):
             self._plot_one(ax, p, pcolor, name=name, ythick=linethickness)
         self.plot_calbar(ax, xmin, ymin)
+        
+        # plot length (physical dimension) bar
+        if box is not None:
+            PH.calbar(ax, calbar=[box[0]+0.00012,
+                                     box[3]-0.00005,
+                                     0.0001 , 0], 
+                scale = [1e6, 1e6], axesoff=True, orient='left',
+                unitNames={'x': r'$\mu$m', 'y': ''}, fontsize=11, weight='normal', color='k', font='Arial')
+        ax.set_xlim(self.extent[0:2])
+        ax.set_ylim(self.extent[2:4])
+        if self.cellpos is not None:
+            mpl.gca().plot(self.cellpos[0], self.cellpos[1], color='blue', marker='P', markersize=6)
+        if self.experiment is not None:
+            mpl.gca().set_title(f"{self.experiment:s}", fontsize=9)
+            
         # print(dir(self.imageax))
         
     def plot_calbar(self, ax, x0, y0):
@@ -720,10 +787,10 @@ def main():
     table = pd.read_excel('NF107Ai32_Het/Example Maps/SelectedMapsTable.xlsx')
 
     def makepars(dc):
-        parnames = ['invert', 'vmin', 'vmax', 'xscale', 'yscale', 'calbar', 'twin', 'ioff', 'ticks', 'notch_freqs', 'notch_q']
+        parnames = ['offset', 'cellpos', 'experiment', 'invert', 'vmin', 'vmax', 'xscale', 'yscale', 'calbar', 'twin', 'ioff', 'ticks', 'notch_freqs', 'notch_q']
         pars = dict()
         for n in parnames:
-            if n in ['calbar', 'twin']:
+            if n in ['calbar', 'twin', 'offset', 'cellpos']:
                 pars[n] = eval('['+dc[n].values[0]+']')
             elif n in ['ticks']:
                 pars[n] = [dc[n].values[0]]
@@ -746,7 +813,7 @@ def main():
         elif eclick.button == MBB.MouseButton.RIGHT:
             if len(MT.XY) == 0:
                 return
-            # print(MT.XY)
+            print('MT.xy: ', MT.XY)
             x1, y1, x2, y2 = MT.XY.pop()
         xl = sorted([x1, x2])
         yl = sorted([y1, y2])
@@ -761,19 +828,23 @@ def main():
         if event.key in ['Q', 'q'] and toggle_selector.RS.active:
             print(' RectangleSelector deactivated.')
             toggle_selector.RS.set_active(False)
+       
         elif event.key in ['A', 'a'] and not toggle_selector.RS.active:
             print(' RectangleSelector activated.')
             toggle_selector.RS.set_active(True)
+       
         elif event.key in ['p', 'P']:
             xylims = MT.get_XYlims()
             print(f"{xylims[0]:.5f}\t{xylims[2]:.5f}\t{xylims[1]:.5f}\t{xylims[3]:.5f}")
             if MT.calbarobj is not None:
                 print(MT.calbarobj[0].get_xydata())
+       
         elif event.key in ['s', 'S']:
             xylims = MT.get_XYlims()
             print(f"Position: {xylims[0]:.5f}\t{xylims[2]:.5f}\t{xylims[1]:.5f}\t{xylims[3]:.5f}")
             mpl.savefig(MT.outputfn)
             exit()
+        
         elif event.key in ['z', 'Z']:
             MT.cmin = SND.minimum(MT.image_data)
             MT.cmax = SND.maximum(MT.image_data)
@@ -798,8 +869,12 @@ def main():
             MT.cmin -= 200
             MT.imageax.set_clim(MT.cmin, MT.cmax)
             mpl.draw()
+        
         elif event.key in ['v', 'V']:
             print(f'Cmin, max: {MT.cmin:.1f}\t{MT.cmax:.1f}')
+
+        elif event.key in ['c', 'C']: # report cell position
+            print(f'Cell Position: {event.xdata:.9f},{event.ydata:.9f}')
         
         elif event.key in ['right', '\x1b[C']:
             MT.reposition_cal(movex=-1)  # move right
@@ -824,9 +899,12 @@ def main():
             return False
         # print('cellname: ', cellname)
         cell = Path(basepath, str(dc['cellID'].values[0]), str(dc['map'].values[0]))
-        print('image: ', dc['image'].values[0])
-        if not pd.isnull(dc['image'].values[0]):
-            image = '../' + str(dc['image'].values[0]) + '.tif'
+        imagename = dc['image'].values[0]
+        print('image: ', imagename)
+        if not pd.isnull(imagename) and imagename.startswith('image_') or imagename.startswith('../image_'):
+            image = Path('..', imagename).with_suffix('.tif')
+        elif not pd.isnull(imagename) and imagename.startswith('video_'):
+            image = Path('..', imagename).with_suffix('.ma')
         else:
             image = None
         if not pd.isnull(dc['mosaic'].values[0]):
@@ -839,7 +917,6 @@ def main():
         MT.setWindow(dc['x0'].values[0], dc['x1'].values[0], dc['y0'].values[0], dc['y1'].values[0])
         MT.setOutputFile(Path(experiments[experimentname]['directory'], f"{cellname:s}{int(cellno):d}_map.pdf"))
         prots = {'ctl': cell}
-
         MT.setProtocol(cell, image=image, mosaic=mosaic)
         MT.plot_maps(prots, ax=ax, linethickness=0.5)
         return True

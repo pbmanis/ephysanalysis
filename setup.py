@@ -24,6 +24,7 @@ setup(name='ephysanalysis',
                'cmeasure=ephysanalysis.cursor_plot:main',
                'matread=ephysanalysis.MatdatacRead:main',
                'plotmaps=ephysanalysis.plot_maps:main',
+               'fix_objscale=ephysanalysis.fix_objscale:main',
           ]
       },
       classifiers = [

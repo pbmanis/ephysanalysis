@@ -80,8 +80,18 @@ class Acq4Read():
         self.values = []
         self.trace_StartTimes = np.zeros(0)
         self.sample_rate = []
-                
-        
+        self.importantFlag = True # set to false to IGNORE the important flag for traces
+
+    def setImportant(self, flag=False):
+        """
+        Parameters
+        ----------
+        flag : bool (default: False)
+            Set the important flag: if True, we pay attention to the flag
+            for each trace when returning data; if False, we ignore the flag
+        """
+        self.importantFlag = flag
+
     def setProtocol(self, pathtoprotocol):
         """
         Parameters
@@ -159,6 +169,7 @@ class Acq4Read():
         for individual traces
         Return a dict of the traces that are "important"
         """
+        
         important = {}
         if protocolpath is None:
             protocolpath = self.protocol
@@ -182,7 +193,7 @@ class Acq4Read():
             print('acq4read.checkProtocol: No clamp devices found?')
             return False 
         mainDevice = clampDevices[0]
-
+        
         ncomplete = 0
         nexpected = len(dirs)  # acq4 writes dirs before, so this is the expected fill
         for i, directory_name in enumerate(dirs):  # dirs has the names of the runs within the protocol
@@ -196,7 +207,7 @@ class Acq4Read():
                 if "important" in list(tr_info.keys()):
                     important[directory_name.name] = True
                 ncomplete += 1  # count up
-        if len(important) == 0:  # if none were marked, treat as if ALL were marked (reject at top protocol level)
+        if len(important) == 0 or not self.importantFlag:  # if none were marked, treat as if ALL were marked (reject at top protocol level)
             for i, directory_name in enumerate(dirs):
                 important[directory_name.name] = True
         self.important = important  # save, but also return
@@ -522,7 +533,10 @@ class Acq4Read():
         # if no such traces exist, then accept ALL traces
         important = []
         for i, d in enumerate(dirs):
-            important.append(self._getImportant(self.getIndex(d)))
+            if self.importantFlag:
+                important.append(self._getImportant(self.getIndex(d)))
+            else:
+                important.append(True)
         if sum(important) % 2 == 0: # even number of "True", fill in between.
             state = False
             for i in range(len(important)):
@@ -980,12 +994,18 @@ class Acq4Read():
         getImage
         Returns the image file in the dataname
         Requires full path to the data
+        Can also read a video (.ma) file, returning the stack
         """
-        self.imageData = tf.imread(str(filename))
+        fn = Path(filename)
+        if fn.suffix in ['.tif', '.tiff']:
+            self.imageData = tf.imread(str(filename))
+        elif fn.suffix in ['.ma']:
+            self.imageData = EM.MetaArray(file=filename)
         d = str(filename.name)
         self.Image_filename = d
         cindex = self._readIndex(Path(filename.parent))
-        if 'userTransform' in cindex[d].keys() and cindex[d]['userTransform']['pos'] != (0., 0.):
+
+        if 'userTransform' in list(cindex[d].keys()) and cindex[d]['userTransform']['pos'] != (0., 0.):
             z = np.vstack(cindex[d]['userTransform']['pos'] + cindex[d]['transform']['pos']).ravel()
             self.Image_pos = ((z[0]+z[2]), (z[1]+z[3]), z[4])
         else:
