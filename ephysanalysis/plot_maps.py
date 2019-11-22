@@ -24,6 +24,7 @@ from matplotlib.widgets import RectangleSelector
 import matplotlib.backend_bases as MBB
 import scipy.ndimage as SND
 import shapely as SH
+import shapely.affinity as SHA
 
 from pylibrary import PlotHelpers as PH
 import pylibrary.Utility as PU
@@ -219,6 +220,10 @@ class MapTraces(object):
         self.mosaic = None
         self.mosaics = []
         self.calbar = [20, 500]  # 20 ms, 500 pA
+        self.tbarpos = None # gets set to intersection once created
+        self.tbar_coords = None  # line for the tbar
+        self.tbar = None # matplotlib line object for tbar
+        self.tbar_visible = False
         self.picker = picker.Picker()
         sns.set()
         sns.color_palette("colorblind", 10)
@@ -708,7 +713,49 @@ class MapTraces(object):
         self.nspots += 1
         self.indicesplotted.append(index)
         mpl.draw()
-        
+    
+    def toggle_tbar(self, event):
+        if self.tbar_visible and self.tbar_coords is not None:
+            self.tbar[0].set_alpha(0)
+            self.tbar_visible = False
+            return
+        else:
+            self.update_tbar(event)
+            
+    def _getAngle(self, pt1, pt2):
+        """
+        Pt1 and 2 must be shapely Point objects"""
+        x_diff = pt2.x - pt1.x
+        y_diff = pt2.y - pt1.y
+
+        return np.arctan2(y_diff, x_diff)
+    
+    def update_tbar(self, event):
+        if self.tbar_coords is None:
+            cx = self.cellpos[0]  # center (cell pos)
+            cy = self.cellpos[1]
+
+            tlinex = [cx,      cx, cx,      cx-1e-4, cx+1e-4]  # draw the T bar
+            tliney = [cy-1e-4, cy, cy+1e-4, cy+1e-4, cy+1e-4]
+            self.tbar_coords = SH.geometry.LineString([(tlinex[i], tliney[i]) for i in range(len(tlinex))])
+            self.tbar = self.ax.plot(self.tbar_coords.xy[0], self.tbar_coords.xy[1], 'ko-', linewidth=1.5)
+        else:
+            e = SH.geometry.Point([event.xdata, event.ydata])  # point in direction for top of T bar
+            center = SH.geometry.Point(self.cellpos[0], self.cellpos[1])  # center (flip y axis)
+            t = SH.geometry.Point([self.tbar_coords.xy[0][2], self.tbar_coords.xy[1][2]])
+            angle1 = self._getAngle(center, e)
+            angle2 = self._getAngle(center, t)
+            print('angle: ', angle2-angle1)
+            
+            newT = SH.affinity.rotate(self.tbar_coords, angle1-angle2, origin=center, use_radians=True)
+            self.tbar[0].set_xdata(newT.xy[0])
+            self.tbar[0].set_ydata(newT.xy[1])
+        self.tbar[0].set_alpha(1)
+        self.tbar_visible = True
+    
+    def draw_scholl(self, rad, n):
+        poly
+
 def main():
 
     import nf107.set_expt_paths as set_expt_paths
@@ -869,13 +916,25 @@ def main():
             MT.cmin -= 200
             MT.imageax.set_clim(MT.cmin, MT.cmax)
             mpl.draw()
+
+        if event.key in ['T']:
+            MT.toggle_tbar(event)
+            
+        elif event.key in ['t']:
+            # set the top t-bar position
+            MT.update_tbar(event)
         
+        elif event.key in ['r']: # draw scholl
+            MT.draw_scholl(5e-5, 5)  # 50 um spacing, 5 circles
+            
         elif event.key in ['v', 'V']:
             print(f'Cmin, max: {MT.cmin:.1f}\t{MT.cmax:.1f}')
 
         elif event.key in ['c', 'C']: # report cell position
             print(f'Cell Position: {event.xdata:.9f},{event.ydata:.9f}')
+            MT.cellPos = [event.xdata, event.ydata]
         
+        # these move the calibration bar
         elif event.key in ['right', '\x1b[C']:
             MT.reposition_cal(movex=-1)  # move right
         elif event.key in ['left', '\x1b[D']:
