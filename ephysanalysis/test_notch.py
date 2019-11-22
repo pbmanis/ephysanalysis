@@ -290,7 +290,7 @@ class TraceAnalyzer(pg.QtGui.QWidget):
         self.minis_sign.currentIndexChanged.connect(self.update_traces)
         
         
-        spacerItem1 = pg.QtGui.QSpacerItem(0, 400, pg.QtGui.QSizePolicy.Expanding, pg.QtGui.QSizePolicy.Minimum)
+        spacerItem1 = pg.QtGui.QSpacerItem(0, 100, pg.QtGui.QSizePolicy.Expanding, pg.QtGui.QSizePolicy.Minimum)
         self.buttons.addItem(spacerItem1)
         
         self.b2 = pg.QtGui.QPushButton("Quit")
