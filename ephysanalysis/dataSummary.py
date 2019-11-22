@@ -26,37 +26,41 @@ July 2018:
 Major surgery - to output Pandas (pickled) files as well. UGH.
 
 ----------------
+usage: dataSummary [-h] [-o {terminal,pandas,excel,tabfile,text}]
+                   [-f OUTPUTFILENAME] [-r] [-w] [-u] [-D] [--daylist DAYLIST]
+                   [-d DAY] [-a AFTER] [-b BEFORE] [--dry-run] [-v]
+                   [--no-inspect] [--depth {days,slices,cells,protocols,all}]
+                   [-A] [-p]
+                   basedir
 
-usage: dataSummary.py [-h] [-o {terminal,pandas,excel,tabfile}]
-                      [-f OUTPUTFILENAME] [-r] [-w] [-D] [--daylist DAYLIST]
-                      [-a AFTER] [-b BEFORE] [--dry-run] [-v] [--no-inspect]
-                      [-d {days,slices,cells,protocols,all}]
-                      basedir
+    Generate Data Summaries from acq4 datasets
 
-Generate Data Summaries from acq4 datasets
+    positional arguments:
+      basedir               Base Directory
 
-positional arguments:
-  basedir               Base Directory
-
-optional arguments:
-  -h, --help            show this help message and exit
-  -o {terminal,pandas,excel,tabfile}, --output {terminal,pandas,excel,tabfile}
-                        Specify output dataplan key for one entry to process
-  -f OUTPUTFILENAME, --filename OUTPUTFILENAME
-                        Specify output file name (including full path)
-  -r, --read            just read the summary table
-  -w, --write           Analyze and write the data summary
-  -D, --deep            perform deep inspection (very slow)
-  --daylist DAYLIST     Specify daylistfile
-  -a AFTER, --after AFTER
-                        only analyze dates on or after a date
-  -b BEFORE, --before BEFORE
-                        only analyze dates on or before a date
-  --dry-run             Do a dry run, reporting only directories
-  -v, --verbose         Verbose print out during run
-  --no-inspect          Do not inspect protocols, only report directories
-  -d {days,slices,cells,protocols,all}, --depth {days,slices,cells,protocols,all}
-                        Specify depth for --dry-run
+    optional arguments:
+      -h, --help            show this help message and exit
+      -o {terminal,pandas,excel,tabfile,text}, --output {terminal,pandas,excel,tabfile,text}
+                            Specify output dataplan key for one entry to process
+      -f OUTPUTFILENAME, --filename OUTPUTFILENAME
+                            Specify output file name (including full path)
+      -r, --read            just read the summary table
+      -w, --write           Analyze and write the data summary
+      -u, --update          If writing, force update for days already in list
+      -D, --deep            perform deep inspection (very slow)
+      --daylist DAYLIST     Specify daylistfile
+      -d DAY, --day DAY     day for analysis
+      -a AFTER, --after AFTER
+                            only analyze dates on or after a date
+      -b BEFORE, --before BEFORE
+                            only analyze dates on or before a date
+      --dry-run             Do a dry run, reporting only directories
+      -v, --verbose         Verbose print out during run
+      --no-inspect          Do not inspect protocols, only report directories
+      --depth {days,slices,cells,protocols,all}
+                            Specify depth for --dry-run
+      -A, --append          update new/missing entries to specified output file
+      -p, --pairs           handle pairs
 
 Example:
 python ephysanalysis/dataSummary.py   /Volumes/Pegasus/ManisLab_Data3/Kasten_Michael/NF107ai32Het/ -a 2017.04.16 -o pandas -f NF107_after_2018.04.16 -w --depth all --dry-run
@@ -858,6 +862,7 @@ def main():
             verbose=args.verbose, update=args.update, pairflag=args.pairflag)
 
     if args.write:
+        print('Writing: ')
         ds.getDay()
         if args.output in ['pandas']:
             ds.write_string()
