@@ -1016,7 +1016,8 @@ class Acq4Read():
         self.Image_binning = cindex[d]['binning']
         return(self.imageData)
 
-    def getAverageScannerImages(self, dataname='Camera/frames.ma', mode='average', firstonly=False, limit=None, filter=True):
+    def getAverageScannerImages(self, dataname='Camera/frames.ma', mode='average', 
+                firstonly=False, subtractFlag=False, limit=None, filter=True):
         """
         Average (or max or std) the images across the scanner camera files
         the images are collected into a stack prior to any operation
@@ -1033,6 +1034,16 @@ class Acq4Read():
             std : compute the standard deviation across the stack
         
         limit : maximum # of images in stack to combine (starting with first)
+        
+        subtractFlag : boolean (default: False)
+                subtract first frame from second when there are pairs of frames
+
+        firstonly : boolean (default: False)
+                return the first image only
+        
+        filter : boolean (default: True)
+                Not implemented
+                
         
         Returns
         -------
@@ -1063,6 +1074,7 @@ class Acq4Read():
             nmax = len(dirs)
         else:
             nmax = min(limit, len(dirs))
+        refimage = None
         for i, d in enumerate(dirs):
             if i == nmax:  # check limit here first
                 break
@@ -1072,9 +1084,16 @@ class Acq4Read():
             frsize = cindex['frames.ma']['region']
             binning = cindex['frames.ma']['binning']
            # print ('image shape: ', imageframe.shape)
-            if imageframe.ndim == 3 and imageframe.shape[0] > 1:
+            if imageframe.ndim == 3 and imageframe.shape[0] > 1 and not subtractFlag:
                 imageframed = imageframe[1]
-            if imageframe.ndim == 3 and imageframe.shape[0] == 1:
+            if imageframe.ndim == 3 and imageframe.shape[0] > 1 and subtractFlag:
+                if refimage is None:
+                    refiamge = imageframe[0]
+                else:
+                    refimage += imageframe[0]
+                imageframed = imageframe[1]  # take difference in images
+            
+            elif imageframe.ndim == 3 and imageframe.shape[0] == 1:
                 imageframed = imageframe[0]
             imageframed = imageframed.view(np.ndarray)
             if filter:
@@ -1090,12 +1109,17 @@ class Acq4Read():
             # if i > 3:
             #     exit()
             scannerImages[i] = imageframed
-
+        if refimage is None:
+            refimage = np.zeros_like(imageframed)
         resultframe = np.zeros((scannerImages.shape[1], scannerImages.shape[2]))
         # simple maximum projection
         print('mode: %s' % mode)
         print('scanner images: ', scannerImages.shape)
+        nimages = scannerImages.shape[0]
+        refimage = refimage/nimages # get average
         print('binning: ', binning)
+        for i in range(nimages):
+            scannerImages[i] -= refimage
         if mode == 'max':
             for i in range(scannerImages.shape[0]):
                 resultframe = np.maximum(resultframe, scannerImages[i])
