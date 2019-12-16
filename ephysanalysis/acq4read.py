@@ -126,7 +126,6 @@ class Acq4Read():
         """
         Check the protocol to see if the data is complete
         """
-        print('Check...')
         if protocolpath is None:
             protocolpath = self.protocol
         dirs = self.subDirs(protocolpath)  # get all sequence entries (directories) under the protocol
@@ -182,7 +181,7 @@ class Acq4Read():
         info = info['.']
         if 'devices' not in info.keys():  # just safety... 
             print('acq4read.checkProtocol: No devices in the protocol')
-            print(info.keys())
+            print('  Here are the keys: \n', info.keys())
             return False
         devices = info['devices'].keys()
         clampDevices = []
@@ -473,6 +472,9 @@ class Acq4Read():
             return 0.
 
     def _getImportant(self, info):
+        if info is None:
+            important = False
+            return important
         if 'important' in list(info.keys()):
             important = info['important']
         else:
@@ -501,20 +503,21 @@ class Acq4Read():
         self.trace_StartTimes = np.zeros(0)
         self.sample_rate = []
         info = self.getIndex() #self.protocol)
-        holdcheck = info['devices'][self.shortdname]['holdingCheck']
-        holdvalue = info['devices'][self.shortdname]['holdingSpin']
+        holdcheck = False
+        holdvalue = 0.
+        if info is not None:
+            holdcheck = info['devices'][self.shortdname]['holdingCheck']
+            holdvalue = info['devices'][self.shortdname]['holdingSpin']
         if holdcheck:
             self.holding = holdvalue
-        else:
-            self.holding = 0.
         trx = []
         cmd = []
         self.protocol_important = self._getImportant(info)  # save the protocol importance flag
         sequence_values = None
-        if 'sequenceParams' in index['.'].keys():
+        self.sequence = []
+        if index is not None and 'sequenceParams' in index['.'].keys():
             self.sequence =  index['.']['sequenceParams']
-        else:
-            self.sequence = []
+
         # building command voltages or currents - get amplitudes to clamp
         reps = ('protocol', 'repetitions')
         foundclamp = False
@@ -564,7 +567,7 @@ class Acq4Read():
         for i, d in enumerate(dirs):
             fn = Path(d, self.dataname)
             if not fn.is_file():
-                # print(' acq4read.getData: File not found: ', fn)
+                print(' acq4read.getData: File not found: ', fn)
                 if check:
                     return False
                 else:
@@ -573,7 +576,6 @@ class Acq4Read():
                 return True
             if not important[i]:  # only return traces marked "important"
                 continue
-            # try:
             self.protoDirs.append(Path(d).name)  # keep track of valid protocol directories here
             tr = EM.MetaArray(file=fn)
             # except:
@@ -603,8 +605,8 @@ class Acq4Read():
             self.sample_rate.append(self.samp_rate)
             #print ('i: %d   cmd: %f' % (i, sequence_values[i]*1e12))
         if self.mode is None:
-            print ('   >> No directories processed for this protocol')
-            return False
+            units = 'A'  # just fake it
+            self.mode = 'VC'
         if 'v' in self.mode.lower():
             units = 'V'
         else:
@@ -638,30 +640,38 @@ class Acq4Read():
         self.time_base = np.array(self.time_base[0])
         protoreps = ('protocol', 'repetitions')
         mclamppulses = (self.shortdname, 'Pulse_amplitude')
-        seqparams = index['.']['sequenceParams']
+        
+        # set some defaults in case there is no .index file
+        self.repetitions = 1
+        self.tstart = 0.
+        self.tend = 0.1
+        self.comandLevels = np.array([0.])
+        
+        if index is not None:
+            seqparams = index['.']['sequenceParams']
         # print('sequence params: ', seqparams)
         #self.printIndex(index)
-        stimuli = index['.']['devices'][self.shortdname]['waveGeneratorWidget']['stimuli']
-        if 'Pulse' in list(stimuli.keys()):
-            self.tstart = stimuli['Pulse']['start']['value']
-            self.tend = self.tstart + stimuli['Pulse']['length']['value']
-        else:
-            self.tstart = 0.
-            self.tend = np.max(self.time_base)
-        seqkeys = list(seqparams.keys())
-        if mclamppulses in seqkeys:
-            self.repetitions = len(seqparams[mclamppulses])
-            self.commandLevels = np.array(seqparams[mclamppulses])
-            function = index['.']['devices'][self.shortdname]['waveGeneratorWidget']['function']
-        elif protoreps in seqkeys:
-            self.repetitions = len(seqparams[protoreps])
-            # WE probably should reshape the data arrays here (traces, cmd_wave, data_array)
-            #data = np.reshape(self.AR.traces, (self.AR.repetitions, int(self.AR.traces.shape[0]/self.AR.repetitions), self.AR.traces.shape[1]))
-        elif ('Scanner', 'targets') in seqkeys and protoreps not in seqkeys:  # no depth, just one flat rep
-            self.repetitions = 1
-        else:
-            print('sequence parameter keys: ', seqkeys)
-            raise ValueError(" cannot determine the protocol repetitions")
+            stimuli = index['.']['devices'][self.shortdname]['waveGeneratorWidget']['stimuli']
+            if 'Pulse' in list(stimuli.keys()):
+                self.tstart = stimuli['Pulse']['start']['value']
+                self.tend = self.tstart + stimuli['Pulse']['length']['value']
+            else:
+                self.tstart = 0.
+                self.tend = np.max(self.time_base)
+            seqkeys = list(seqparams.keys())
+            if mclamppulses in seqkeys:
+                self.repetitions = len(seqparams[mclamppulses])
+                self.commandLevels = np.array(seqparams[mclamppulses])
+                function = index['.']['devices'][self.shortdname]['waveGeneratorWidget']['function']
+            elif protoreps in seqkeys:
+                self.repetitions = len(seqparams[protoreps])
+                # WE probably should reshape the data arrays here (traces, cmd_wave, data_array)
+                #data = np.reshape(self.AR.traces, (self.AR.repetitions, int(self.AR.traces.shape[0]/self.AR.repetitions), self.AR.traces.shape[1]))
+            elif ('Scanner', 'targets') in seqkeys and protoreps not in seqkeys:  # no depth, just one flat rep
+                self.repetitions = 1
+            else:
+                print('sequence parameter keys: ', seqkeys)
+                raise ValueError(" cannot determine the protocol repetitions")
         return True
 
     def getClampCommand(self, data, generateEmpty=True):    
