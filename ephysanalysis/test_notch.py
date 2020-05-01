@@ -43,7 +43,7 @@ class TraceAnalyzer(pg.QtGui.QWidget):
         self.curves = []
         self.crits = []
         self.scatter = []
-        self.maxT = 0.6
+        self.maxT = 1.0
         self.tau1 = 0.1
         self.tau2 = 0.4
         self.thresh = 3.0
