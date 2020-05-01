@@ -22,7 +22,7 @@ from collections import OrderedDict
 # rcParams['ps.fonttype'] = 42
 # rcParams['text.latex.unicode'] = True
 import matplotlib.colors
-import pylibrary.plotting.plothelpers as PH
+import pylibrary.PlotHelpers as PH
 import ephysanalysis as EP
 color_sequence = ['k', 'r', 'b']
 colormap = 'snshelix'
