@@ -599,8 +599,10 @@ class Acq4Read():
                 self.values.append(sequence_values[j])
                 j += 1
             self.time_base.append(tr.xvals('Time'))
+            # print('time_base: ',self.time_base)
             sr = tr_info[1]['DAQ']['primary']['rate']
             self.sample_rate.append(self.samp_rate)
+            # print('sample_rate: ',self.sample_rate)
             #print ('i: %d   cmd: %f' % (i, sequence_values[i]*1e12))
         if self.mode is None:
             print ('   >> No directories processed for this protocol')
@@ -826,6 +828,7 @@ class Acq4Read():
         data for the current protocol
         """ 
         # non threaded
+        # print('Accessed get LaserBlueCommand')
         dirs = self.subDirs(self.protocol)
         index = self._readIndex()
         trx = []
@@ -865,6 +868,7 @@ class Acq4Read():
             self.LBR_time_base.append(lbr.xvals('Time'))
             try:
                 sr = info[1]['DAQ']['Shutter']['rate']
+
             except:
                 print(info[1]['DAQ'].keys())
                 exit(1)
@@ -873,7 +877,9 @@ class Acq4Read():
         self.LaserBlueRaw = np.array(self.LaserBlueRaw)
         self.LaserBlue_pCell = np.array(self.LaserBlue_pCell)
         self.LBR_sample_rate = np.array(self.LBR_sample_rate)
+        # print('LBR_sample_rate: ',self.LBR_sample_rate)
         self.LBR_time_base = np.array(self.LBR_time_base)
+        # print('LBR_time_base: ', self.LBR_time_base)
         return True
 
     def getPhotodiode(self):
@@ -1127,7 +1133,8 @@ def one_test():
     # test on a big file    
     a = Acq4Read()
     #cell = '/Users/pbmanis/Documents/data/mrk/2017.09.12_000/slice_000/cell_001'
-    cell = '/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.06_000/slice_002/cell_000'
+    cell='/Volumes/TJDRIVE/VGAT/2018.03.23_000/slice_000/cell_000'
+    # cell = '/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.06_000/slice_002/cell_000'
     if not Path(cell).is_dir():
         raise ValueError
     datasets = Path(cell).glob('*')
@@ -1143,7 +1150,8 @@ def one_test():
             print('Found Image: ', k)
             imagetimes.append(supindex[k]['__timestamp__'])
             imagename.append(k)
-        if k.startswith('Map_'):
+        # if k.startswith('MAP_'):
+        if k.startswith('VGAT_'):
             maptimes.append(supindex[k]['__timestamp__'])
             mapname.append(k)
     print(maptimes)
@@ -1151,11 +1159,12 @@ def one_test():
     maptoimage = {}
     for im, m in enumerate(maptimes):
         u = np.argmin(maptimes[im] - np.array(imagetimes))
-        maptoimage[mapname[im]] = imagename[u]
+        maptoimage[mapname[im]] = imagename[1]
         
     print (maptoimage)
-
+    
     for i, d in enumerate(datasets):
+        print('up in here')
         pa, da = os.path.split(d)
         if 'Map'  not in da:
             continue
@@ -1214,7 +1223,7 @@ def one_test():
     pos = mpl.ginput(-1, show_clicks=True)
     print(pos)
 
-    mpl.legend()
+    # mpl.legend()
     mpl.show()
     
 if __name__ == '__main__':
