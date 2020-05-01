@@ -24,12 +24,14 @@ from pyqtgraph.parametertree import Parameter, ParameterTree
 import mapanalysistools.digital_filters as FILT
 from minis import minis_methods
 
-
+ampdataname = 'Clamp1.ma'
+# or MultiClamp1.ma... etc
 # datadir = '/Volumes/Pegasus/ManisLab_Data3/Kasten_Michael/NF107Ai32Het'
 # dbfile = 'NF107Ai32Het_bcorr2.pkl'
 
 class TraceAnalyzer(pg.QtGui.QWidget):
     def __init__(self, app=None):
+        super(TraceAnalyzer, self).__init__()
         self.app = app
         self.datadir = '/Volumes/Pegasus/ManisLab_Data3/Kasten_Michael/NF107Ai32Het'
         self.AR = EP.acq4read.Acq4Read()  # make our own private cersion of the analysis and reader
@@ -59,15 +61,17 @@ class TraceAnalyzer(pg.QtGui.QWidget):
         sel = FS.FileSelector(dialogtype='dir', startingdir=self.datadir)
         print(sel.fileName)
         self.clampfiles = []
+        self.AR.setDataName(ampdataname)
         if sel.fileName is not None:
-            self.pdirs = Path(sel.fileName).glob('**/MultiClamp1.ma')
+            self.pdirs = Path(sel.fileName).glob(f'**/{ampdataname:s}')
             for p in self.pdirs:
                 self.clampfiles.append(p)
                 # print(p)
         self.w1.slider.setValue(0)
-        # print('# clamp files: ', len(self.clampfiles))
+        print('# clamp files: ', len(self.clampfiles))
         self.w1.slider.setRange(0, len(self.clampfiles))
-        self.w1.slider.setMaximum(len(self.clampfiles)*self.scalar)
+        self.w1.slider.setTickInterval(10)
+        # self.w1.slider.setMaximum(len(self.clampfiles))
         # setMinimum(0)
         # self.w1.slider.setMaximum(len(self.clampfiles))
         self.protocolPath = sel.fileName
@@ -197,6 +201,15 @@ class TraceAnalyzer(pg.QtGui.QWidget):
     def quit(self):
         exit(0)
 
+    def keyPressEvent(self, event):
+        print('Got event key: ', event.key())
+        if event.key() == Qt.Key_Right:
+            self.w1.slider.setValue(self.slider.value() + 1)
+        elif event.key() == Qt.Key_Left:
+            self.w1.slider.setValue(self.slider.value() - 1)
+        else:
+            QWidget.keyPressEvent(self, event) # just pass it on
+
     def getProtocols(self):
         thisdata = self.df.index[(self.df['date'] == self.date) &
                                 (self.df['slice_slice'] == self.slice) &
@@ -297,7 +310,10 @@ class TraceAnalyzer(pg.QtGui.QWidget):
         self.buttons.addWidget(self.b2)
         self.b2.clicked.connect(self.quit)
 
-        self.w1 = Slider(0, 250, scalar=1., parent=parent)
+        self.w1 = Slider(0, 500, scalar=1., parent=parent)
+        self.w1.setGeometry(0, 0, 500, 30)
+        self.w1.slider.setSingleStep(1)
+        self.w1.slider.setPageStep(1)
         self.w1.slider.valueChanged.connect(self.update_traces)
 
         # spacerItem = pg.QtGui.QSpacerItem(0, 10, pg.QtGui.QSizePolicy.Expanding, pg.QtGui.QSizePolicy.Minimum)
@@ -317,6 +333,7 @@ class FloatSlider(pg.QtGui.QSlider):
     def __init__(self, parent, decimals=3, *args, **kargs):
         super(FloatSlider, self).__init__(parent, *args, **kargs)
         self._multi = 10 ** decimals
+        print('multi: ', self._multi)
         self.setMinimum(self.minimum())
         self.setMaximum(self.maximum())
  
@@ -335,6 +352,7 @@ class FloatSlider(pg.QtGui.QSlider):
         super(FloatSlider, self).setValue(int((value-self.min_val) * self._multi))
 
 
+
 class Slider(pg.QtGui.QWidget):
     def __init__(self, minimum, maximum, scalar=1.0, parent=None):
         super(Slider, self).__init__(parent=parent)
@@ -344,7 +362,7 @@ class Slider(pg.QtGui.QWidget):
         self.horizontalLayout = pg.QtGui.QHBoxLayout()
         spacerItem = pg.QtGui.QSpacerItem(0, 20, pg.QtGui.QSizePolicy.Expanding, pg.QtGui.QSizePolicy.Minimum)
         self.horizontalLayout.addItem(spacerItem)
-        self.slider = FloatSlider(self, decimals=2)
+        self.slider = FloatSlider(self, decimals=0)
         self.slider.setOrientation(pg.QtCore.Qt.Horizontal)
         self.horizontalLayout.addWidget(self.slider)
         spacerItem1 = pg.QtGui.QSpacerItem(0, 20, pg.QtGui.QSizePolicy.Expanding, pg.QtGui.QSizePolicy.Minimum)
@@ -362,12 +380,15 @@ class Slider(pg.QtGui.QWidget):
         self.setLabelValue(self.slider.value())
 
     def setLabelValue(self, value):
-        self.x = int((self.minimum + (float(value) / (self.slider.maximum() - self.slider.minimum())) * (
-        self.maximum - self.minimum)) /self.scalar)
+        self.x = int(value) # int((self.minimum + (float(value) / (self.slider.maximum() - self.slider.minimum())) * (
+                      # self.maximum - self.minimum)) /self.scalar)
+        # print(self.minimum, self.slider.minimum(), self.maximum, self.slider.maximum(), self.scalar, value, self.x)
         self.label.setText(f"{self.x:4d}")
     
     def getPosValue(self, x):
         return int((x-self.minimum)*(self.slider.maximum() - self.slider.minimum())/(self.maximum - self.minimum))
+    
+
 
 def main():
 

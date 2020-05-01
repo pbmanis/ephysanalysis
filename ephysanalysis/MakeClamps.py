@@ -10,8 +10,8 @@ import matplotlib
 # matplotlib.use('Qt4Agg')
 
 import matplotlib.pyplot as mpl
-import pylibrary.PlotHelpers as PH
-from pylibrary.Params import Params
+import pylibrary.plotting.plothelpers as PH
+from pylibrary.params import Params
 import ephysanalysis.metaarray as EM 
 
 

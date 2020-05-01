@@ -24,14 +24,17 @@ from matplotlib.widgets import RectangleSelector
 import matplotlib.backend_bases as MBB
 import scipy.ndimage as SND
 import shapely as SH
+import shapely.affinity as SHA
+import shapely.geometry as SG
+import descartes
 
-from pylibrary import PlotHelpers as PH
-import pylibrary.Utility as PU
+from pylibrary.plotting import plothelpers as PH
+import pylibrary.utility as PU
 import seaborn as sns
 import ephysanalysis.acq4read as ARC
 import ephysanalysis.metaarray as EM
 from pyqtgraph import configfile
-from pylibrary import picker
+from pylibrary.plotting import picker
 import scipy.ndimage
 import scipy.signal
 import numpy as np
@@ -51,12 +54,18 @@ class ScannerInfo(object):
     Get scanner information, compute the scanner box and some additional parameters
     Do this as a class to encapsulate the data and make reusable.
     """
-    def __init__(self, AR):
+    def __init__(self, AR, offset):
         # print('ScannerInfo called')
         BRI = BR.BoundRect()
+        self.offset = offset
         self.AR = AR  # save the acq4read instance for access to the data
         self.AR.getScannerPositions()
         self.scannerpositions = np.array(AR.scannerpositions)
+        for i, s in enumerate(self.scannerpositions):
+            self.scannerpositions[i,0] += float(self.offset[0])
+            self.scannerpositions[i,1] += float(self.offset[1])
+        print(self.scannerpositions[:10])
+        
         pos = self.AR.scannerCamera['frames.ma']['transform']['pos']
         scale = self.AR.scannerCamera['frames.ma']['transform']['scale']
         region = self.AR.scannerCamera['frames.ma']['region']
@@ -126,6 +135,17 @@ class ImageInfo(object):
         self.boxw = np.swapaxes(np.array(self.camerabox), 0, 1)
         # self.boxw = np.array(self.camerabox)
 
+class EventReader(object):
+    def __init__(self, basepath, filename, mapname):
+
+        fne = Path(filename.replace('/', '~')+'.pkl') # '2019.11.08_000~slice_002~cell_000.pkl'
+        fe = Path(basepath, 'events', fne)
+        with open(fe, 'rb') as fh:
+            d = pd.read_pickle(fh, compression=None)
+        # print(d.keys())
+        dx = d[Path(str(fe.stem).replace('~', '/').replace('../', ''), mapname)]
+        self.data = dx
+        
 
 class MosaicReader(object):
     """
@@ -213,12 +233,22 @@ class MapTraces(object):
         self.indicesplotted = []
         self.twin = [0, 0.6]
         self.averageScannerImages = False # normally, would not do
+        self.SI_minmax = [0., 1.]
+        self.SI_original_minmax = [0., 1.]
         self.cellpos = None
         self.experiment = None
         self.image = None
         self.mosaic = None
         self.mosaics = []
         self.calbar = [20, 500]  # 20 ms, 500 pA
+        self.offset = [0., 0.]  # offset between pos and image
+        self.tbarpos = None # gets set to intersection once created
+        self.tbar_coords = None  # line for the tbar
+        self.tbar = None # matplotlib line object for tbar
+        self.tbar_visible = False
+        self.tbar_angle = 0.
+        self.scholl_plot = False
+        self.ref_angles = None
         self.picker = picker.Picker()
         sns.set()
         sns.color_palette("colorblind", 10)
@@ -239,6 +269,9 @@ class MapTraces(object):
     
     def setScannerImages(self, flag):
         self.averageScannerImages = flag
+    
+    def setEventData(self, eventdata):
+        self.eventdata = eventdata
 
     def setProtocol(self, cell, image=None, videos=None, mosaic=None):
         self.cell = Path(cell)
@@ -343,6 +376,15 @@ class MapTraces(object):
                 self.cellpos = pdict[k]
             if k == 'experiment':
                 self.experiment = pdict[k]
+            if k == 'angle':
+                self.tbar_angle = pdict[k]
+            if k == 'cellID':
+                self.cellID = pdict[k]
+            if k == 'map':
+                self.mapname = pdict[k]
+            if k == 'offset':
+                self.offset[0] = pdict[k][0]
+                self.offset[1] = pdict[k][1]
 
     def filter_data(self, tb, data, LPF=3000.):
         self.HPF_flag = False
@@ -381,7 +423,7 @@ class MapTraces(object):
         #
         return data3
 
-    def plot_maps(self, protocols, ax=None, traces=None, linethickness=1.0):
+    def plot_maps(self, protocols, ax=None, traces=None, linethickness=1.0, tbar=False, axb=None):
         """
         Plot map or superimposed maps...
         """
@@ -434,6 +476,11 @@ class MapTraces(object):
         self.XY = [self.get_XYlims()]
         cp = self.cell.parts
         cellname = '/'.join(cp[-4:])
+        self.update_tbar(None)
+        self.compute_sector_distance_map()
+        # self.plot_scholl()
+        if axb is not None:
+            self.plot_sector_distance_map(axb)
         if self.ax is None:
             self.figure.suptitle(cellname, fontsize=11)
             self.fig2 = None
@@ -454,7 +501,17 @@ class MapTraces(object):
         miny = self.SI.centroid_sh.y - a/2.
         maxy = self.SI.centroid_sh.y + a/2.
         return([minx, maxx, miny, maxy])
-    
+ 
+    def set_minmax(self, imagedata):
+        """
+        return the min, max for the data
+        """
+        mind = SND.minimum(imagedata)
+        maxd = SND.maximum(imagedata)
+        if maxd == mind:
+            maxd = mind + 1
+        return [mind, maxd]
+
     def show_traces(self, ax, pcolor='r', linethickness=0.5, name=None):
 
         self.cell.glob('*')
@@ -464,8 +521,8 @@ class MapTraces(object):
         # maptimes = []
         # mapname = []
         supindex = self.AR.readDirIndex(currdir=self.cell)
-    
-        self.SI = ScannerInfo(self.AR)
+        
+        self.SI = ScannerInfo(self.AR, self.offset)
         
         self.extent = np.array([-1, 1, -1, 1])*7e-2
         if self.invert:
@@ -474,34 +531,37 @@ class MapTraces(object):
             cmap = 'gist_gray'
         mapwidth = 1e-3
         self.imageax = None
+        self.SI_ax = None   # scanner image for rescale
         self.max_camera = None
-        sc_alpha = 0.75
+        sc_alpha = 1.0
         vid_alpha = 0.75
         image_alpha = 0.75
         mosaic_alpha = 0.75
         box = None
         if self.averageScannerImages:
-            sc_alpha = 0.75
+            sc_alpha = 1.0
             vid_alpha = 0.5
             image_alpha = 0.5
             mosaic_alpha = 0.5
             
         if self.averageScannerImages:
-            self.max_camera = self.AR.getAverageScannerImages(dataname='Camera/frames.ma', mode='max', firstonly=False, limit=None)
+            self.max_camera = self.AR.getAverageScannerImages(dataname='Camera/frames.ma', mode='max', 
+                    subtractFlag = True, firstonly=False, limit=None)
             sm = self.max_camera
             sm = sm/np.max(sm)
             sm = sm*sm
+            sm = np.asarray(sm, dtype=float)
             # sm = np.clip(sm, a_min=0.5, a_max=None)
             self.extent0 = [np.min(self.SI.boxw[0]), np.max(self.SI.boxw[0]), np.min(self.SI.boxw[1]), np.max(self.SI.boxw[1])]
             self.extent = self.adjust(self.extent0, mapwidth)
-            self.imageax = ax.imshow(sm, aspect='equal', cmap='Blues', alpha=sc_alpha, vmin = 0, vmax=np.max(sm),
+            self.SI_ax = ax.imshow(sm, aspect='equal', cmap='Blues', alpha=sc_alpha, vmin = 0, vmax=np.max(sm),
                 extent=self.extent0)
         # max_camera = scipy.ndimage.gaussian_filter(max_camera, sigma=256/(4.*10))
-            self.cmin = SND.minimum(self.max_camera)
-            self.cmax = SND.maximum(self.max_camera)
+            self.set_minmax(self.max_camera)
+            self.SI_minmax = list(self.SI_ax.get_clim())# use the clim for the min/max
+            self.SI_original_minmax = self.SI_ax.get_clim()  # keep original
             box = self.SI
         
-        print('VIDEOS image scanner mosaic: ', self.videos, self.image, self.averageScannerImages, self.mosaics)
         if len(self.videos) > 0:
             self.Montager = montage.Montager(celldir=self.cell)
             self.Montager.run()
@@ -511,7 +571,7 @@ class MapTraces(object):
             bounds = self.Montager.bounds
             self.extent0 = [bounds[0], bounds[2], bounds[1], bounds[3]]
             self.extent = self.adjust(self.extent0, mapwidth)
-            self.imageax = ax.imshow(self.merged_image, aspect='equal', cmap=cmap, alpha=vid_alpha, vmin = 0, vmax=self.vmax,
+            self.imageax = ax.imshow(np.asarray(self.merged_image, dtype=float), aspect='equal', cmap=cmap, alpha=vid_alpha, vmin = 0, vmax=self.vmax,
                 extent=self.extent0)
             self.cmin = SND.minimum(self.merged_image)
             self.cmax = SND.maximum(self.merged_image)
@@ -522,7 +582,7 @@ class MapTraces(object):
             # mpl.show()
             self.extent0 = [np.min(self.ImgInfo.boxw[0]), np.max(self.ImgInfo.boxw[0]), np.min(self.ImgInfo.boxw[1]), np.max(self.ImgInfo.boxw[1])]
             self.extent = self.adjust(self.extent0, mapwidth)
-            self.imageax = ax.imshow(self.image_data, aspect='equal', cmap=cmap, alpha=image_alpha, vmin = 0, vmax=self.vmax,
+            self.imageax = ax.imshow(np.asarray(self.image_data, dtype=float), aspect='equal', cmap=cmap, alpha=image_alpha, vmin = 0, vmax=self.vmax,
                 extent=self.extent0)
             self.cmin = SND.minimum(self.image_data)
             self.cmax = SND.maximum(self.image_data)
@@ -540,7 +600,7 @@ class MapTraces(object):
             self.extent0 = [bounds[0], bounds[2], bounds[1], bounds[3]]
             self.extent = self.adjust(self.extent0, mapwidth)
             mpl.imshow(self.Montager.merged_image)
-            self.imageax = ax.imshow(self.Montager.merged_image, aspect='equal', cmap=cmap, alpha=mosaic_alpha, vmin = 0, vmax=self.vmax,
+            self.imageax = ax.imshow(np.array(self.Montager.merged_image, dtype=float), aspect='equal', cmap=cmap, alpha=mosaic_alpha, vmin = 0, vmax=self.vmax,
                 extent=self.extent0)
             self.cmin = SND.minimum(self.Montager.merged_image)
             self.cmax = SND.maximum(self.Montager.merged_image)
@@ -708,6 +768,274 @@ class MapTraces(object):
         self.nspots += 1
         self.indicesplotted.append(index)
         mpl.draw()
+    
+    def toggle_tbar(self, event):
+        if self.tbar_visible and self.tbar_coords is not None:
+            self.tbar[0].set_alpha(0)
+            self.tbar_visible = False
+            return
+        else:
+            self.update_tbar(event)
+            
+    def _getAngle(self, pt1, pt2):
+        """
+        Pt1 and 2 must be shapely Point objects"""
+        x_diff = pt2.x - pt1.x
+        y_diff = pt2.y - pt1.y
+
+        return np.arctan2(y_diff, x_diff)
+    
+    def update_tbar(self, event):
+        center = SH.geometry.Point(self.cellpos[0], self.cellpos[1])  # center (flip y axis)
+        # first time through, just draw the bar
+        if self.tbar_coords is None:
+            cx = self.cellpos[0]  # center (cell pos)
+            cy = self.cellpos[1]
+
+            tlinex = [cx,      cx, cx,      cx-1e-4, cx+1e-4]  # draw the T bar
+            tliney = [cy-1e-4, cy, cy+1e-4, cy+1e-4, cy+1e-4]
+            self.tbar_coords = SH.geometry.LineString([(tlinex[i], tliney[i]) for i in range(len(tlinex))])
+            self.tbar = self.ax.plot(self.tbar_coords.xy[0], self.tbar_coords.xy[1], 'ko-', linewidth=1, markersize=2.5)
+        elif event is not None and event.xdata is not None:
+            e = SH.geometry.Point([event.xdata, event.ydata])  # point in direction for top of T bar
+            t = SH.geometry.Point([self.tbar_coords.xy[0][2], self.tbar_coords.xy[1][2]])
+            angle1 = self._getAngle(center, e)
+            angle2 = self._getAngle(center, t)
+            self.tbar_angle = -(angle2-angle1)
+            print('angle: ', self.tbar_angle)
+        else:
+            pass
+        newT = SH.affinity.rotate(self.tbar_coords, self.tbar_angle, origin=center, use_radians=True)
+        self.tbar[0].set_xdata(newT.xy[0])
+        self.tbar[0].set_ydata(newT.xy[1])
+        self.tbar[0].set_alpha(1)
+        self.tbar_visible = True
+        self.compute_sector_distance_map()
+        self.plot_scholl()
+
+    def _plot_coords(self, ax, ob, c='#999999', **kwds):
+        """
+        Plot the data in a shapely object
+        
+        Parameters
+        ----------
+        ax : matplotlib axis object
+            target axis to plot data into
+        
+        ob : shapely object with a .xy list of values
+        
+        c : matplotlib color value
+            RGBA, string, etc
+        
+        Returns
+        -------
+        Nothing
+        """
+        
+        x, y = ob.xy
+        ax.plot(x, y, '-', color=c, **kwds)
+        
+    def compute_sector_distance_map(self):
+        """
+        Compute the responses divided by distance (scholl rings) and sector angle
+        """
+        measure = 'ZScore'
+        thresh = 1.96
+        r = np.array([0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45])*1e-3 # convert to display units of meters from mm
+        nrings = r.shape[0]
+        t = self.cellpos
+        # first generate the rings and plot them
+        if not self.scholl_plot:
+            self.C_rings = [[] for _ in range(len(r))] # concentric rings
+            for i, rad in enumerate(r):
+                self.C_rings[i] = SG.Polygon([(rad*np.sin(theta) + t[0], rad*np.cos(theta) + t[1]) for theta in np.linspace(0., 2*np.pi, 100)])
+
+        # get the angles for each point in the map
+        x = self.SI.scannerpositions.T # self.eventdata['positions'].T  # just for the way we handle the values here.
+        nsectors = 4
+        rot_angle = np.pi/nsectors
+        point_angles = np.arctan2(x[1,:]-t[1], x[0,:]-t[0])-self.tbar_angle  # get angles relative to cell position, then rotate by tbar angle
+        try:
+            point_angles = np.where(point_angles < -rot_angle, point_angles+2*np.pi, point_angles)
+        except:
+            print('point_angles: ', point_angles)
+            print('rot_angle: ', rot_angle)
+            raise ValueError()
+        
+        # compute the angles that divide the sectors
+        # and assign a sector index to each point that falls into
+        # the sector (list per sector are held in angle_group)
+        sector_angles = []  # sector angles for every sector
+        self.angle_group = [[] for _ in range(nsectors)]
+        for quad in range(nsectors):
+            quad0 = quad*np.pi/(nsectors/2.)
+            qa = quad0 - rot_angle
+            qb = quad0 + rot_angle
+            (qa, qb) = sorted([qa, qb])
+            sector_angles.append(qa)
+
+            # find all the points in this sector
+            pgr = np.where((point_angles >= qa) & (point_angles < qb))[0]
+            self.angle_group[quad] = pgr
+        # for q in range(nsectors):
+        #     print(f'angle group[{q:d}]: ', angle_group[q])
+
+        # assign points by rings as well
+        Px2 = SG.MultiPoint([SG.Point(x[0,i], x[1,i]) for i in range(x.shape[1])])
+        ptlocs = np.zeros((x.shape[1], len(r)+1))  # for each point, all rings that it is in
+        for i, p in enumerate(Px2):
+            for j in range(len(self.C_rings)):
+                ptlocs[i,j] = self.C_rings[j].contains(p)
+
+        ring_index = [None]*ptlocs.shape[0]  # hold the ring index for each point
+        edgecolor = ['r', 'm', 'b', 'c', 'y', 'g', 'turquoise', 'brown', 'lightblue']
+        sectorsymbol = ['o', 's', '^', 'D']
+        for i in range(ptlocs.shape[0]):
+            u = np.where(ptlocs[i,:] == 1)[0]  # get the index of the first ring where the point is found
+            if len(u) > 0:  # some may be outside the outermost ring
+                ring_index[i] = u[0]  # get the index for this point (which ring)
+
+        zs = [[] for _ in range(nsectors)]  # ring index by sectors,but value stored is total zscore....
+        for i in range(len(ring_index)):
+            if ring_index[i] is not None: # outside outermost ring; ignore
+                for j in range(nsectors):  # find sector for this point
+                    if i in self.angle_group[j]:
+                        zs[j].append(i)
+            # angles.append(qb)
+        # for j in range(nsectors):
+        #     try:
+        #         print('?: ', self.eventdata['I_max'][0][zs[j]])
+        #     except:
+        #         print(j, zs[j])
+        #         self.eventdata['I_max']
+        for j in range(nsectors):
+            print('sector: ', j, '  total score: ', np.sum(self.eventdata['ZScore'][0][zs[j]]))
+            print('sector: ', j, '  total charge: ', np.sum(self.eventdata['Qr'][0][zs[j]]))
+            if len(self.eventdata['I_max'][0][zs[j]]) > 0:
+                print('sector: ', j, '  mean I_max: ', np.mean(self.eventdata['I_max'][0][zs[j]]))
+            else:
+                print('sector: ', j, '  no event data')
+        secdistmap = np.zeros((nrings, nsectors))
+        for i in range(nrings):
+            ri = np.where(np.array(ring_index) == i)[0]  # get the points in this ring
+            for j in range(nsectors):
+                siri = list(set(self.angle_group[j]).intersection(ri))  # get those points in this sector
+                if len(siri) > 0:
+                    # secdistmap[i, j] = np.mean(self.eventdata['ZScore'][0][siri])
+                    secdistmap[i, j] = np.sum(self.eventdata[measure][0][siri] > thresh)
+
+        center_of_mass = (0.,0.)  # relative to cell body.
+        for i in range(0, 2):
+            center_of_mass[i] = np.sum((self.eventdata[measure][0][:] > thresh)*(x[i,:]))
+
+        sector_center_of_mass = np.zeros((nsectors, 2))
+        self.mass = np.zeros(nsectors)
+        for i in range(nsectors):
+            self.mass[i] = np.sum(self.eventdata[measure][0][self.angle_group[i]] > thresh)
+            for j in range(2):
+                sector_center_of_mass[i][j] = np.sum((self.eventdata[measure][0][self.angle_group[i]] > thresh)*(x[j,self.angle_group[i]]))
+                try:
+                    sector_center_of_mass[i][j] /= np.sum(self.eventdata[measure][0][self.angle_group[i]] > thresh)
+                except:
+                    sector_center_of_mass[i][j] = np.nan # possible for no values > threshold
+        print('COM: ', sector_center_of_mass)
+        self.sector_center_of_mass = sector_center_of_mass
+        print('Sector distance map: ')
+        for j in range(nsectors):
+            print('   ', secdistmap[:,j])
+        self.secdistmap = secdistmap
+        self.ring_index = ring_index
+        self.nsectors = nsectors
+        self.edgecolor = edgecolor
+        self.sectorsymbol = sectorsymbol
+        self.radii = r
+        
+        rad = np.max(r)
+        # this plots lines and/or rotates them 
+        self.radlines = [((t[0], rad*np.sin(theta-self.tbar_angle)+t[0]), 
+                          (t[1], rad*np.cos(theta-self.tbar_angle)+t[1])) for theta in sector_angles]
+        cl = ['r', 'r', 'b', 'b', 'y', 'y']
+        # print('L: ', self.radlines)
+        L = self.radlines
+        if self.ref_angles is None:
+            self.ref_angles = [None]*len(L)
+            self.polydata = SG.Polygon([L[0][0], 
+                                   L[0][1], L[1][1],
+                                   L[0][0]])
+            self.polydata_ob = None
+        else:
+            if self.polydata is not None:
+                try:
+                    self.polypatch_ob.remove()
+                except:
+                    pass
+                self.polydata = SG.Polygon([L[0][0], L[0][1], L[1][1], L[0][0]])  # update data
+        # print('Polypatch generation')
+        # print('exterior: ', self.polydata.exterior)
+        # polypatch = descartes.PolygonPatch(self.polydata, facecolor='r', edgecolor='k', alpha=0.95, zorder=100000) # on top
+        # self.polypatch_ob = self.ax.add_patch(polypatch)
+        # self.polypatch_ob.set_alpha(0.5)
+        # self.polypatch_ob.set_color(cl[0])
+
+    def get_sector_center_of_mass(self):
+        """
+        Compute the center of mass for the input locations
+        Requires compute_sector_distance_map already run
+        """
+        
+
+    def plot_scholl(self):
+        for i in range(len(self.C_rings)):
+                self._plot_coords(self.ax, self.C_rings[i].exterior, c="#888888")
+        for i in range(len(self.radlines)):
+            if self.ref_angles[i] is None:
+                self.ref_angles[i] = self.ax.plot(self.radlines[i][0], self.radlines[i][1], c='gray')
+            else:
+                self.ref_angles[i][0].set_xdata(self.radlines[i][0])
+                self.ref_angles[i][0].set_ydata(self.radlines[i][1])
+        self._plot_coords(ax=self.ax, ob=self.polydata.exterior, c='#000000', linewidth=2, alpha=1.0)
+
+        x = self.SI.scannerpositions.T # just for the way we handle the values here.
+        for i in range(len(self.ring_index)):
+            if self.ring_index[i] is None: # outside outermost ring; ignore
+                self.ax.plot(x[0,i], x[1,i], 'ro', markersize=4)
+            else:  # in side rings
+                for j in range(self.nsectors):  # find sector for this point
+                    if i in self.angle_group[j]:
+                        # self.ax.plot(x[0,i], x[1,i], c=edgecolor[ring_index[i]], marker=sectorsymbol[j], markersize=4)
+                        self.ax.plot(x[0,i], x[1,i], c=self.edgecolor[j], marker=self.sectorsymbol[j], markersize=1)  # color by sector
+        maxmass = np.max(self.mass)
+        for i in range(self.nsectors):
+            self.ax.plot(self.sector_center_of_mass[i,0], self.sector_center_of_mass[i,1], c=self.edgecolor[i], 
+                marker= self.sectorsymbol[i], markersize=8*self.mass[i]/maxmass, alpha=0.75)
+        self.scholl_plot = True
+        
+    def plot_sector_distance_map(self, axin=None):
+        """
+        Plot a map of the measure, by distances and sorted by sector
+        """
+        if axin is None:
+            fig, ax = mpl.subplots(self.nsectors)
+            # ax = mpl.gca()
+        else:
+            ax = [axin]*self.nsectors
+        nmax = int(np.max(self.secdistmap))
+        PH.nice_plot(ax, position={'left': -0.02, 'bottom': -0.1})
+        for s in range(self.nsectors):
+            ax[s].plot(self.radii*1e6, self.secdistmap[:,s], self.edgecolor[s])
+            ax[s].set_ylim(0, int(nmax))
+            ax[s].set_xlim(0, 1e6*np.max(self.radii))
+            if s != self.nsectors-1:
+                PH.noaxes(ax[s], whichaxes='x')
+            PH.talbotTicks(ax[s], axes='xy', density=(1.0, 1.0), pointSize=10,
+                tickPlacesAdd={'x': 0, 'y': 0}, floatAdd={'x': 0, 'y': 0})
+            ax[s].set_ylabel(r'Responsive sites', fontsize=8)
+        ax[self.nsectors-1].set_xlabel(r'Distance ($\mu$m)')
+        if axin is None:
+            mpl.show()
+    
+
+        
         
 def main():
 
@@ -736,6 +1064,9 @@ def main():
 
     parser.add_argument('-S', '--scanner', action='store_true', dest='scannerimages',
                         help='Plot the scanner spots on the map')
+
+    parser.add_argument('-t', '--tbar', action='store_true', dest='plotwithtbar',
+                        help='Plot the traces and scanner spots with the tbar')
                         
     args = parser.parse_args()
     experimentname = args.experiment 
@@ -783,17 +1114,24 @@ def main():
     sequence, target = PU.recparse(args.sequence)
     if sequence is None:  # invoked help
         return
-
+    shiftkey = False
+    
     table = pd.read_excel('NF107Ai32_Het/Example Maps/SelectedMapsTable.xlsx')
 
     def makepars(dc):
-        parnames = ['offset', 'cellpos', 'experiment', 'invert', 'vmin', 'vmax', 'xscale', 'yscale', 'calbar', 'twin', 'ioff', 'ticks', 'notch_freqs', 'notch_q']
+        parnames = ['offset', 'cellpos', 'angle', 'experiment', 'invert', 'vmin', 'vmax', 'xscale', 'yscale', 'calbar', 'twin', 'ioff', 'ticks', 'notch_freqs', 'notch_q', 'cellID', 'map']
         pars = dict()
         for n in parnames:
             if n in ['calbar', 'twin', 'offset', 'cellpos']:
-                pars[n] = eval('['+dc[n].values[0]+']')
+                try:
+                    pars[n] = eval('['+dc[n].values[0]+']')
+                except:
+                    print('n: ', n, dc[n].values[0])
+                    raise ValueError()
             elif n in ['ticks']:
                 pars[n] = [dc[n].values[0]]
+            elif n in ['angle']: # single float value
+                pars[n] = float(dc[n].values[0])
             else:
                 pars[n] = dc[n].values[0]
         return pars
@@ -822,60 +1160,122 @@ def main():
         MT.reposition_cal()
         mpl.draw()
 
+    def release_selector(event):
+        if event.key in ['shift']:
+            pass
 
     def toggle_selector(event):
         # print(event.key, event.key in ['\x1b[A', '\x1b[B','\x1b[C','\x1b[C',])
-        if event.key in ['Q', 'q'] and toggle_selector.RS.active:
+        if event.key in ['shift']:
+            pass
+        
+        elif event.key in ['q'] and toggle_selector.RS.active:
             print(' RectangleSelector deactivated.')
             toggle_selector.RS.set_active(False)
        
-        elif event.key in ['A', 'a'] and not toggle_selector.RS.active:
+        elif event.key in ['a'] and not toggle_selector.RS.active:
             print(' RectangleSelector activated.')
             toggle_selector.RS.set_active(True)
        
-        elif event.key in ['p', 'P']:
+        elif event.key in ['p']:
             xylims = MT.get_XYlims()
             print(f"{xylims[0]:.5f}\t{xylims[2]:.5f}\t{xylims[1]:.5f}\t{xylims[3]:.5f}")
             if MT.calbarobj is not None:
                 print(MT.calbarobj[0].get_xydata())
        
-        elif event.key in ['s', 'S']:
+        elif event.key in ['s']:
             xylims = MT.get_XYlims()
             print(f"Position: {xylims[0]:.5f}\t{xylims[2]:.5f}\t{xylims[1]:.5f}\t{xylims[3]:.5f}")
             mpl.savefig(MT.outputfn)
             exit()
         
-        elif event.key in ['z', 'Z']:
+        elif event.key in ['z']:
             MT.cmin = SND.minimum(MT.image_data)
             MT.cmax = SND.maximum(MT.image_data)
             MT.imageax.set_clim(MT.cmin, MT.cmax)
             mpl.draw()
 
-        elif event.key in ['+']:
-            MT.cmax -= 500
+        # scanner image control - min and max
+        # max is controlled by pageup and down
+        # min is controlled by home and end
+        # reset is 'r'
+        elif event.key in ['pagedown', '\x1b[6~']: # pgdown - decrease max int
+            MT.SI_minmax[1] = np.max((0., MT.SI_minmax[1] - 0.05))
+            # print('clim pgdn: ', MT.SI_ax.get_clim())
+            if MT.SI_minmax[1] > MT.SI_minmax[0]:
+                MT.SI_ax.set_clim(MT.SI_minmax)
+                mpl.draw()
+
+        elif event.key in ['pageup', '\x1b[6~']: # pgup - increase max int
+            # print('climpgup: ', MT.SI_ax.get_clim())
+            MT.SI_minmax[1] = np.min((1.0, MT.SI_minmax[1] + 0.05))
+            if MT.SI_minmax[1] > MT.SI_minmax[0]:
+                MT.SI_ax.set_clim(MT.SI_minmax)
+                mpl.draw()
+
+        elif event.key in ['end', '\x1b[F']: # end -decrease min int
+            MT.SI_minmax[0] = np.max((0., MT.SI_minmax[0] - 0.05))
+            if MT.SI_minmax[1] > MT.SI_minmax[0]:
+                # print('minmax end: ', MT.SI_minmax)
+                MT.SI_ax.set_clim(MT.SI_minmax)
+                mpl.draw()
+
+        elif event.key in ['home', '\x1b[H']: # home - increase max int
+            MT.SI_minmax[0] = np.min((MT.SI_minmax[1], MT.SI_minmax[0] + 0.05))
+            if MT.SI_minmax[1] > MT.SI_minmax[0]:
+                # print('minmax home: ', MT.SI_minmax)
+                MT.SI_ax.set_clim(MT.SI_minmax)
+                mpl.draw()
+        
+        elif event.key in ['r']: # reset
+            MT.SI_minmax = MT.SI_original_minmax
+            MT.SI_ax.set_clim(MT.SI_minmax)
+            mpl.draw()
+
+        # image control group
+        # grayscale image
+        elif event.key in ['+']:  # adjust max up or down
+            MT.cmax = np.min((65535, MT.cmax + 500.))
             MT.imageax.set_clim(MT.cmin, MT.cmax)
             mpl.draw()
         elif event.key in ['-']:
-            MT.cmax += 500
+            MT.cmax = np.max((MT.cmin, MT.cmax - 500.))
             MT.imageax.set_clim(MT.cmin, MT.cmax)
             mpl.draw()
 
-        elif event.key in ['u', 'U']:
-            MT.cmin += 200
+        elif event.key in ['u']: # adjust min up or down
+            MT.cmin = np.min((MT.cmax-10., MT.cmin + 100.))
             MT.imageax.set_clim(MT.cmin, MT.cmax)
             mpl.draw()
 
-        elif event.key in ['d', 'D']:
-            MT.cmin -= 200
+        elif event.key in ['d']:
+            MT.cmin = np.max((0, MT.cmin - 100.))
             MT.imageax.set_clim(MT.cmin, MT.cmax)
             mpl.draw()
+
+        # map and T bar
+        elif event.key in ['t']  and shiftkey:
+            MT.toggle_tbar(event)
+            
+        elif event.key in ['t'] and not shiftkey:
+            # set the top t-bar position
+            MT.update_tbar(event)
         
-        elif event.key in ['v', 'V']:
+        elif event.key in ['s']: # draw scholl
+            MT.draw_scholl(5e-5, 5)  # 50 um spacing, 5 circles
+            
+        elif event.key in ['v']:
             print(f'Cmin, max: {MT.cmin:.1f}\t{MT.cmax:.1f}')
 
-        elif event.key in ['c', 'C']: # report cell position
+        elif event.key in ['c']: # report cell position
             print(f'Cell Position: {event.xdata:.9f},{event.ydata:.9f}')
+            MT.cellPos = [event.xdata, event.ydata]
         
+        elif event.key in ['m']:
+            MT.compute_sector_distance_map()
+            MT.plot_sector_distance_map()  # plot the section distance map
+        
+        # these move the calibration bar
         elif event.key in ['right', '\x1b[C']:
             MT.reposition_cal(movex=-1)  # move right
         elif event.key in ['left', '\x1b[D']:
@@ -884,14 +1284,14 @@ def main():
             MT.reposition_cal(movey=1)
         elif event.key in ['down', '\x1b[B']:
             MT.reposition_cal(movey=-1)
-        elif event.key in ['h', 'H']: 
+        elif event.key in ['h']  and not shiftkey: 
             MT.reposition_cal(home=True)  # home
         else:
-            pass
+            print('event key not mapped: ', str(event.key))
         mpl.draw()
     
 
-    def plot_a_cell(cellname, cellno, ax=None):
+    def plot_a_cell(cellname, cellno, ax=None, axb=None, tbar=False):
         dc = table.loc[table['cellname'] == cellname]
         dc = dc.loc[table['cellno'].isin([cellno])]
         if len(dc) == 0:
@@ -914,11 +1314,13 @@ def main():
         
         pars = makepars(dc)
         MT.setPars(pars)
+        ER = EventReader(experiments[experimentname]['directory'], dc['cellID'].values[0], dc['map'].values[0])
+        MT.setEventData(ER.data)
         MT.setWindow(dc['x0'].values[0], dc['x1'].values[0], dc['y0'].values[0], dc['y1'].values[0])
         MT.setOutputFile(Path(experiments[experimentname]['directory'], f"{cellname:s}{int(cellno):d}_map.pdf"))
         prots = {'ctl': cell}
         MT.setProtocol(cell, image=image, mosaic=mosaic)
-        MT.plot_maps(prots, ax=ax, linethickness=0.5)
+        MT.plot_maps(prots, ax=ax, linethickness=0.5, tbar=tbar, axb=axb)
         return True
 
     def count_pages(cs, nperpage=8):
@@ -928,45 +1330,68 @@ def main():
             npages += 1
         return int(npages)
 
-    def plot_cells(cellname, sequence):
+    def plot_cells(cellname, sequence, tbar=False):
         
         if len(sequence) > 1:  # all of a type
             sequence = [int(x) for x in sequence]
             cs = table.loc[table['cellname'] == cellname[0]]
             cs = cs.loc[table['cellno'].isin(sequence)]
             print('len cs: ', len(cs))
-            nperpage = 4
+            nperpage = len(sequence)
             npages = count_pages(cs, nperpage=nperpage)
             lcs = list(cs.index)
             print('npages: ', npages)
             icell = 0
             for npage in range(npages):
-                # c, r = PH.getLayoutDimensions(nperpage, pref='height')
-                c = 2
-                r = int(nperpage/c)
-                P = PH.regular_grid(r, c, order='rowsfirst', figsize=(10., 12.), showgrid=False,
+                c, r = PH.getLayoutDimensions(nperpage, pref='height')
+                # c = 2
+                # r = int(nperpage/c)
+                P1 = PH.regular_grid(r, c, order='rowsfirst', figsize=(10., 12.), showgrid=False,
                     verticalspacing=0.08, horizontalspacing=0.08,
                     margins={'leftmargin': 0.07, 'rightmargin': 0.05, 'topmargin': 0.12, 'bottommargin': 0.1},
                     labelposition=(0., 0.), parent_figure=None, panel_labels=None)
-                axarr = P.axarr.ravel()
+                P2 = PH.regular_grid(r, c, order='rowsfirst', figsize=(10., 12.), showgrid=False,
+                    verticalspacing=0.08, horizontalspacing=0.08,
+                    margins={'leftmargin': 0.07, 'rightmargin': 0.05, 'topmargin': 0.12, 'bottommargin': 0.1},
+                    labelposition=(0., 0.), parent_figure=None, panel_labels=None)
+
+                axarr = P1.axarr.ravel()
+                axarr2 = P2.axarr.ravel()
                 for axn in range(nperpage):
                     if icell >= len(cs):  # done
                         break
                     print('page, axn, i: ', npage, axn, icell)
                     print('cell, cell number: ', cs.iloc[icell]['cellname'], cs.iloc[icell]['cellno'])
-                    plot_a_cell(cs.iloc[icell]['cellname'], cs.iloc[icell]['cellno'], ax=axarr[axn])
+                    plot_a_cell(cs.iloc[icell]['cellname'], cs.iloc[icell]['cellno'], ax=axarr[axn],
+                        tbar=tbar, axb=axarr2[axn])
+                    
                     # reduce cell name:
                     cname = cs.iloc[icell]['cellID'].replace('slice_00', 'S').replace('cell_00', 'C')
                     axarr[axn].set_title(f"{cname:s} #={cs.iloc[icell]['cellno']:d}\n{cs.iloc[icell]['map']:s}",
                         fontsize=9, horizontalalignment='center')
+                    axarr2[axn].set_title(f"{cname:s} #={cs.iloc[icell]['cellno']:d}\n{cs.iloc[icell]['map']:s}",
+                        fontsize=9, horizontalalignment='center')
                     sn = sequence[icell]
                     icell += 1
-                P.figure_handle.suptitle(f"Celltype: {cellname[0]:s} Page: {npage:d}", fontsize=14)
-                if sn > 100:
+                P1.figure_handle.suptitle(f"Celltype: {cellname[0]:s} Page: {npage:d}", fontsize=14)
+                P2.figure_handle.suptitle(f"Celltype: {cellname[0]:s} Page: {npage:d} distancemaps", fontsize=14)
+                ymax = 0
+                for ax2 in axarr2:
+                    yl = ax2.get_ylim()
+                    ymax = np.max((ymax, yl[1]))
+                for ax2 in axarr2:
+                    ax2.set_ylim((0, ymax))  # make all y axes have the same scale
+                if sn > 100 and sn < 300:
                     t = '_pairs'
+                    seq = args.sequence.replace(';', '-')
+                elif sn > 300:
+                    t = '_TTX'
+                    seq = args.sequence.replace(';', '-')
                 else:
                     t = ''
-                mpl.savefig(Path('NF107Ai32_Het/Example Maps/', f"{cellname[0]:s}{t:s}_Page{npage:d}.pdf"))
+                    seq = args.sequence.replace(';' '-')
+                P1.figure_handle.savefig(Path('NF107Ai32_Het/Example Maps/', f"{cellname[0]:s}{t:s}_{seq:s}_Page{npage:d}.pdf"))
+                P2.figure_handle.savefig(Path('NF107Ai32_Het/Example Maps/', f"{cellname[0]:s}{t:s}_{seq:s}_Page{npage:d}_distmap.pdf"))
                 # mpl.close()
 
         else: # specific cell
@@ -991,11 +1416,12 @@ def main():
                                                    rectprops=rectprops)
 
             mpl.connect('key_press_event', toggle_selector)
+            mpl.connect('key_release_event', release_selector)
             mpl.show()
     
     
     print(docell, sequence)
-    plot_cells(docell, sequence)
+    plot_cells(docell, sequence, tbar=args.plotwithtbar)
     
 if __name__ == '__main__':
     main()
