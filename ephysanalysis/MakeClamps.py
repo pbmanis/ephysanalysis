@@ -7,7 +7,6 @@ from pathlib import Path
 import numpy as np
 import pickle
 import matplotlib
-# matplotlib.use('Qt4Agg')
 
 import matplotlib.pyplot as mpl
 import pylibrary.PlotHelpers as PH
@@ -110,6 +109,7 @@ class MakeClamps():
         self.set_clamps(dmode=mode, time=timebase, data=V, cmddata=I, tstart_tdur=[delay, dur])
         self.getClampData()
 
+
     def getClampData(self, verbose=False):
         """
         Translates fields as best as we can from the original DATAC structure
@@ -173,12 +173,14 @@ class MakeClamps():
         nchannels = self.data.shape[0]
         dt = self.sample_interval  # make assumption that rate is constant in a block
         self.time_base = self.time[:self.traces.shape[1]] # in seconds
+
         if self.dmode == 'CC':  # use first channel
             mainch = 0
             cmdch = 1
         else:  # assumption is swapped - for this data, that means voltage clamp mode.
             mainch = 1
             cmdch = 0
+
 
         cmds = self.cmddata # elf.traces[:,cmdch,:]
         self.tstart = self.tstart_tdur[0]  # could be pulled from protocol/stimulus information
@@ -205,7 +207,9 @@ class MakeClamps():
                     {'ClampState':  # note that many of these values are just defaults and cannot be relied upon
                             {'primaryGain': 1.0, 'ClampParams': 
                                 {'OutputZeroEnable': 0, 'PipetteOffset': 0.0,
+
                                 'Holding': 0., 'PrimarySignalHPF': 0.0, 'BridgeBalResist': 0.0, 
+
                                 'PrimarySignalLPF': 20000.0, 'RsCompBandwidth': 0.0, 
                                 'WholeCellCompResist': 0.0, 'WholeCellCompEnable': 6004, 'LeakSubResist': 0.0,
                                 'HoldingEnable': 1, 'FastCompTau': 0.0, 'SlowCompCap': 0.0, 
@@ -245,16 +249,10 @@ class MakeClamps():
         self.holding = 0.
         self.amplfierSettings = {'WCCompValid': False, 'WCEnabled': False, 
                 'CompEnabled': False, 'WCSeriesResistance': 0.}
-        self.clampState = None
-        self.RSeriesUncomp = 0.
-            
-        self.tend = self.tstart + self.tdur
 
-        # if self.traces.shape[0] > 1:
-        #     # dependiung on the mode, select which channel goes to traces
-        #     self.traces = self.traces[:,mainch,:]
-        # else:
-        #     self.traces[0,mainch,:] = self.traces[0,mainch,:]
+        self.WCComp = 0.
+        self.CCComp = 0.
+
 
         self.traces = EM.MetaArray(self.traces, info=info)
         self.cmd_wave = EM.MetaArray(self.cmd_wave,
@@ -264,3 +262,4 @@ class MakeClamps():
               
         self.spikecount = np.zeros(len(recs))
         self.rgnrmp = [0, 0.004]
+
