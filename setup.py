@@ -20,6 +20,11 @@ setup(name='ephysanalysis',
                'dataSummary=ephysanalysis.dataSummary:main',
                'ma2tiff=ephysanalysis.ma2tiff:convertfiles',
                'bridge=ephysanalysis.bridge:main',
+               'notch=ephysanalysis.test_notch:main',
+               'cmeasure=ephysanalysis.cursor_plot:main',
+               'matread=ephysanalysis.MatdatacRead:main',
+               'plotmaps=ephysanalysis.plot_maps:main',
+               'fix_objscale=ephysanalysis.fix_objscale:main',
           ]
       },
       classifiers = [

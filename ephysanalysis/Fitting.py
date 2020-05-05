@@ -573,13 +573,13 @@ p[4]*np.exp(-(p[5] + x)/p[6]))**2.0
         Return the values in y that match the x range in tx from
         t0 to t1. x must be monotonic increasing or decreasing.
         Allow for reverse ordering. """
-        it0 = (np.abs(x-t0)).argmin()
-        it1 = (np.abs(x-t1)).argmin()
+        it0 = np.argmin(np.fabs(x-t0))
+        it1 = np.argmin(np.fabs(x-t1))
         if it0 > it1:
             t = it1
             it1 = it0
             it0 = t
-        return(x[it0:it1], y[it0:it1])
+        return x[it0:it1], y[it0:it1]
         
     def FitRegion(self, whichdata, thisaxis, tdat, ydat, t0=None, t1=None,
                   fitFunc='exp1', fitFuncDer=None, fitPars=None, fixedPars=None,
@@ -625,8 +625,14 @@ p[4]*np.exp(-(p[5] + x)/p[6]))**2.0
         
         func = self.fitfuncmap[fitFunc]
         if func is None:
-            print ("FitRegion: unknown function %s" % (fitFunc))
-            return
+            raise ValueError("FitRegion: unknown function %s" % (fitFunc))
+        
+        #sanitize
+        if isinstance(tdat, list):
+            tdat = np.array(tdat)
+        if isinstance(ydat, list):
+            ydat = np.array(ydat)
+            
         xp = []
         xf = []
         yf = []
@@ -649,18 +655,20 @@ p[4]*np.exp(-(p[5] + x)/p[6]))**2.0
         for block in range(nblock):
             for record in whichdata:
                 if dataType == 'blocks':
-                    (tx, dy) = self.getClipData(tdat[block], ydat[block][record, thisaxis, :], t0, t1)
+                    tx, dy = self.getClipData(tdat[block], ydat[block][record, thisaxis, :], t0, t1)
                 elif ydat.ndim == 1:
-                    (tx, dy) = self.getClipData(tdat, ydat, t0, t1)
+                    tx, dy = self.getClipData(tdat, ydat, t0, t1)
                 else:
-                    (tx, dy) = self.getClipData(tdat, ydat[record,:], t0, t1)
+                    tx, dy = self.getClipData(tdat, ydat[record,:], t0, t1)
                 # print 'Fitting.py: block, type, Fit data: ', block, dataType
                 # print tx.shape
                 # print dy.shape
-                tx = np.array(tx)-t0
+                tx = np.array(tx)
+                tx = tx-t0
                 dy = np.array(dy)
                 yn.append(names)
                 if not any(tx):
+                    print('Fitting.py: No data in clipping window')
                     continue # no data in the window...
                 ier = 0
                 # 
@@ -700,8 +708,8 @@ p[4]*np.exp(-(p[5] + x)/p[6]))**2.0
                 #                 approx_grad = True) # , disp=0, iprint=-1)
                     
                 else:
-                    print ('method %s not recognized, please check Fitting.py' % (method))
-                    return    
+                    raise ValueError ('Fitting Method %s not recognized, please check Fitting.py' % (method))
+
                 xfit = np.arange(t0, t1, (t1-t0)/100.0)
                 yfit = func[0](plsq, xfit-t0, C=fixedPars)
                 yy = func[0](plsq, tx, C=fixedPars) # calculate function

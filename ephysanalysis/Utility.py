@@ -544,7 +544,10 @@ class Utility():
                 if i in removed:  # this can happen if event was removed in j loop
                     continue
                 test_end = min([stn[i]+t_forward, stn[i+1], vma.shape[0]])
-                if (vma[stn[i]] - np.min(vma[stn[i]:test_end])) < mindip:
+
+                if stn[i] == test_end:
+                    continue
+                elif (vma[stn[i]] - np.min(vma[stn[i]:test_end])) < mindip:
                     if i == 0:  # special case: if first event fails, remove it from output list
                         stn2 = []
                     removed.append(i)
@@ -1198,55 +1201,53 @@ if __name__ == "__main__":
     #     dt = 0.1
     #     t = np.arange(0, 100, dt)
     #     v = np.zeros_like(t)-60.0
-    #     p = list(range(20, 900, 50))
-    #     p1 = list(range(19,899,50))
-    #     p2 = list(range(21,901,50))
+    #     p = range(20, 900, 50)
+    #     p1 = range(19,899,50)
+    #     p2 = range(21,901,50)
     #     v[p] = 20.0
     #     v[p1] = 15.0
     #     v[p2] = -20.0
-    #     sp = U.findspikes(t, v, 0.0, dt = dt, mode = 'schmitt', interpolate = False)
-    #     # print 'findSpikes'
-    #     # print 'sp: ', sp
+    #     sp = findspikes(t, v, 0.0, dt = dt, mode = 'schmitt', interpolate = False)
+    #     print 'findSpikes'
+    #     print 'sp: ', sp
     #     f = MP.figure(1)
     #     MP.plot(t, v, 'ro-')
-    #     spr = np.array(sp).ravel()[0]
-    #     si = np.floor(np.array(spr).ravel()/dt).astype('int16')
+    #     si = (np.floor(sp/dt))
+    #     print 'si: ', si
     #     spk = []
     #     for k in si:
     #         spk.append(np.argmax(v[k-1:k+1])+k)
-    #     MP.plot(spr, v[spk], 'bs')
+    #     MP.plot(sp, v[spk], 'bs')
     #     MP.ylim((0, 25))
     #     MP.draw()
     #     MP.show()
     #
     #     exit()
+    #     print "getSpikes"
     #     y=[]*5
     #     for j in range(0,1):
     #         d = np.zeros((5,1,len(v)))
     #         for k in range(0, 5):
-    #             p = list(range(20*k, 500, 50 + int(50.0*(k/2.0))))
+    #             p = range(20*k, 500, 50 + int(50.0*(k/2.0)))
     #             vn = v.copy()
     #             vn[p] = 20.0
-    #             d[k, 0, :] = np.array(vn) # load up the "spike" array
+    # d[k, 0, :] = np.array(vn) # load up the "spike" array
     #         y.append(d)
-    #     tpts = list(range(0, len(t))) # np.arange(0, len(t)).astype(int).tolist()
-    #     #def findspikes(x, v, thresh, t0=None, t1= None, dt=1.0, mode=None, interpolate=False):
+    # tpts = range(0, len(t)) # np.arange(0, len(t)).astype(int).tolist()
+    # def findspikes(x, v, thresh, t0=None, t1= None, dt=1.0, mode=None, interpolate=False):
     #     for k in range(0, len(y)):
     #         sp = getSpikes(t, y[k], 0, tpts, tdel=0, thresh=0, selection = None, interpolate = True)
-    #         print(('r: %d' % k, 'sp: ', sp))
+    #         print 'r: %d' % k, 'sp: ', sp
     #
-    # # test the sine fitting routine
+    # test the sine fitting routine
     # if options.sinefit:
     #     from np.random import normal
     #     F = 1.0/8.0
     #     phi = 0.2
     #     A = 2.0
     #     t = np.arange(0.0, 60.0, 1.0/7.5)
-    #     # check over a range of values (is phase correct?)
+    # check over a range of values (is phase correct?)
     #     for phi in np.arange(-2.0*np.pi, 2.0*np.pi, np.pi/8.0):
     #         y = A * np.sin(2.*np.pi*t*F+phi) + normal(0.0, 0.5, len(t))
-    #         (a, p) = U.sinefit(t, y, F)
-    #         print(("A: %f a: %f  phi: %f p: %f" % (A, a, phi, p)))
-
-
-    
+    #         (a, p) = sinefit(t, y, F)
+    #         print "A: %f a: %f  phi: %f p: %f" % (A, a, phi, p)

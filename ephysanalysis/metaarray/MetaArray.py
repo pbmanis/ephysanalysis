@@ -799,9 +799,9 @@ class MetaArray(object):
             try:
                 meta += line
             except:
-                print('meta: ', meta)
-                print('line: ', line)
-                raise ValueError('adios')
+                # print('meta: ', meta)
+                # print('line: ', line)
+                raise ValueError('MetaArray: _readMeta: Unable to parse metaarray')
         ret = eval(meta)
         #print ret
         return ret
@@ -1034,7 +1034,6 @@ class MetaArray(object):
     @staticmethod
     def readHDF5Meta(root, mmap=False):
         data = {}
-        
         ## Pull list of values from attributes and child objects
         for k in root.attrs:
             val = root.attrs[k]

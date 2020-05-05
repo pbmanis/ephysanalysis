@@ -1,127 +1,114 @@
 """
-Create a Clamps structure (for the acq4/ephysanalysis routines) from data
+Create a Clamps structure (for the acq4/ephysanalysis routines) from modeling data generated
+in VCN_Model (the pickled file)
+
 """
 from pathlib import Path
 import numpy as np
 import pickle
 import matplotlib
-matplotlib.use('Qt4Agg')
 
 import matplotlib.pyplot as mpl
 import pylibrary.PlotHelpers as PH
-from pyqtgraph.metaarray import MetaArray
+from pylibrary.Params import Params
+import ephysanalysis.metaarray as EM 
 
 
 class MakeClamps():
-    """
-    Make non-acq4 data usable in our ephysanalysis routines by converting into an acq4-type structure
-    Usage:
-    Create the MakeClamps instance
-    Use set_clamps to bring the data into the structure
-    The instance of "MakeClamps" will have all the variables needed
     
-    self.plot provides a simple plot of the data and stimlulus waveform to check the import
-    
-    self.read_pfile(filename) reads a simple dictionary-based pickled file and converts the data into
-        a Clamps format.
-    
-    """
-    
-    def __init__(self, timeunits='ms'):
-        self.timeunits = timeunits
+    def __init__(self):
+        self.holding = 0.  # set a default value for models
+        self.WCComp = 0.
+        self.CCComp = 0.
         pass
     
-    def set_clamps(self, dmode='CC', time=None, data=None, cmdwave=None, cmdvalues=None, tstep=[0.01, 0.100]):
-        """
-        Set up the clamp data from any source
-        
-        Parameters
-        ----------
-        dmode : str (default: 'CC')
-            data mode. Should be one of 'CC', 'VC', or maybe 'I=0'
-        
-        time : np.array (default: None)
-            time array. May be an array of arrays, one for each of the data traces
-            organized by [trace, timevalues]
-        
-        data : np.array (default: None)
-            data array. May be an array of arrays, one for each trace
-            organized by [tace, datavalues]
-        
-        cmdwave : np.array or list (default: None)
-            command waveform
-            organized by [trace, command waveform]
-        
-        cmdvalues: np.array or list (default: None)
-            a list of the command values (not the waveform)
-        
-        tstep : list or np.array, 2 element (default: [0.01, 0.1])
-            command step on time and duration
-        
-        """
-        
-        self.data = data*1e-3
-        if self.timeunits in ['ms']:
-            tfactor = 1e-3
-        elif self.timeunits in ['s', 'sec']:
-            tfactor = 1.0
-        if time.ndim > 0:
-            self.rate = np.diff(time[0,:])*tfactor
-            self.time = time[0,:]*tfactor
-        else:
-            self.rate = np.diff(time)*tfactor
-            self.time = time*tfactor
-        self.cmd_wave = cmdwave*1e-9
-        self.cmd_values = [c*1e9 for c in cmdvalues]
-        self.tstep = [t*tfactor for t in tstep]
+    def set_clamps(self, dmode='CC', time=None, data=None, cmddata=None, tstart_tdur=[0.01, 0.100]):
+        self.data = data
+        self.time = time
+        self.rate = np.diff(self.time)*1e6
+        self.cmddata = cmddata
+        self.tstart_tdur = tstart_tdur
+        self.tstart = tstart_tdur[0]
+        self.tend = np.sum(tstart_tdur)
         self.dmode = dmode
-        self.getClampData()
     
-    def read_pfile(self, filename):
-        """
-        Reads a file written from model_run in VCN models - simple dict structure
-        ]"""
+    def read_pfile(self, filename, plot=False):
         fh = open(filename, 'rb')
         df = pickle.load(fh)
         r = df['Results'][0]
-    
-        vdat = []
-        idat = []
-        icmd = []
-        time = []
-        for trial in range(len(df['Results'])):
-            icmd.append(trial)
-            ds = df['Results'][trial]
-            k0 = list(df['Results'][trial].keys())[0]
-            dx = ds[k0]['monitor']
-            vdat.append(dx['postsynapticV'])
-            idat.append(dx['postsynapticI'])
-            time.append(dx['time'])
-            
-        vdat = np.array(vdat)
-        idat = np.array(idat)
-        time = np.array(time)
-        print(vdat.shape, idat.shape)
-        self.set_clamps(time=time, data=vdat, cmdwave=idat, cmdvalues=icmd,
-                        tstep=[df['runInfo']['stimDelay'], df['runInfo']['stimDur']])
 
-        
-        
-    def plot(self):
-        P = PH.Plotter((2, 1), figsize=(6, 4))
-        cell_ax = list(P.axdict.keys())[0]
-        iax = list(P.axdict.keys())[1]
-        for i in range(self.traces.shape[0]):
-            P.axdict[cell_ax].plot(self.time, self.traces.view(np.ndarray)[i], linewidth=1.0)
-            P.axdict[iax].plot(self.time, self.cmd_wave.view(np.ndarray)[i], linewidth=1.0)
-        P.axdict[cell_ax].set_xlim(0., 150.)
-        P.axdict[cell_ax].set_ylim(-200., 50.)
-        PH.calbar(P.axdict[cell_ax], calbar=[120., -95., 25., 20.], axesoff=True, orient='left', 
-                unitNames={'x': 'ms', 'y': 'mV'}, font='Arial', fontsize=8)
+        if plot:
+            P = PH.Plotter((1, 1), figsize=(6, 4))
+            cell_ax = list(P.axdict.keys())[0]
+            for trial in range(len(df['Results'])):
+                ds = df['Results'][trial]
+                k0 = list(df['Results'][trial].keys())[0]
+                dx = ds[k0]['monitor']
+                P.axdict[cell_ax].plot(dx['time'], dx['postsynapticV'], linewidth=1.0)
+                P.axdict[cell_ax].set_xlim(0., 150.)
+                P.axdict[cell_ax].set_ylim(-200., 50.)
+            PH.calbar(P.axdict[cell_ax], calbar=[120., -95., 25., 20.], axesoff=True, orient='left', 
+                    unitNames={'x': 'ms', 'y': 'mV'}, font='Arial', fontsize=8)
 
-        # mpl.savefig(outfile)
-        mpl.show()
-    
+            # mpl.savefig(outfile)
+            mpl.show()
+        # print(list(df.keys()))
+        # print('\nbasename: ', df['basename'])
+        # print('\nruninfo: ', df['runInfo'])
+        """
+        The runInfo dictionary holds somethign like this:
+        runinfo:  {'folder': PosixPath('VCN_Cells/VCN_c08/Simulations/IV'), 'fileName': 'Normal', 'runName': 'Run', 
+        'manipulation': 'Canonical', 'preMode': 'cc', 'postMode': 'cc', 'TargetCellType': 'Bushy', 
+        'electrodeSection': 'soma', 'dendriticElectrodeSection': 'dendrite', 
+        'dendriticSectionDistance': 100.0, 'celsius': 37, 'nStim': 1, 
+        'stimFreq': 200.0, 'stimInj': {'pulse': [-1.0, 2.01, 0.2]}, 
+        'stimDur': 100.0, 'stimDelay': 5.0, 'stimPost': 3.0, 
+        'vnStim': 1, 'vstimFreq': 200.0, 'vstimInj': 50, 
+        'vstimDur': 50.0, 'vstimDelay': 2.0, 'vstimPost': 3.0, 'vstimHolding': -60, 
+        'gif_i0': 0.0, 'gif_sigma': 0.5, 'gif_fmod': 0.2, 'gif_tau': 3.0, 
+        'gif_dur': 10.0, 'gif_skew': 0.0, 
+        'runTime': 'Wed Oct  9 13:05:54 2019', 
+        'inFile': None, 'inFileRep': 1, 'spikeTimeList': {}, 
+        'v_init': -61.0, 'useSaveState': True, 'tstop': 8.0, 'filename': 'VCN_c08_pulse_'}
+        """
+        # print('\nmodelPars: ', df['modelPars'])
+        """
+        The modelPars dict holds the following:
+        modelPars:  {'species': 'mouse', 'cellClass': 'bushy', 'modelType': 'II', 
+        'modelName': 'mGBC', 'soma': True, 'axon': False, 
+        'dendrites': False, 'pumps': False, 'hillock': False, 
+        'initialsegment': False, 'myelinatedaxon': False, 
+        'unmyelinatedaxon': False, 'na': 'nav11', 'ttx': False, 
+        'name': 'bushy', 'morphology': 'VCN_Cells/VCN_c08/Morphology/VCN_c08.hoc', 
+        'temperature': 34.0}
+        
+        Note 10/28/2019 changed structure so that runInfo and modelPars are both 
+        subdictionaries of Params
+        """
+        if 'runInfo' not in list(df.keys()):  # handle data structure change 10/28/2019
+            dinfo = df['Params']['runInfo']
+        else:
+            dinfo = df['runInfo']
+        if isinstance(dinfo, Params):
+            dinfo = dinfo.todict()
+        print(dinfo)
+        dur = dinfo['stimDur']
+        delay = dinfo['stimDelay']
+        mode = dinfo['postMode'].upper()
+        ntr = len(df['Results'])
+        V = [[]]*ntr
+        I = [[]]*ntr
+        for i in range(len(df['Results'])):
+            fk = list(df['Results'][i].keys())[0]
+            dfx = df['Results'][i][fk]['monitor']
+            timebase = dfx['time']
+            V[i] = dfx['postsynapticV']
+            I[i] = dfx['i_stim0']
+        V = np.array(V)
+        I = np.array(I)
+        self.set_clamps(dmode=mode, time=timebase, data=V, cmddata=I, tstart_tdur=[delay, dur])
+        self.getClampData()
+
 
     def getClampData(self, verbose=False):
         """
@@ -179,13 +166,13 @@ class MakeClamps():
             raise ValueError('No data has been set')
         protocol = ''
 
+        self.sample_interval = self.rate[0]*1e-6  # express in seconds
+        self.traces = np.array(self.data)
         points = self.data.shape[1]
         recs = range(self.data.shape[0])
-        self.sample_interval = self.rate[0]# *1e-6  # express in seconds
-        self.sample_rate = [1./self.sample_interval for r in recs]
-        self.traces = np.array(self.data)
+        nchannels = self.data.shape[0]
         dt = self.sample_interval  # make assumption that rate is constant in a block
-        self.time_base = self.time # in seconds
+        self.time_base = self.time[:self.traces.shape[1]] # in seconds
 
         if self.dmode == 'CC':  # use first channel
             mainch = 0
@@ -194,23 +181,35 @@ class MakeClamps():
             mainch = 1
             cmdch = 0
 
-        self.tstart = self.tstep[0]  # could be pulled from protocol/stimulus information
-        self.tdur = self.tstep[1]
+
+        cmds = self.cmddata # elf.traces[:,cmdch,:]
+        self.tstart = self.tstart_tdur[0]  # could be pulled from protocol/stimulus information
+        self.tdur = self.tstart_tdur[1]
         self.tend = self.tstart + self.tdur
         t0 = int(self.tstart/dt)
         t1 = int(self.tend/dt)
-        if self.cmd_wave is not None:
+        self.cmd_wave = self.cmddata # np.squeeze(self.traces[:, cmdch, :])
+        diffpts = self.traces.shape[1] - self.cmd_wave.shape[1]
+        ntr = self.cmd_wave.shape[0]
+        self.cmd_wave = np.pad(self.cmd_wave, (0, diffpts), 'constant', constant_values=0.)[:ntr,:]  # awkward
+        if cmds.shape[0] > 1:
             self.values = np.nanmean(self.cmd_wave[:, t0:t1], axis=1)  # express values in amps
         else:
-            self.values = np.array(self.cmd_values)  # just given the values?
+            self.values = np.zeros_like(self.traces.shape[1:2])
         self.commandLevels = self.values        
+        # for i in range(self.traces.shape[0]):
+        #     mpl.plot(self.time, self.traces[i])
+        #     mpl.plot(self.time[:self.cmd_wave[i].shape[0]], self.cmd_wave[i])
+        # mpl.show()
         
         info = [{'units': 'A', 'values': self.values, 'name': 'Command'},
                     {'name': 'Time', 'units': 's', 'values': self.time_base},
                     {'ClampState':  # note that many of these values are just defaults and cannot be relied upon
                             {'primaryGain': 1.0, 'ClampParams': 
                                 {'OutputZeroEnable': 0, 'PipetteOffset': 0.0,
-                                'Holding': 0, 'PrimarySignalHPF': 0.0, 'BridgeBalResist': 0.0, 
+
+                                'Holding': 0., 'PrimarySignalHPF': 0.0, 'BridgeBalResist': 0.0, 
+
                                 'PrimarySignalLPF': 20000.0, 'RsCompBandwidth': 0.0, 
                                 'WholeCellCompResist': 0.0, 'WholeCellCompEnable': 6004, 'LeakSubResist': 0.0,
                                 'HoldingEnable': 1, 'FastCompTau': 0.0, 'SlowCompCap': 0.0, 
@@ -250,24 +249,17 @@ class MakeClamps():
         self.holding = 0.
         self.amplfierSettings = {'WCCompValid': False, 'WCEnabled': False, 
                 'CompEnabled': False, 'WCSeriesResistance': 0.}
+
         self.WCComp = 0.
         self.CCComp = 0.
-        self.clampState = None
-        self.RSeriesUncomp = 0.
-            
-        self.tend = self.tstart + self.tdur
 
-        # if self.traces.shape[0] > 1:
-        #     # dependiung on the mode, select which channel goes to traces
-        #     self.traces = self.traces[:,mainch,:]
-        # else:
-        #     self.traces[0,mainch,:] = self.traces[0,mainch,:]
 
-        self.traces = MetaArray(self.traces, info=info)
-        self.cmd_wave = MetaArray(self.cmd_wave,
-             info=[{'name': 'Command', 'units': 'nA',
+        self.traces = EM.MetaArray(self.traces, info=info)
+        self.cmd_wave = EM.MetaArray(self.cmd_wave,
+             info=[{'name': 'Command', 'units': 'A',
               'values': np.array(self.values)},
               self.traces.infoCopy('Time'), self.traces.infoCopy(-1)])
-        
+              
         self.spikecount = np.zeros(len(recs))
-        self.rgnrmp = [0, 0.005]
+        self.rgnrmp = [0, 0.004]
+

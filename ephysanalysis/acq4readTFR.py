@@ -249,7 +249,6 @@ class Acq4Read():
        # print (indexFile)
         if not indexFile.is_file():
             print("Directory '%s' is not managed or '.index' file not found" % (currdir))
-            print('indexfile: ', indexFile)
             return self._dirindex
         # print('\nindex file found for currdir: ', currdir)
         self._dirindex = configfile.readConfigFile(str(indexFile))
@@ -258,7 +257,6 @@ class Acq4Read():
             self._dirindex = configfile.readConfigFile(str(indexFile))
         except:
             print('Failed to read index file for %s' % currdir)
-            print('indexfile should be: ', indexFile)
             print('Probably bad formatting or broken .index file')
             return self._dirindex
         return self._dirindex
@@ -601,10 +599,8 @@ class Acq4Read():
                 self.values.append(sequence_values[j])
                 j += 1
             self.time_base.append(tr.xvals('Time'))
-            # print('time_base: ',self.time_base)
             sr = tr_info[1]['DAQ']['primary']['rate']
             self.sample_rate.append(self.samp_rate)
-            # print('sample_rate: ',self.sample_rate)
             #print ('i: %d   cmd: %f' % (i, sequence_values[i]*1e12))
         if self.mode is None:
             print ('   >> No directories processed for this protocol')
@@ -830,7 +826,6 @@ class Acq4Read():
         data for the current protocol
         """ 
         # non threaded
-        # print('Accessed get LaserBlueCommand')
         dirs = self.subDirs(self.protocol)
         index = self._readIndex()
         trx = []
@@ -870,7 +865,6 @@ class Acq4Read():
             self.LBR_time_base.append(lbr.xvals('Time'))
             try:
                 sr = info[1]['DAQ']['Shutter']['rate']
-
             except:
                 print(info[1]['DAQ'].keys())
                 exit(1)
@@ -879,9 +873,7 @@ class Acq4Read():
         self.LaserBlueRaw = np.array(self.LaserBlueRaw)
         self.LaserBlue_pCell = np.array(self.LaserBlue_pCell)
         self.LBR_sample_rate = np.array(self.LBR_sample_rate)
-        # print('LBR_sample_rate: ',self.LBR_sample_rate)
         self.LBR_time_base = np.array(self.LBR_time_base)
-        # print('LBR_time_base: ', self.LBR_time_base)
         return True
 
     def getPhotodiode(self):
@@ -1005,13 +997,16 @@ class Acq4Read():
         Can also read a video (.ma) file, returning the stack
         """
         fn = Path(filename)
+        print('fn: ',fn)
+        print('filename: ',filename)
         if fn.suffix in ['.tif', '.tiff']:
             self.imageData = tf.imread(str(filename))
         elif fn.suffix in ['.ma']:
             self.imageData = EM.MetaArray(file=filename)
-        d = str(filename.name)
+        d = str(fn.name)
+
         self.Image_filename = d
-        cindex = self._readIndex(Path(filename.parent))
+        cindex = self._readIndex(Path(fn.parent))
 
         if 'userTransform' in list(cindex[d].keys()) and cindex[d]['userTransform']['pos'] != (0., 0.):
             z = np.vstack(cindex[d]['userTransform']['pos'] + cindex[d]['transform']['pos']).ravel()
@@ -1165,11 +1160,11 @@ def one_test():
         
     print (maptoimage)
     
-    for i, d in enumerate(datasets):
+    for i, d in enumerate(mapname):
         print('up in here')
         pa, da = os.path.split(d)
-        if 'Map'  not in da:
-            continue
+        # if 'Map'  not in da:
+        #     continue
         print('d: ', d)
         a.setProtocol(os.path.join(cell, d))
     #    a.setProtocol('/Volumes/Pegasus/ManisLab_Data3/Kasten, Michael/2017.11.20_000/slice_000/cell_000/CCIV_4nA_max_000')
@@ -1182,7 +1177,7 @@ def one_test():
         scale = a.scannerCamera['frames.ma']['transform']['scale']
         region = a.scannerCamera['frames.ma']['region']
         binning = a.scannerCamera['frames.ma']['binning']
-        print('bining: ', binning)
+        print('binning: ', binning)
         if a.spotsize is not None:
             print ('Spot Size: {0:0.3f} microns'.format(a.spotsize*1e6))
         else:
@@ -1195,7 +1190,7 @@ def one_test():
                [pos[0] + scale[0]*region[0], pos[1] + scale[1]*region[1]]
            ]
         scannerbox = BRI.getRectangle(a.scannerpositions)
-        print(scannerbox)
+        print('scannerbox: ',scannerbox)
         print(scannerbox.shape)
         fp = np.array([scannerbox[0][0], scannerbox[1][1]]).reshape(2,1)
         print(fp.shape)
@@ -1207,9 +1202,10 @@ def one_test():
         scboxw = np.array(scannerbox)
         print('scanner box: ', scboxw)
         mpl.plot(boxw[0,:], boxw[1,:], linewidth=1.5)
-        avgfr = a.getAverageScannerImages(firstonly=True, mode='average')
+        avgfr = a.getAverageScannerImages(firstonly=False, mode='max')
+        print('shape of avgfr: ',np.shape(avgfr))
         if not imageplotted:
-            imgd = a.getImage(os.path.join(cell, 'image_001.tif'))
+            imgd = a.getImage(os.path.join(cell, maptoimage[mapname[im]]))
            # mpl.imshow(np.flipud(np.rot90(avgfr), aspect='equal', extent=[np.min(boxw[0]), np.max(boxw[0]), np.min(boxw[1]), np.max(boxw[1])])
             mpl.imshow(imgd, aspect='equal', cmap='gist_gray',
                 extent=[np.min(boxw[0]), np.max(boxw[0]), np.min(boxw[1]), np.max(boxw[1])])
@@ -1217,15 +1213,16 @@ def one_test():
         mpl.plot(a.scannerpositions[:,0], a.scannerpositions[:,1], 'ro', alpha=0.2, markeredgecolor='w')
         mpl.plot(boxw[0,:], boxw[1,:], 'g-', linewidth=5)
         mpl.plot(scboxw[0,:], scboxw[1,:], linewidth=1.5, label=d.replace('_', '\_'))
-
+        mpl.figure()
+        mpl.imshow(avgfr)
     # a.getData()
     # a.plotClampData(all=True)
     # print a.clampInfo
     # print a.traces[0]
     pos = mpl.ginput(-1, show_clicks=True)
-    print(pos)
+    print('pos: ',pos)
 
-    # mpl.legend()
+    mpl.legend()
     mpl.show()
     
 if __name__ == '__main__':

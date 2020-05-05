@@ -19,16 +19,16 @@ import matplotlib.colors
 import matplotlib
 #import colormaps.parula
 import pylibrary.PlotHelpers as PH
-from matplotlib import rc
-#rc('font',**{'family':'sans-serif','sans-serif':['Arial']})
-#rcParams['font.sans-serif'] = ['Arial']
-#rcParams['font.family'] = 'sans-serif'
-rc('text', usetex=True)
-rcParams = matplotlib.rcParams
-rcParams['svg.fonttype'] = 'none' # No text as paths. Assume font installed.
-rcParams['pdf.fonttype'] = 42
-rcParams['ps.fonttype'] = 42
-rcParams['text.latex.unicode'] = True
+# from matplotlib import rc
+# #rc('font',**{'family':'sans-serif','sans-serif':['Arial']})
+# #rcParams['font.sans-serif'] = ['Arial']
+# #rcParams['font.family'] = 'sans-serif'
+# rc('text', usetex=True)
+# rcParams = matplotlib.rcParams
+# rcParams['svg.fonttype'] = 'none' # No text as paths. Assume font installed.
+# rcParams['pdf.fonttype'] = 42
+# rcParams['ps.fonttype'] = 42
+# rcParams['text.latex.unicode'] = True
 #import seaborn
 #cm_sns = mpl.cm.get_cmap('terrain')  # terrain is not bad
 #cm_sns = mpl.cm.get_cmap('parula')  # terrain is not bad

@@ -13,8 +13,8 @@ GetClamps does the transformation.
 
 """
 from __future__ import print_function
-import os
 import sys
+import os
 import re
 from pathlib import Path
 from collections import OrderedDict
@@ -23,7 +23,14 @@ import numpy as np
 import pprint
 import ephysanalysis.metaarray as EM
 import ephysanalysis.IVSummary as IVS
+import pylibrary.fileselector as FS
 
+import matplotlib
+import matplotlib.pyplot as mpl
+import matplotlib.mlab as mlab
+import sys
+import pylibrary.PlotHelpers as PH
+    
 """
 Helper functions
 """
@@ -73,7 +80,7 @@ class GetClamps():
         self.protocol = None
 
 
-    def getData(self, chmap=None):
+    def getData(self, chmap=None, debug=False):
         """
         create a Clamp structure for use in SpikeAnalysis and RMTauAnalysis from acq4.
         Fills in the fields that are returned by PatchEPhys getClamps:
@@ -126,12 +133,24 @@ class GetClamps():
         """
         item = self.protocol
         if item is None:
+            if debug:
+                print('No items in protocol')
             return False
+        # print('item: ', item)
+        # print('len datac items: ', len(self.datac.items))
         protocol = self.datac.items[item].type
+        # print(self.datac.items[item])
         # print('protocol: ', protocol)
+        if protocol in ['HFILE', 'NOTE']:
+            print('Protocol is HFILE or NOTE, not data')
+            return False
         try:
             rate, recs = self.datac.items[item].data()
         except:
+            print(self.datac.items[item])
+            if debug:
+                print('failed to read data')
+            # raise ValueError('failed to read rate, recs')
             return False
         rate = self.datac.items[item].dfile['Sample_Rate']['v']*1e-6  # convert to seconds
         self.dfile = self.datac.items[item].dfile
@@ -139,23 +158,33 @@ class GetClamps():
         points = self.dfile['Points']['v']
         nchannels = len(self.dfile['Channels']['v'])
         dt = nchannels * float(rate)
-        #print(nchannels, points, rate, dt)
+        if debug:
+            print(nchannels, points, rate, dt)
         data_mode = self.getDataMode()
         self.data_mode = data_mode[0]
         self.time_base = np.arange(points)*dt
         datac_traces = np.zeros((len(recs), nchannels+1, points))
         self.recs = recs
-        if len(recs) < 16:
+        if debug:
+            print('rec shape: ', np.array(recs).shape)
+        if len(recs) < 1:
+            if debug:
+                print('too few recs')
             return False
         for i in range(len(recs)):
-            for j in range(nchannels+1):
+            for j in range(nchannels):
                 if j == 2:  # pull the stimulus only
                     # print len(recs[i][j])
                     # print len(np.arange(0, len(recs[i][j])))
                     cmd = np.interp(self.time_base, np.arange(0, len(recs[i][j]))/1000., recs[i][j])
                     datac_traces[i, j, :] = cmd
                 else:  # channels 0 and 1
-                    # print 'i,j', i, j
+                    if debug:
+                        print ('i,j', i, j)
+                        print ('shape: ', datac_traces.shape)
+                        print('ndim: ', datac_traces.ndim)
+                        print('len recs[i]: ', len(recs[i]))
+                        print('len recs[i][j]: ', len(recs[i][j]))
                     if len(recs[i][j]) != datac_traces.shape[2]:
                         return False # (cannot match, something is wrong... )
                     datac_traces[i, j, :] = recs[i][j]
@@ -181,6 +210,8 @@ class GetClamps():
         self.sample_rate = (1./dt)*np.ones(len(recs))
         self.RSeriesUncomp = 0.
         self.cmd_wave = np.squeeze(self.traces[:, 0, :])*1e-12
+        if self.cmd_wave.ndim == 1:
+            self.cmd_wave = np.expand_dims(self.cmd_wave, 0)
         self.protoTimes = {'drugtestiv': [0.21, 0.5], 'ap-iv2': [0.01, 0.5], 'cciv': [0.005, 0.100]}  # in seconds
         self.tstart = 0.01
         self.tdur = 0.500
@@ -190,16 +221,23 @@ class GetClamps():
         
         # check how the command wave is doing:
         cmds = np.mean(np.abs(self.cmd_wave), axis=0)
-        dcmds = np.diff(cmds)
-        # import matplotlib.pyplot as mpl
-        # mpl.plot(self.time_base[:-1], dcmds)
-        # mpl.show()
+        if isinstance(cmds, float):
+            cmds = np.ones_like(self.time_base)*cmds
+        try:
+            dcmds = np.diff(cmds)
+        except:
+            print('cmds: ', cmds)
+            import matplotlib.pyplot as mpl
+            mpl.plot(self.time_base[:-1], dcmds)
+            mpl.show()
+            exit()
         start = np.where(dcmds > 1e-11)[0]
         if len(start) > 1:
             start = start[0]
         end = np.where(dcmds < -1e-11)[0]
         if len(end) > 1:
             end = end[0]
+        print('shapes: ', self.cmd_wave.shape, self.time_base.shape, cmds.shape, self.traces.shape)
         # print('start, end: ', start, end)
         # print(self.time_base[start], self.time_base[end])
         self.tend = self.tstart + self.tdur
@@ -225,6 +263,7 @@ class GetClamps():
         self.WCComp = self.parseClampWCCompSettings(info)
         self.CCComp = self.parseClampCCCompSettings(info)
         self.traces = np.squeeze(self.traces[:,1,:])
+        print(self.traces.shape)
         self.traces = EM.MetaArray(self.traces, info=info)
         self.cmd_wave = EM.MetaArray(self.cmd_wave,
              info=[{'name': 'Command', 'units': 'A',
@@ -339,11 +378,13 @@ class DatacFile(object):
             
     def summary(self):
         """
-        Print a sumary of the file (which blocks, etc)
+        Generate a string with a short summary of the file (which blocks, etc)
         """
-        summ = 'FILE: ' + self.fname
-        typs = set([i.type for i in self.items if i.type not in ('HFILE', 'NOTE')])
-        summ += '\nBLOCKS: ' + '  '.join(list(typs))
+        summ = 'FILE: ' + str(self.fname)
+        typs = [i.type for i in self.items if i.type not in ('HFILE', 'NOTE')]
+        summ += '\nBlocks: \n'
+        for i, t in enumerate(typs):
+            summ += f"    {i:3d}: {t:s}\n"
         
         for i in self.items:
             if i.type == 'HFILE':
@@ -362,6 +403,9 @@ class HFile(object):
         self.rec = rec
         self.data = flatten(self.datac.data[self.rec['MatName'][0]])
         self.type = 'HFILE'
+        self.age = self.data['Age']['v']
+        self.species = self.data['Species']['v']
+        self.sex = self.data['Sex']['v']
         
     def summary(self):
         exp = self.data['Experiment']['v']
@@ -379,7 +423,7 @@ class HFile(object):
 class Note(object):
     def __init__(self, datac, rec):
         """
-        Store the note assicated with the current record
+        Store the note associated with the current record
         from the matdatac file structure
         
         Parameters
@@ -460,8 +504,18 @@ class Block(object):
             return self._data
         
         d = self.recordings[0]
-        dk = list(d[0].keys())[0]
-        mode = d[0][dk]['status']['Data']['mode']
+        # print('data keys: ', len(d))
+        # print(isinstance(d, dict))
+        if isinstance(d, dict) and len(d) == 1:
+            dkey = list(d.keys())[0]
+            dk = 0
+            mode = d[dkey]['status']['Data']['mode']
+        else:
+            dkey = 0
+            dk = list(d[0].keys())[0]
+            mode = d[dkey][dk]['status']['Data']['mode']
+        # print('dk: ', dk, ' dkey: ', dkey)
+        # print('d[dkey]: ', d[dkey])
         if isinstance(mode, np.ndarray):
             mode = mode[0]
         x = []
@@ -471,8 +525,12 @@ class Block(object):
         else:
             reps = 1
         for i in range(len(d)):
-            dk = list(d[i].keys())[0]
-            data = d[i][dk]['data']
+            if isinstance(d, np.ndarray):
+                dkx = list(d[i].keys())[0]
+                data = d[i][dkx]['data']
+            else:
+                dkx = list(d.keys())[0]
+                data = d[dkx]['data']
             if len(self.stims) > 0:
                 stim = self.stims[0]['waveform']
             else:
@@ -494,57 +552,204 @@ class Block(object):
                 # x.append((pg.gaussianFilter(data[:, 0], sigma=(2,)), data[:, 1], stim))
         
         rate = 1e6 / self.dfile['Sample_Rate']['v']
-                
         self._data = rate, x
         return self._data
 
 
-if __name__ == '__main__':
-    import sys
-    import matplotlib
-    import matplotlib.pyplot as mpl
-    import matplotlib.mlab as mlab
-    matplotlib.use('TkAgg',warn=False, force=True)
-    path = ''
-    datasummary = '../DataSummaries'
-#    fn = '/Users/pbmanis/Documents/data/RX_CCdata/13jul09a.mat'
-  #  fn = '/Volumes/Pegasus/ManisLab_Data3/Rich_Alex/Rich_Acq3/01may09c.mat'
-    fn = '/Volumes/Samsung_T5/data/Rich_Alex/Acq3Files/10dec08a.mat'
+# -------------------------------------------------
 
-    df = DatacFile(os.path.join(fn))  # get the matdatac file
-    # for it in df.items:
-    #     if isinstance(it, Block):
-    #         print(it.summary())
-    #
-    blocksel = 2
+# def example_dir_scan(searchstr, protocol='cciv2'):
+#     """
+#     Scan a directory and plot the traces from the first protocol
+#     that matches the search string
+#     """
+#     fns = glob.glob(searchstr)
+#     for fn in fns:
+#         df = printNotes(fn, indent=5)
+#         if df is None:
+#             continue
+#         for protn in df.expInfo.keys():
+#             if df.expInfo[protn]['Protocol'] == protocol:
+#                 df.readrecords(range(df.expInfo[protn]['R'], df.expInfo[protn]['Rend']))
+#                 df.plotcurrentrecs(fn)
+#                 break
+#     mpl.show()
+
+def get_blocks_type(fn, protocol):
+    df = DatacFile(Path(fn))
+    for item in df.items:
+        print(item.type)
+
+def get_blocks(fn, protocol=None):
+    blks = []
+    prots = []
+    df = DatacFile(Path(fn))
+    for i, item in enumerate(df.items):
+        if protocol is not None:
+            if item.type.startswith(protocol):
+                blks.append(i)
+                prots.append(item.type)
+        else:  # take all
+            blks.append(i)
+            prots.append(item.type)
+
+    return blks, prots
+            
+
+def get_note(fn):
+    df = DatacFile(Path(fn))
+    for item in df.items:
+        # print(item.type)
+        if item.type == 'HFILE':
+            # print('HFILE: ', item.data['Experiment']['v'])
+            return ' '.join(item.data['Experiment']['v']).replace('\t', ',')
+        if item.type == 'NOTE':
+            return item.note
+    return ''
+
+
+def plot_block(ax, fn=None, block=1, protocol=''):
+
+    # matplotlib.use('TkAgg',warn=False, force=True)
+    # f, ax = mpl.subplots(2,1)
+
+    df = DatacFile(Path(fn))  # get the matdatac file
     GC = GetClamps(df)  # make an instance of the clamp converter
-    GC.setProtocol(blocksel)
-    GC.getData()  # convert the data to acq4 Clamp object
-    # print(dir(GC))
-    # print(dir(GC.datac))
-    # print(GC.datac.data.keys())
-    block = 2
+    GC.setProtocol(block)
+    r = GC.getData(debug=True)  # convert the data to acq4 Clamp object
+    if not r:
+        return
+    # print(df.summary())
     dfn = 'df%d' % block
-   # print('dfn: ', GC.datac.data[dfn][0][0])
-    print(len(GC.datac.data[dfn]))
     dbn = 'db_%d' % block
-    kx = list(GC.datac.data[dbn][0][0].keys())[0]
-    print('kx: ', kx)
-    V = GC.datac.data[dbn][0][0][kx]['data']
-    print(GC.datac.data[dbn][0][0][kx].keys())
-    T = GC.time_base
-    print(GC.protocol)
-    sf = GC.datac.data['sf2']
-   # print(sf[0][0])
-    #mpl.ion()
-    f, ax = mpl.subplots(1,1)
-    print(V.shape)
-    print(T.shape)
-    for i in range(int(V[:, 0].shape[0]/T.shape[0])):
-        ax.plot(T, V[i*len(T):i*len(T)+len(T)], 'k-', linewidth=0.5)
-    mpl.draw()
-    mpl.show()
-    print('aaa')# print(GC.tstart, GC.tend)
+    print('fn: ', str(fn))
+    print('   block: ', block)
+    # print(GC.datac.data.keys()) # [dbn])  # is a numpy recarray
+    for rec in range(len(GC.datac.data[dbn][0])):
+        if isinstance(GC.datac.data[dbn][0][rec], dict):
+            drec = list(GC.datac.data[dbn][0][rec].keys())
+            V = GC.datac.data[dbn][0][rec][drec[0]]['data']
+        elif isinstance(GC.datac.data[dbn][0][rec], np.ndarray):
+            # print(GC.datac.data[dbn][0][rec])
+            # print(len(GC.datac.data[dbn][0][rec]))
+            names = GC.datac.data[dbn][0][rec].dtype.names
+            V = GC.datac.data[dbn][0][rec][names[0]][0][0][0][0][0]   # ugh - Why?
+        T = GC.time_base
+        sf2 = GC.datac.data['sf2']
+        # ax[0].plot(T, V[:, 0], 'k-', linewidth=0.5)
+
+        # if len(V) > 1:
+        ax.plot(T, V[:, 1], 'b-', linewidth=0.5)
+        # else:
+        #     ax.plot(T, V[0], 'b-', linewidth=0.5)
+        if protocol == 'anshock':
+            ax.set_xlim([0.008, 0.015])
+        elif protocol == 'antest':
+            ax.set_xlim([0.004, 0.010])
+        else:
+            pass
+    print(f"    Block: {block:d} Proto: {protocol:s}")
+    ax.set_title(f"Block: {block:d} Proto: {protocol:s}")
+
+def plot_blocks(fn, pdfpath=None):
+    df = DatacFile(Path(fn))
+    blks, protocols = get_blocks(fn)
+    print('an blocks: ', blks)
+    nblk = len(blks)
+    (r, c) = PH.getLayoutDimensions(nblk, pref='width')
+    P = PH.regular_grid(r, c, order='rowsfirst', figsize=(8., 10.), showgrid=False,
+                    verticalspacing=0.08, horizontalspacing=0.08,
+                    margins={'leftmargin': 0.08, 'rightmargin': 0.08, 'topmargin': 0.1, 'bottommargin': 0.1},
+                    labelposition=(0., 0.), parent_figure=None, panel_labels=None)
+    axs = P.axarr.ravel()
+    for iblk, blk in enumerate(blks):
+        try:
+            plot_block(axs[iblk], fn=fn, block=blk, protocol=protocols[iblk])
+        except:
+            raise ValueError('Cannot plot block: ', iblk)
+    note = get_note(fn)
+    P.figure_handle.suptitle(f"File: {str(fn):s}, \nNote: {note:s}", fontsize=12)
+    if pdfpath is not None:
+        print(str(Path(pdfpath, fn.stem).with_suffix('.pdf')))
+        mpl.savefig(Path(pdfpath, fn.stem).with_suffix('.pdf'))
+    else:
+        mpl.show()
+
+def main():
+
+    path = ''
+    datadir = '/Volumes/Pegasus/ManisLab_Data3/Rich_Alex/Rich_Acq3/'
+#    fn = '/Users/pbmanis/Documents/data/RX_CCdata/13jul09a.mat'
+    fn = '/Volumes/Pegasus/ManisLab_Data3/Rich_Alex/Rich_Acq3/01may09c.mat'
+    fn = '/Volumes/Pegasus/ManisLab_Data3/Rich_Alex/Rich_Acq3/19feb09d.mat'
+    # fn = '/Volumes/Pegasus/ManisLab_Data3/Rich_Alex/Rich_Acq3/'
+    pdfpath = '/Users/pbmanis/Desktop/Python/awrdata'
+    if Path(fn).is_dir():
+        files = Path(fn).glob('*.mat')
+        for f in sorted(list(files)):
+            blks, prots = get_blocks(f)
+            note = get_note(f)
+            print('blks: ', blks)
+            if note.find('PTS') >= 0 and len(blks) > 0:
+                print('PTS: ', f, prots, note)
+                plot_blocks(f, Path(pdfpath, 'PTS'))
+            elif note.find('TTS') >= 0 and len(blks) > 0:
+                print('TTS: ', f, prots, note)
+                plot_blocks(f, Path(pdfpath, 'TTS'))
+            elif len(blks) > 0:
+                print('CTL: ', f, prots, note)
+                plot_blocks(f, Path(pdfpath, 'CTL'))
+            else:
+                pass
+            # plot_blocks(f, Path(pdfpath, 'CTL'))
+    else:
+        print(Path(fn).name)
+        plot_blocks(fn, pdfpath=None)
+    # if fn is None:
+    #     sel = FS.FileSelector(dialogtype='file', startingdir=datadir)
+    #     print(sel.fileName)
+    #     if sel.fileName is None:
+    #         return
+    #     # fn = '/Volumes/Samsung_T5/data/Rich_Alex/Acq3Files/10dec08a.mat'
+    #         show_block(sel.fileName[0], 0)
+    # else:
+    #     show_block(fn, 4)
+if __name__ == '__main__':
+    main()
+   #  df = DatacFile(os.path.join(fn))  # get the matdatac file
+   #  # for it in df.items:
+   #  #     if isinstance(it, Block):
+   #  #         print(it.summary())
+   #  #
+   #  blocksel = 2
+   #  GC = GetClamps(df)  # make an instance of the clamp converter
+   #  GC.setProtocol(blocksel)
+   #  GC.getData()  # convert the data to acq4 Clamp object
+   #  # print(dir(GC))
+   #  # print(dir(GC.datac))
+   #  # print(GC.datac.data.keys())
+   #  block = 2
+   #  dfn = 'df%d' % block
+   # # print('dfn: ', GC.datac.data[dfn][0][0])
+   #  print(len(GC.datac.data[dfn]))
+   #  dbn = 'db_%d' % block
+   #  kx = list(GC.datac.data[dbn][0][0].keys())[0]
+   #  print('kx: ', kx)
+   #  V = GC.datac.data[dbn][0][0][kx]['data']
+   #  print(GC.datac.data[dbn][0][0][kx].keys())
+   #  T = GC.time_base
+   #  print(GC.protocol)
+   #  sf = GC.datac.data['sf2']
+   # # print(sf[0][0])
+   #  #mpl.ion()
+   #  f, ax = mpl.subplots(1,1)
+   #  print(V.shape)
+   #  print(T.shape)
+   #  for i in range(int(V[:, 0].shape[0]/T.shape[0])):
+   #      ax.plot(T, V[i*len(T):i*len(T)+len(T)], 'k-', linewidth=0.5)
+   #  mpl.draw()
+   #  mpl.show()
+   #  print('aaa')# print(GC.tstart, GC.tend)
     # IV = IVS.IVSummary(2)
     # IV.AR = GC
     # IV.compute_iv()

@@ -331,6 +331,7 @@ class SpikeAnalysis():
                                               0.0, self.Clamps.tstart)
             trspikes = OrderedDict()
             for j in range(len(self.spikes[i])):
+                # print('i,j,etc: ', i, j, begin_dV)
                 thisspike = self.analyze_one_spike(i, j, begin_dV)
                 if thisspike is not None:
                     trspikes[j] = thisspike
@@ -377,6 +378,8 @@ class SpikeAnalysis():
         if kend > dv.shape[0]:
             return(thisspike)  # end of spike would be past end of trace
         else:
+            if kend < k:
+                kend = k + 1
             km = np.argmin(dv[k:kend]) + k
 
         # Find trough after spike and calculate peak to trough
@@ -472,8 +475,10 @@ class SpikeAnalysis():
                 # ax.plot(t_hwup, halfv, 'bx')
                 # mpl.show()
                 if thisspike['halfwidth'] > self.min_halfwidth:  # too broad to be acceptable
-                    # print(f'{this_source_file:s}::\n   spikes > min half width', thisspike['halfwidth'])
-                    # print('   halfv: ', halfv, thisspike['peak_V'], thisspike['AP_beginV'])
+                    if self.verbose:
+                        print(f'{this_source_file:s}::\n   spikes > min half width', thisspike['halfwidth'])
+                        print('   halfv: ', halfv, thisspike['peak_V'], thisspike['AP_beginV'])
+
                     thisspike['halfwidth'] = None
                     thisspike['halfwidth_interpolated'] = None
 
