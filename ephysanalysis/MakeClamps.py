@@ -10,7 +10,7 @@ import matplotlib
 
 import matplotlib.pyplot as mpl
 import pylibrary.plotting.plothelpers as PH
-from pylibrary.Params import Params
+# from pylibrary.utility.params import Params
 import ephysanalysis.metaarray as EM 
 
 
