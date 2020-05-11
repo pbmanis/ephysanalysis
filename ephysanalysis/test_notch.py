@@ -21,7 +21,7 @@ import ephysanalysis as EP
 import pylibrary.tools.fileselector as FS
 import pyqtgraph as pg
 from pyqtgraph.parametertree import Parameter, ParameterTree
-import mapanalysistools.digital_filters as FILT
+import pylibrary.tools.digital_filters as FILT
 from minis import minis_methods
 
 
