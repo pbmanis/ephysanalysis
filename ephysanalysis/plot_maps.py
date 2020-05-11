@@ -25,7 +25,7 @@ import matplotlib.backend_bases as MBB
 import scipy.ndimage as SND
 import shapely as SH
 
-import pylibrary.plotters.plothelpers as PH
+import pylibrary.plotting.plothelpers as PH
 import pylibrary.Utility as PU
 import seaborn as sns
 import ephysanalysis.acq4read as ARC
