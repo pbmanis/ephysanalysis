@@ -18,7 +18,7 @@ from pathlib import Path
 import pathlib
 import numpy as np
 import ephysanalysis as EP
-import pylibrary.fileselector as FS
+import pylibrary.tools.fileselector as FS
 import pyqtgraph as pg
 from pyqtgraph.parametertree import Parameter, ParameterTree
 import mapanalysistools.digital_filters as FILT

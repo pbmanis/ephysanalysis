@@ -23,7 +23,7 @@ import numpy as np
 import pprint
 import ephysanalysis.metaarray as EM
 import ephysanalysis.IVSummary as IVS
-import pylibrary.fileselector as FS
+import pylibrary.tools.fileselector as FS
 
 import matplotlib
 import matplotlib.pyplot as mpl

@@ -20,7 +20,7 @@ if python_version < 3:
 import fnmatch
 from ephysanalysis import metaarray as MA
 from pathlib import Path
-import pylibrary.tifffile as tf
+import pylibrary.tools.tifffile as tf as tf
 import numpy as np
 
     

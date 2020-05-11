@@ -8,7 +8,7 @@ from pyqtgraph.parametertree import Parameter, ParameterTree
 
 from ephysanalysis import acq4read
 from mapanalysistools import analyzeMapData as AMD
-import pylibrary.fileselector as FS
+import pylibrary.tools.fileselector as FS
 
 
 class ReadDataTable():
