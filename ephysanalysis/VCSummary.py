@@ -18,7 +18,7 @@ import matplotlib.pyplot as mpl
 import matplotlib.colors
 import matplotlib
 #import colormaps.parula
-import pylibrary.import pylibrary.plotters.plothelpers as PH as PH
+import pylibrary.plotters.plothelpers as PH
 # from matplotlib import rc
 # #rc('font',**{'family':'sans-serif','sans-serif':['Arial']})
 # #rcParams['font.sans-serif'] = ['Arial']

@@ -9,7 +9,7 @@ import pickle
 import matplotlib
 
 import matplotlib.pyplot as mpl
-import pylibrary.import pylibrary.plotters.plothelpers as PH as PH
+import pylibrary.plotters.plothelpers as PH
 from pylibrary.Params import Params
 import ephysanalysis.metaarray as EM 
 

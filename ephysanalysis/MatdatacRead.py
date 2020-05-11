@@ -29,7 +29,7 @@ import matplotlib
 import matplotlib.pyplot as mpl
 import matplotlib.mlab as mlab
 import sys
-import pylibrary.import pylibrary.plotters.plothelpers as PH as PH
+import pylibrary.plotters.plothelpers as PH
     
 """
 Helper functions
