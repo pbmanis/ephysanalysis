@@ -1520,20 +1520,22 @@ if __name__ == '__main__':
     #### File I/O tests
     
     print("\n================  File I/O Tests  ===================\n")
-    import tempfile
-    tf = tempfile.mktemp()
-    tf = 'test.ma'
-    # write whole array
-    
+     import tempfile
+    from pathlib import Path
+
+    # using NamedTemporaryFile to avoid security issues with mktmp
     print("\n  -- write/read test")
-    ma.write(tf)
-    ma2 = MetaArray(file=tf)
-    
-    #print ma2
-    print("\nArrays are equivalent:", (ma == ma2).all())
+    with tempfile.NamedTemporaryFile(mode="w", delete=True) as tf:
+        pass # just for a filename
+    ma.write(tf.name)
+    ma2 = MetaArray(file=tf.name)
+ 
+    print("\nArrays are equivalent:", all(ma == ma2))
     #print "Meta info is equivalent:", ma.infoCopy() == ma2.infoCopy()
-    os.remove(tf)
-    
+    if Path(tf.name).is_file():
+        Path(tf.name).unlink()
+    else:
+        print("File already deleted (you should not see this): ", tf.name)
     # CSV write
     
     # append mode
